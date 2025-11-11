@@ -6,6 +6,10 @@ let selectedBidders = new Set();
 // Load all bidders
 async function loadBidders() {
     try {
+        // Show loading message
+        document.getElementById('biddersBody').innerHTML = 
+            '<tr><td colspan="6" class="loading">Loading bidders and packages (this may take a moment)...</td></tr>';
+            
         const response = await fetch(`${API_BASE}/bidders`);
         allBidders = await response.json();
         
@@ -22,18 +26,26 @@ async function loadBidders() {
             const packages = new Set();
             
             for (const project of projects) {
-                const projectResponse = await fetch(`${API_BASE}/projects/${project.id}`);
-                const projectData = await projectResponse.json();
-                
-                for (const pkg of projectData.packages || []) {
-                    if (pkg.status === 'estimated') continue;
+                try {
+                    const projectResponse = await fetch(`${API_BASE}/projects/${project.id}`);
+                    const projectData = await projectResponse.json();
                     
-                    const bidsResponse = await fetch(`${API_BASE}/packages/${pkg.id}/bids`);
-                    const bids = await bidsResponse.json();
-                    
-                    if (bids.some(b => b.bidder_id === bidder.id)) {
-                        packages.add(pkg.package_code);
+                    for (const pkg of projectData.packages || []) {
+                        if (pkg.status === 'estimated') continue;
+                        
+                        try {
+                            const bidsResponse = await fetch(`${API_BASE}/packages/${pkg.id}/bids`);
+                            const bids = await bidsResponse.json();
+                            
+                            if (bids.some(b => b.bidder_id === bidder.id)) {
+                                packages.add(pkg.package_code);
+                            }
+                        } catch (error) {
+                            console.error(`Error loading bids for package ${pkg.id}:`, error);
+                        }
                     }
+                } catch (error) {
+                    console.error(`Error loading project ${project.id}:`, error);
                 }
             }
             
@@ -50,6 +62,7 @@ async function loadBidders() {
             };
         });
         
+        // NOW display the bidders after everything is loaded
         displayBidders();
     } catch (error) {
         console.error('Error loading bidders:', error);
@@ -59,8 +72,14 @@ async function loadBidders() {
 }
 
 // Display bidders in table
-async function displayBidders(filter = '', packageFilter = '') {
+function displayBidders(filter = '', packageFilter = '') {
     const tbody = document.getElementById('biddersBody');
+    
+    // Check if allBidders is populated
+    if (!allBidders || allBidders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading bidders...</td></tr>';
+        return;
+    }
     
     let filteredBidders = allBidders;
     
@@ -111,7 +130,7 @@ async function displayBidders(filter = '', packageFilter = '') {
                     ? `<span style="color: #7f8c8d; font-size: 0.875rem;">${escapeHtml(bidder.aliases.join(', '))}</span>`
                     : '—'}
             </td>
-            <td>${bidder.bid_count}</td>
+            <td>${bidder.bid_count || 0}</td>
             <td>
                 <button class="btn btn-small btn-secondary" onclick="viewBidderDetail(${bidder.id}, '${escapeHtml(bidder.canonical_name)}')">
                     View Details
@@ -126,12 +145,6 @@ async function displayBidders(filter = '', packageFilter = '') {
     });
 }
 
-// Add package filter event listener
-document.getElementById('filterPackages').addEventListener('input', (e) => {
-    const bidderFilter = document.getElementById('searchBidders').value;
-    displayBidders(bidderFilter, e.target.value);
-});
-
 // Handle checkbox selection
 function handleCheckboxChange(e) {
     const bidderId = parseInt(e.target.dataset.bidderId);
@@ -144,21 +157,6 @@ function handleCheckboxChange(e) {
     
     updateMergeSection();
 }
-
-// Handle select all checkbox
-document.getElementById('selectAll').addEventListener('change', (e) => {
-    const checkboxes = document.querySelectorAll('.bidder-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = e.target.checked;
-        const bidderId = parseInt(checkbox.dataset.bidderId);
-        if (e.target.checked) {
-            selectedBidders.add(bidderId);
-        } else {
-            selectedBidders.delete(bidderId);
-        }
-    });
-    updateMergeSection();
-});
 
 // Update merge section visibility and options
 function updateMergeSection() {
@@ -187,62 +185,6 @@ function updateMergeSection() {
         mergeBtn.disabled = true;
     }
 }
-
-// Merge bidders
-document.getElementById('mergeBtn').addEventListener('click', async () => {
-    const keepId = parseInt(document.getElementById('keepBidder').value);
-    
-    if (!keepId) {
-        alert('Please select which bidder to keep');
-        return;
-    }
-    
-    const keepBidder = allBidders.find(b => b.id === keepId);
-    const mergeBidders = Array.from(selectedBidders)
-        .filter(id => id !== keepId)
-        .map(id => allBidders.find(b => b.id === id));
-    
-    const confirmMessage = `Are you sure you want to merge these bidders into "${keepBidder.canonical_name}"?\n\n` +
-        `Bidders to merge:\n${mergeBidders.map(b => '• ' + b.canonical_name).join('\n')}\n\n` +
-        `This action cannot be undone.`;
-    
-    if (!confirm(confirmMessage)) {
-        return;
-    }
-    
-    try {
-        // Merge each selected bidder into the keep bidder
-        for (const mergeId of selectedBidders) {
-            if (mergeId === keepId) continue;
-            
-            await fetch(`${API_BASE}/bidders/merge`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    keep_id: keepId,
-                    merge_id: mergeId
-                })
-            });
-        }
-        
-        alert('Bidders merged successfully!');
-        
-        // Reset selection and reload
-        selectedBidders.clear();
-        document.getElementById('selectAll').checked = false;
-        updateMergeSection();
-        loadBidders();
-    } catch (error) {
-        console.error('Error merging bidders:', error);
-        alert('Error merging bidders');
-    }
-});
-
-// Search functionality  
-document.getElementById('searchBidders').addEventListener('input', (e) => {
-    const packageFilter = document.getElementById('filterPackages').value;
-    displayBidders(e.target.value, packageFilter);
-});
 
 // View bidder detail
 async function viewBidderDetail(bidderId, bidderName) {
@@ -354,5 +296,85 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Load bidders on page load
-loadBidders();
+// Initialize page - attach event listeners AFTER DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Add package filter event listener
+    document.getElementById('filterPackages').addEventListener('input', (e) => {
+        const bidderFilter = document.getElementById('searchBidders').value;
+        displayBidders(bidderFilter, e.target.value);
+    });
+
+    // Search functionality  
+    document.getElementById('searchBidders').addEventListener('input', (e) => {
+        const packageFilter = document.getElementById('filterPackages').value;
+        displayBidders(e.target.value, packageFilter);
+    });
+
+    // Handle select all checkbox
+    document.getElementById('selectAll').addEventListener('change', (e) => {
+        const checkboxes = document.querySelectorAll('.bidder-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = e.target.checked;
+            const bidderId = parseInt(checkbox.dataset.bidderId);
+            if (e.target.checked) {
+                selectedBidders.add(bidderId);
+            } else {
+                selectedBidders.delete(bidderId);
+            }
+        });
+        updateMergeSection();
+    });
+
+    // Merge bidders button
+    document.getElementById('mergeBtn').addEventListener('click', async () => {
+        const keepId = parseInt(document.getElementById('keepBidder').value);
+        
+        if (!keepId) {
+            alert('Please select which bidder to keep');
+            return;
+        }
+        
+        const keepBidder = allBidders.find(b => b.id === keepId);
+        const mergeBidders = Array.from(selectedBidders)
+            .filter(id => id !== keepId)
+            .map(id => allBidders.find(b => b.id === id));
+        
+        const confirmMessage = `Are you sure you want to merge these bidders into "${keepBidder.canonical_name}"?\n\n` +
+            `Bidders to merge:\n${mergeBidders.map(b => '• ' + b.canonical_name).join('\n')}\n\n` +
+            `This action cannot be undone.`;
+        
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+        
+        try {
+            // Merge each selected bidder into the keep bidder
+            for (const mergeId of selectedBidders) {
+                if (mergeId === keepId) continue;
+                
+                await fetch(`${API_BASE}/bidders/merge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        keep_id: keepId,
+                        merge_id: mergeId
+                    })
+                });
+            }
+            
+            alert('Bidders merged successfully!');
+            
+            // Reset selection and reload
+            selectedBidders.clear();
+            document.getElementById('selectAll').checked = false;
+            updateMergeSection();
+            loadBidders();
+        } catch (error) {
+            console.error('Error merging bidders:', error);
+            alert('Error merging bidders');
+        }
+    });
+
+    // Load bidders on page load
+    loadBidders();
+});
