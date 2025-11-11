@@ -107,7 +107,7 @@ function displayCategoryBreakdown() {
     const packages = currentProject.packages || [];
     
     if (!currentProject.building_sf) {
-        tbody.innerHTML = '<tr><td colspan="6">Building SF required to calculate cost/SF by category</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7">Building SF required to calculate cost/SF by category</td></tr>';
         return;
     }
     
@@ -129,12 +129,12 @@ function displayCategoryBreakdown() {
         );
         
         const selectedCost = categoryPackages.reduce((sum, pkg) => sum + (pkg.selected_amount || 0), 0);
-        const lowBidCost = categoryPackages.reduce((sum, pkg) => sum + (pkg.low_bid || pkg.selected_amount || 0), 0);
         const medianBidCost = categoryPackages.reduce((sum, pkg) => sum + (pkg.median_bid || pkg.selected_amount || 0), 0);
+        const highBidCost = categoryPackages.reduce((sum, pkg) => sum + (pkg.high_bid || pkg.selected_amount || 0), 0);
         
         const selectedCostPerSF = selectedCost / currentProject.building_sf;
-        const lowBidCostPerSF = lowBidCost / currentProject.building_sf;
         const medianBidCostPerSF = medianBidCost / currentProject.building_sf;
+        const highBidCostPerSF = highBidCost / currentProject.building_sf;
         
         const percentage = totalSelectedCost > 0 ? (selectedCost / totalSelectedCost * 100) : 0;
         
@@ -143,8 +143,8 @@ function displayCategoryBreakdown() {
             divisions: cat.divisions.join(', '),
             selectedCost: selectedCost,
             selectedCostPerSF: selectedCostPerSF,
-            lowBidCostPerSF: lowBidCostPerSF,
             medianBidCostPerSF: medianBidCostPerSF,
+            highBidCostPerSF: highBidCostPerSF,
             percentage: percentage,
             color: cat.color
         };
@@ -154,7 +154,7 @@ function displayCategoryBreakdown() {
     const nonZeroCategories = categoryData.filter(cat => cat.selectedCost > 0);
     
     if (nonZeroCategories.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6">No packages assigned to standard categories yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7">No packages assigned to standard categories yet</td></tr>';
         return;
     }
     
@@ -163,11 +163,9 @@ function displayCategoryBreakdown() {
             <td><strong style="color: ${cat.color}">${escapeHtml(cat.name)}</strong></td>
             <td>${escapeHtml(cat.divisions)}</td>
             <td>${formatCurrency(cat.selectedCost)}</td>
-            <td><strong>${formatCurrency(cat.selectedCostPerSF)}</strong></td>
-            <td>
-                Low: ${formatCurrency(cat.lowBidCostPerSF)}<br>
-                Median: ${formatCurrency(cat.medianBidCostPerSF)}
-            </td>
+            <td><strong>${formatCurrency(cat.medianBidCostPerSF)}</strong></td>
+            <td>${formatCurrency(cat.selectedCostPerSF)}</td>
+            <td>${formatCurrency(cat.highBidCostPerSF)}</td>
             <td>${cat.percentage.toFixed(1)}%</td>
         </tr>
     `).join('');
