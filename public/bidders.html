@@ -25,7 +25,8 @@
         <div class="table-container">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h3>All Bidders</h3>
-                <input type="text" id="searchBidders" placeholder="Search bidders..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 300px;">
+                <input type="text" id="searchBidders" placeholder="Search bidders..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 250px;">
+                <input type="text" id="filterPackages" placeholder="Filter by package..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 250px;">
             </div>
             <table id="biddersTable">
                 <thead>
@@ -34,13 +35,14 @@
                             <input type="checkbox" id="selectAll" title="Select All">
                         </th>
                         <th>Bidder Name</th>
+                        <th>Packages</th>
                         <th>Aliases</th>
                         <th>Total Bids</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="biddersBody">
-                    <tr><td colspan="5" class="loading">Loading bidders...</td></tr>
+                    <tr><td colspan="6" class="loading">Loading bidders...</td></tr>
                 </tbody>
             </table>
             
@@ -72,13 +74,14 @@
                     <thead>
                         <tr>
                             <th>Project</th>
+                            <th>Project Date</th>
                             <th>Package</th>
                             <th>Bid Amount</th>
                             <th>Status</th>
                         </tr>
                     </thead>
                     <tbody id="bidderBidsBody">
-                        <tr><td colspan="4" class="loading">Loading bid history...</td></tr>
+                        <tr><td colspan="5" class="loading">Loading bid history...</td></tr>
                     </tbody>
                 </table>
             </div>
