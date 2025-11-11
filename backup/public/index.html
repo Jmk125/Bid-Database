@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bid Database</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="main-nav">
+        <h1>Bid Database</h1>
+        <ul>
+            <li><a href="index.html" class="active">Projects</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="bidders.html">Bidders</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h2>Projects</h2>
+            <button id="addProjectBtn" class="btn btn-primary">+ Add Project</button>
+        </div>
+
+        <div id="projectsList" class="projects-list">
+            <!-- Projects will be loaded here -->
+        </div>
+    </div>
+
+    <!-- Add Project Modal -->
+    <div id="addProjectModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Add New Project</h3>
+            <form id="addProjectForm">
+                <div class="form-group">
+                    <label for="projectName">Project Name *</label>
+                    <input type="text" id="projectName" required>
+                </div>
+                <div class="form-group">
+                    <label for="buildingSF">Building SF</label>
+                    <input type="number" id="buildingSF" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label for="projectDate">Project Bid Date</label>
+                    <input type="date" id="projectDate">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelAddProject">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

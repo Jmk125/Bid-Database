@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Detail - Bid Database</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+</head>
+<body>
+    <nav class="main-nav">
+        <h1>Bid Database</h1>
+        <ul>
+            <li><a href="index.html">Projects</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="bidders.html">Bidders</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <div>
+                <a href="index.html" style="color: #3498db; text-decoration: none;">← Back to Projects</a>
+                <h2 id="projectName">Loading...</h2>
+            </div>
+            <div style="display: flex; gap: 1rem;">
+                <button id="editProjectBtn" class="btn btn-secondary">✏️ Edit Project</button>
+                <button id="addPackageBtn" class="btn btn-secondary">+ Add Package</button>
+                <button id="uploadBidTabBtn" class="btn btn-primary">📤 Upload Bid Tab</button>
+            </div>
+        </div>
+
+        <!-- Summary Metrics -->
+        <div class="metrics-grid" id="projectMetrics">
+            <!-- Metrics will be loaded here -->
+        </div>
+
+        <!-- Category Breakdown -->
+        <div class="table-container" style="margin-top: 2rem;">
+            <h3 style="margin-bottom: 1rem;">Cost/SF by Category</h3>
+            <table id="categoryTable">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>CSI Divisions</th>
+                        <th>Total Cost (Selected)</th>
+                        <th>Selected Cost/SF</th>
+                        <th>Low/Median Cost/SF</th>
+                        <th>% of Total</th>
+                    </tr>
+                </thead>
+                <tbody id="categoryBody">
+                    <tr><td colspan="6" class="loading">Loading categories...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Charts -->
+        <div style="margin-top: 2rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Bid Analysis Charts</h3>
+                <div>
+                    <label for="pieChartDataSource" style="margin-right: 0.5rem; font-weight: 600;">Pie Chart Data:</label>
+                    <select id="pieChartDataSource" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="median">Median Bids</option>
+                        <option value="low">Low Bids</option>
+                        <option value="high">High Bids</option>
+                        <option value="selected">Selected Bids</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="chart-container" style="height: 400px; margin-bottom: 2rem;">
+                <canvas id="categoryChart"></canvas>
+            </div>
+            
+            <div class="chart-container" style="height: 500px; margin-bottom: 2rem;">
+                <canvas id="packageComparisonChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Packages Table -->
+        <div class="table-container">
+            <h3 style="margin-bottom: 1rem;">Bid Packages</h3>
+            <table id="packagesTable">
+                <thead>
+                    <tr>
+                        <th>Package</th>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Selected Bidder</th>
+                        <th>Selected Amount</th>
+                        <th>Low Bid</th>
+                        <th>Median</th>
+                        <th>High Bid</th>
+                        <th># Bids</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="packagesBody">
+                    <tr><td colspan="10" class="loading">Loading packages...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Edit Project Modal -->
+    <div id="editProjectModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditProjectModal()">&times;</span>
+            <h3>Edit Project</h3>
+            <form id="editProjectForm">
+                <div class="form-group">
+                    <label for="editProjectName">Project Name *</label>
+                    <input type="text" id="editProjectName" required>
+                </div>
+                <div class="form-group">
+                    <label for="editBuildingSF">Building SF</label>
+                    <input type="number" id="editBuildingSF" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label for="editProjectDate">Project Bid Date</label>
+                    <input type="date" id="editProjectDate">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditProjectModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Upload Bid Tab Modal -->
+    <div id="uploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeUploadModal()">&times;</span>
+            <h3>Upload Bid Tab</h3>
+            <form id="uploadForm">
+                <div class="form-group">
+                    <label for="bidTabFile">Select Excel File *</label>
+                    <input type="file" id="bidTabFile" accept=".xlsx,.xls" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="uploadBtn">Upload</button>
+                </div>
+            </form>
+            <div id="uploadProgress" style="display: none; margin-top: 1rem;">
+                <p>Processing bid tab...</p>
+            </div>
+            <div id="uploadResult" style="display: none; margin-top: 1rem;">
+                <!-- Upload result will show here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Package Modal -->
+    <div id="addPackageModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddPackageModal()">&times;</span>
+            <h3>Add Estimated Package</h3>
+            <form id="addPackageForm">
+                <div class="form-group">
+                    <label for="packageCode">Package Code *</label>
+                    <input type="text" id="packageCode" placeholder="e.g., 12A" required>
+                </div>
+                <div class="form-group">
+                    <label for="packageName">Package Name *</label>
+                    <input type="text" id="packageName" placeholder="e.g., Loose Furnishings" required>
+                </div>
+                <div class="form-group">
+                    <label for="estimatedAmount">Estimated Amount *</label>
+                    <input type="number" id="estimatedAmount" step="0.01" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeAddPackageModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Package</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Package Modal -->
+    <div id="editPackageModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditPackageModal()">&times;</span>
+            <h3>Edit Package</h3>
+            <form id="editPackageForm">
+                <input type="hidden" id="editPackageId">
+                <div class="form-group">
+                    <label for="editPackageCode">Package Code *</label>
+                    <input type="text" id="editPackageCode" required>
+                </div>
+                <div class="form-group">
+                    <label for="editPackageName">Package Name *</label>
+                    <input type="text" id="editPackageName" required>
+                </div>
+                <div class="form-group">
+                    <label for="editAmount">Amount *</label>
+                    <input type="number" id="editAmount" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="editBidder">Bidder</label>
+                    <input type="text" id="editBidder" placeholder="Leave blank if still estimated">
+                </div>
+                <div class="form-group">
+                    <label for="editStatus">Status</label>
+                    <select id="editStatus">
+                        <option value="estimated">Estimated</option>
+                        <option value="bid">Bid</option>
+                        <option value="bid-override">Bid (Override)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="editNotes">Notes</label>
+                    <textarea id="editNotes" rows="3"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditPackageModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="project.js"></script>
+</body>
+</html>

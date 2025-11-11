@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bid Database</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="main-nav">
+        <h1>Bid Database <span style="font-size: 0.75rem; font-weight: normal; color: #95a5a6;">v2.3</span></h1>
+        <ul>
+            <li><a href="index.html" class="active">Projects</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="bidders.html">Bidders</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h2>Projects</h2>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <div>
+                    <label for="sortProjects" style="margin-right: 0.5rem; font-weight: 600;">Sort by:</label>
+                    <select id="sortProjects" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="date-desc">Date (Newest First)</option>
+                        <option value="date-asc">Date (Oldest First)</option>
+                        <option value="sf-desc">Square Footage (Largest First)</option>
+                        <option value="sf-asc">Square Footage (Smallest First)</option>
+                        <option value="name">Name (A-Z)</option>
+                    </select>
+                </div>
+                <button id="addProjectBtn" class="btn btn-primary">+ Add Project</button>
+            </div>
+        </div>
+
+        <div id="projectsList" class="projects-list">
+            <!-- Projects will be loaded here -->
+        </div>
+    </div>
+
+    <!-- Add Project Modal -->
+    <div id="addProjectModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Add New Project</h3>
+            <form id="addProjectForm">
+                <div class="form-group">
+                    <label for="projectName">Project Name *</label>
+                    <input type="text" id="projectName" required>
+                </div>
+                <div class="form-group">
+                    <label for="buildingSF">Building SF</label>
+                    <input type="number" id="buildingSF" step="0.01" placeholder="Leave blank if on bid tab">
+                </div>
+                <div class="form-group">
+                    <label for="projectDate">Project Bid Date</label>
+                    <input type="date" id="projectDate">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelAddProject">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

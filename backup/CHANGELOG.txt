@@ -1,0 +1,241 @@
+CHANGELOG - Bid Database v2.3
+==============================
+
+NEW IN v2.3:
+------------
+
+✅ PIE CHART COLOR CONSISTENCY
+- Same CSI division = same color across all packages
+- Multiple 03 packages (03A, 03B) all show in same color
+- Sitework divisions (31, 32, 33) all use same gray color
+- Makes it easy to see at a glance which divisions dominate
+
+✅ PIE CHART DATA SOURCE SELECTOR
+- Dropdown above pie chart to change data source
+- Options: Median Bids (default), Low Bids, High Bids, Selected Bids
+- Chart title updates to show which data is displayed
+- Instantly compare how different bid scenarios affect distribution
+
+✅ RESPONSIVE METRIC CARDS
+- Large numbers (triple-digit millions) auto-adjust font size
+- Values >15 chars: very small font
+- Values >12 chars: small font
+- No more overflow on large project costs!
+
+✅ MEDIAN COST/SF ON PROJECT CARDS
+- Main projects page now shows median cost/SF
+- Displayed prominently in bold on each project card
+- Quick comparison across projects without opening them
+
+✅ "PROJECT DATE" → "PROJECT BID DATE"
+- Renamed throughout app for clarity
+- Better reflects what the date actually represents
+
+✅ BIDDER DETAILS AUTO-SCROLL
+- Clicking "View Details" on bidder page auto-scrolls to details
+- No more hunting for where the details appeared
+- Smooth scroll animation
+
+✅ BIDDER HISTORY WITH COST/SF
+- Bidder detail view now shows cost/SF for each bid
+- Formatted same as project packages table ($/SF under amount)
+- Helps evaluate bidder pricing across different projects
+
+✅ ESTIMATED PACKAGES FIX
+- Estimated packages now count toward ALL totals
+- Low bid, Median bid, High bid, and Selected all include estimates
+- Before: only Selected total was affected
+- After: all metrics reflect estimated packages
+
+✅ CHART REFRESH FIX
+- Fixed "Error loading project" issue after updates
+- Charts now properly refresh after:
+  * Updating project size/date
+  * Adding packages
+  * Uploading bid tabs
+- Destroys old charts before creating new ones
+
+NEW IN v2.2:
+------------
+
+✅ PIE CHART BY CSI DIVISION
+- Changed from category grouping to CSI division grouping
+- Each division (03, 04, 05, etc.) gets its own pie slice
+- Multiple packages in same division are combined
+- Legend shows package codes for each division (e.g., "Div 03 (03A, 03B)")
+- Hover tooltip shows all packages in that division
+
+✅ BID COUNT COLUMN
+- New "# Bids" column in packages table
+- Shows how many bids were received for each package
+- **Clickable** - click the number to view all bidders
+- Replaces the separate "Bids" button (more compact)
+
+✅ PRECISION - CENTS DISPLAYED
+- All monetary values now show cents ($4,057,920.00 instead of $4,057,920)
+- Critical for accurate cost/SF calculations
+- Applied throughout entire application
+
+✅ LOW BID & MEDIAN BID METRICS
+- Top metrics now show THREE cost/SF values:
+  * Selected Cost/SF
+  * Low Bid Cost/SF  
+  * Median Bid Cost/SF
+- Helps quickly compare selected vs market
+
+✅ CATEGORY BREAKDOWN ENHANCED
+- Added "Low/Median Cost/SF" column
+- Shows both low and median cost/SF for each category:
+  * Low: $70.17/SF
+  * Median: $75.23/SF
+- Includes Sitework category (CSI 31-33)
+
+✅ NARROWER MARGINS
+- Increased max width to 1400px (from 1200px)
+- Reduced padding to fit more content
+- Smaller table cell padding
+- More compact overall layout
+
+NEW IN v2.1:
+------------
+
+✅ EDIT PROJECT METADATA
+- Click "✏️ Edit Project" button on project detail page
+- Update building square footage
+- Update project date
+- Changes recalculate all cost/SF metrics automatically
+
+✅ CATEGORY BREAKDOWN TABLE
+- Cost/SF breakdown by key categories:
+  * Structure (CSI 03-05)
+  * Finishes (CSI 09)
+  * Equipment (CSI 11)
+  * Furnishings (CSI 12)
+  * MEPTS (CSI 21-28)
+  * Sitework (CSI 31-33)
+- Shows total cost, cost/SF, and % of total for each category
+
+✅ INTERACTIVE CHARTS
+- Category Distribution Pie Chart
+  * Visual breakdown of costs by category
+  * Shows percentages
+- Package-by-Package Comparison Bar Chart
+  * Compares Selected, Median, Low, and High bids
+  * Color-coded for easy reading
+- Uses Chart.js library for professional charts
+
+✅ IMPROVED TABLE LAYOUT
+- Cost/SF now shown UNDER each amount (not separate column)
+- More compact table layout
+- Smaller "tiny" action buttons (Edit/Del/Bids)
+- Buttons fit on one row, reducing row height
+
+NEW FEATURES ADDED:
+-------------------
+
+✅ DASHBOARD PAGE (dashboard.html)
+- Cross-project analytics view
+- Summary metrics: total projects, packages, bidders, and bids
+- Cost/SF by CSI Division table (shows median, average, min, max)
+- Top Bidders by Activity (shows bid count, wins, win rate, average bid)
+- Projects Overview table (all projects with totals and cost/SF)
+- Click any project row to navigate to project detail
+
+✅ BIDDERS MANAGEMENT PAGE (bidders.html)
+- View all bidders with their aliases
+- Search/filter bidders by name
+- Select multiple bidders to merge duplicates
+- View detailed bid history for each bidder
+- See which bids were selected vs not selected
+
+✅ IMPROVED BID TAB PARSER
+- Now correctly parses Brunswick HS bid tab format
+- Detects "Bid Package - 03A Concrete" format in row 1
+- Finds "Propose (Y/N)" column for selection
+- Finds "Bidder" and "Base Bid Amount" columns
+- Skips utility sheets (V, W, X, Y, Z, Spare1-4)
+- Better date handling (converts Excel date serial numbers)
+- More flexible building SF detection (D3 in GMP Summary)
+
+✅ PORT CONFIGURATION
+- Now runs on port 3020 (configurable)
+- No more CORS issues - uses relative URLs
+
+CURRENT FEATURES:
+-----------------
+✅ Project Management
+  - Create/view/update/delete projects
+  - Auto-detect building SF and date from bid tabs
+  - Manual override of project metadata
+
+✅ Bid Tab Upload
+  - Automatic Excel parsing
+  - Extracts all bid packages from sheets
+  - Identifies selected bids (marked with "y")
+  - Flags override bids (when selected ≠ actual low)
+  - Calculates low/median/high/average for each package
+
+✅ Package Management
+  - Add estimated packages manually
+  - Edit package details
+  - Convert estimated to bid
+  - Delete packages
+  - View all bids for a package
+
+✅ Bidder Tracking
+  - Automatic bidder normalization
+  - Removes asterisks, "Inc", "LLC", etc.
+  - Tracks aliases for each bidder
+  - Merge duplicate bidders
+  - View bidder performance across projects
+
+✅ Metrics & Analytics
+  - Cost per SF calculations
+  - Package metrics (low/median/high/average)
+  - Cross-project aggregation by CSI division
+  - Bidder win rates and activity
+
+KNOWN LIMITATIONS:
+------------------
+⚠️ Building SF Detection
+  - Currently looks in D3 of GMP Summary sheet
+  - If not found, must be entered manually
+  - You mentioned adding this to your newer bid tabs
+
+⚠️ Bid Tab Variations
+  - Parser is tuned for Brunswick HS format
+  - May need adjustments for different estimators' formats
+  - Test with your other bid tabs to identify issues
+
+TESTING CHECKLIST:
+------------------
+[ ] Upload Brunswick HS bid tab
+[ ] Verify all 19 packages are parsed
+[ ] Check that "y" selections are detected correctly
+[ ] Verify override flags on packages where selection ≠ low bid
+[ ] Add a test project with manual packages
+[ ] Edit an estimated package to convert to bid
+[ ] Check dashboard CSI division aggregations
+[ ] Test bidder merge functionality
+[ ] Try searching/filtering bidders
+
+NEXT ENHANCEMENTS TO CONSIDER:
+-------------------------------
+- Export to Excel/CSV
+- Print-friendly reports
+- Charts/graphs for visualizations
+- Historical trending (track how costs change over time)
+- Budget vs bid comparison
+- Advanced filtering (by date range, CSI division, etc.)
+- PDF report generation (similar to your HTML example)
+- Email notifications
+- User authentication
+
+NOTES:
+------
+- The database file (bid_database.sqlite) persists all data
+- Backup this file regularly to avoid data loss
+- All monetary values stored in dollars (not cents)
+- Date format: ISO 8601 (YYYY-MM-DD)
+
+For questions or issues, refer to README.md or test with sample data first!

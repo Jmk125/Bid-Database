@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Bid Database</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="main-nav">
+        <h1>Bid Database <span style="font-size: 0.75rem; font-weight: normal; color: #95a5a6;">v2.3</span></h1>
+        <ul>
+            <li><a href="index.html">Projects</a></li>
+            <li><a href="dashboard.html" class="active">Dashboard</a></li>
+            <li><a href="bidders.html">Bidders</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h2>Cross-Project Dashboard</h2>
+        </div>
+
+        <!-- Summary Metrics -->
+        <div class="metrics-grid" id="summaryMetrics">
+            <div class="metric-card">
+                <h4>Total Projects</h4>
+                <div class="value" id="totalProjects">0</div>
+            </div>
+            <div class="metric-card">
+                <h4>Total Packages</h4>
+                <div class="value" id="totalPackages">0</div>
+            </div>
+            <div class="metric-card">
+                <h4>Total Bidders</h4>
+                <div class="value" id="totalBidders">0</div>
+            </div>
+            <div class="metric-card">
+                <h4>Total Bids</h4>
+                <div class="value" id="totalBids">0</div>
+            </div>
+        </div>
+
+        <!-- CSI Division Analysis -->
+        <div class="table-container" style="margin-top: 2rem;">
+            <h3 style="margin-bottom: 1rem;">Cost/SF by CSI Division</h3>
+            <p style="color: #7f8c8d; margin-bottom: 1rem;">Aggregate metrics across all projects</p>
+            <table id="divisionsTable">
+                <thead>
+                    <tr>
+                        <th>CSI Division</th>
+                        <th>Package Count</th>
+                        <th>Median Cost/SF</th>
+                        <th>Average Cost/SF</th>
+                        <th>Min Cost/SF</th>
+                        <th>Max Cost/SF</th>
+                    </tr>
+                </thead>
+                <tbody id="divisionsBody">
+                    <tr><td colspan="6" class="loading">Loading division data...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Top Bidders by Activity -->
+        <div class="table-container" style="margin-top: 2rem;">
+            <h3 style="margin-bottom: 1rem;">Top Bidders by Activity</h3>
+            <table id="biddersTable">
+                <thead>
+                    <tr>
+                        <th>Bidder</th>
+                        <th>Total Bids</th>
+                        <th>Wins</th>
+                        <th>Win Rate</th>
+                        <th>Avg Bid Amount</th>
+                    </tr>
+                </thead>
+                <tbody id="biddersBody">
+                    <tr><td colspan="5" class="loading">Loading bidder data...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Projects Summary -->
+        <div class="table-container" style="margin-top: 2rem;">
+            <h3 style="margin-bottom: 1rem;">Projects Overview</h3>
+            <table id="projectsTable">
+                <thead>
+                    <tr>
+                        <th>Project Name</th>
+                        <th>Building SF</th>
+                        <th>Total Cost</th>
+                        <th>Cost/SF</th>
+                        <th>Packages</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody id="projectsBody">
+                    <tr><td colspan="6" class="loading">Loading projects...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bidders - Bid Database</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="main-nav">
+        <h1>Bid Database</h1>
+        <ul>
+            <li><a href="index.html">Projects</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="bidders.html" class="active">Bidders</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h2>Bidder Management</h2>
+            <p style="color: #7f8c8d; margin-top: 0.5rem;">Manage and merge duplicate bidder entries</p>
+        </div>
+
+        <div class="table-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3>All Bidders</h3>
+                <input type="text" id="searchBidders" placeholder="Search bidders..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 300px;">
+            </div>
+            <table id="biddersTable">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">
+                            <input type="checkbox" id="selectAll" title="Select All">
+                        </th>
+                        <th>Bidder Name</th>
+                        <th>Aliases</th>
+                        <th>Total Bids</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="biddersBody">
+                    <tr><td colspan="5" class="loading">Loading bidders...</td></tr>
+                </tbody>
+            </table>
+            
+            <div id="mergeSection" style="margin-top: 1rem; padding: 1rem; background-color: #f8f9fa; border-radius: 4px; display: none;">
+                <h4 style="margin-bottom: 0.5rem;">Merge Selected Bidders</h4>
+                <p style="color: #7f8c8d; margin-bottom: 1rem; font-size: 0.875rem;">
+                    Select 2 or more bidders to merge. All bids and references will be consolidated under one name.
+                </p>
+                <div style="display: flex; gap: 1rem; align-items: center;">
+                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                        <label for="keepBidder">Keep this bidder:</label>
+                        <select id="keepBidder" class="form-control">
+                            <option value="">-- Select Primary Bidder --</option>
+                        </select>
+                    </div>
+                    <button id="mergeBtn" class="btn btn-primary" disabled>Merge Bidders</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bidder Detail Section -->
+        <div id="bidderDetail" style="display: none; margin-top: 2rem;">
+            <div class="table-container">
+                <h3 id="bidderDetailName" style="margin-bottom: 1rem;"></h3>
+                <button onclick="closeBidderDetail()" class="btn btn-secondary btn-small" style="margin-bottom: 1rem;">← Back to List</button>
+                
+                <h4 style="margin-bottom: 0.5rem;">Bid History</h4>
+                <table id="bidderBidsTable">
+                    <thead>
+                        <tr>
+                            <th>Project</th>
+                            <th>Package</th>
+                            <th>Bid Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bidderBidsBody">
+                        <tr><td colspan="4" class="loading">Loading bid history...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="bidders.js"></script>
+</body>
+</html>
