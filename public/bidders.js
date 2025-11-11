@@ -13,6 +13,33 @@ async function loadBidders() {
         const bidderStatsResponse = await fetch(`${API_BASE}/aggregate/bidders`);
         const bidderStats = await bidderStatsResponse.json();
         
+        // Get all projects to find packages per bidder
+        const projectsResponse = await fetch(`${API_BASE}/projects`);
+        const projects = await projectsResponse.json();
+        
+        // For each bidder, find which packages they've bid on
+        for (const bidder of allBidders) {
+            const packages = new Set();
+            
+            for (const project of projects) {
+                const projectResponse = await fetch(`${API_BASE}/projects/${project.id}`);
+                const projectData = await projectResponse.json();
+                
+                for (const pkg of projectData.packages || []) {
+                    if (pkg.status === 'estimated') continue;
+                    
+                    const bidsResponse = await fetch(`${API_BASE}/packages/${pkg.id}/bids`);
+                    const bids = await bidsResponse.json();
+                    
+                    if (bids.some(b => b.bidder_id === bidder.id)) {
+                        packages.add(pkg.package_code);
+                    }
+                }
+            }
+            
+            bidder.packages = Array.from(packages).sort();
+        }
+        
         // Merge stats with bidder data
         allBidders = allBidders.map(bidder => {
             const stats = bidderStats.find(s => s.bidder_name === bidder.canonical_name);
@@ -27,25 +54,35 @@ async function loadBidders() {
     } catch (error) {
         console.error('Error loading bidders:', error);
         document.getElementById('biddersBody').innerHTML = 
-            '<tr><td colspan="5" class="empty-state">Error loading bidders</td></tr>';
+            '<tr><td colspan="6" class="empty-state">Error loading bidders</td></tr>';
     }
 }
 
 // Display bidders in table
-function displayBidders(filter = '') {
+async function displayBidders(filter = '', packageFilter = '') {
     const tbody = document.getElementById('biddersBody');
     
     let filteredBidders = allBidders;
+    
+    // Apply bidder name filter
     if (filter) {
         const lowerFilter = filter.toLowerCase();
-        filteredBidders = allBidders.filter(bidder => 
+        filteredBidders = filteredBidders.filter(bidder => 
             bidder.canonical_name.toLowerCase().includes(lowerFilter) ||
             bidder.aliases.some(alias => alias.toLowerCase().includes(lowerFilter))
         );
     }
     
+    // Apply package filter
+    if (packageFilter) {
+        const lowerPackageFilter = packageFilter.toLowerCase();
+        filteredBidders = filteredBidders.filter(bidder => 
+            bidder.packages && bidder.packages.some(pkg => pkg.toLowerCase().includes(lowerPackageFilter))
+        );
+    }
+    
     if (filteredBidders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No bidders found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No bidders found</td></tr>';
         return;
     }
     
@@ -63,6 +100,11 @@ function displayBidders(filter = '') {
             </td>
             <td>
                 <strong>${escapeHtml(bidder.canonical_name)}</strong>
+            </td>
+            <td>
+                ${bidder.packages && bidder.packages.length > 0
+                    ? `<span style="color: #2c3e50; font-size: 0.875rem;">${escapeHtml(bidder.packages.join(', '))}</span>`
+                    : '—'}
             </td>
             <td>
                 ${bidder.aliases.length > 0 
@@ -83,6 +125,12 @@ function displayBidders(filter = '') {
         checkbox.addEventListener('change', handleCheckboxChange);
     });
 }
+
+// Add package filter event listener
+document.getElementById('filterPackages').addEventListener('input', (e) => {
+    const bidderFilter = document.getElementById('searchBidders').value;
+    displayBidders(bidderFilter, e.target.value);
+});
 
 // Handle checkbox selection
 function handleCheckboxChange(e) {
@@ -190,9 +238,10 @@ document.getElementById('mergeBtn').addEventListener('click', async () => {
     }
 });
 
-// Search functionality
+// Search functionality  
 document.getElementById('searchBidders').addEventListener('input', (e) => {
-    displayBidders(e.target.value);
+    const packageFilter = document.getElementById('filterPackages').value;
+    displayBidders(e.target.value, packageFilter);
 });
 
 // View bidder detail
@@ -232,6 +281,7 @@ async function viewBidderDetail(bidderId, bidderName) {
                     
                     bidHistory.push({
                         project_name: projectData.name,
+                        project_date: projectData.project_date,
                         package_code: pkg.package_code,
                         package_name: pkg.package_name,
                         bid_amount: bidderBid.bid_amount,
@@ -247,9 +297,17 @@ async function viewBidderDetail(bidderId, bidderName) {
             return;
         }
         
+        // Sort by date (most recent first)
+        bidHistory.sort((a, b) => {
+            if (!a.project_date) return 1;
+            if (!b.project_date) return -1;
+            return new Date(b.project_date) - new Date(a.project_date);
+        });
+        
         tbody.innerHTML = bidHistory.map(bid => `
             <tr>
                 <td>${escapeHtml(bid.project_name)}</td>
+                <td>${bid.project_date ? formatDate(bid.project_date) : '—'}</td>
                 <td><strong>${escapeHtml(bid.package_code)}</strong> ${escapeHtml(bid.package_name)}</td>
                 <td>
                     <div class="amount-with-sf">
@@ -282,6 +340,12 @@ function formatCurrency(num) {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     }).format(num);
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
 }
 
 function escapeHtml(text) {
