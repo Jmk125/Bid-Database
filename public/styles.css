@@ -715,6 +715,13 @@ td {
     font-size: 0.9rem;
 }
 
+.category-percentage {
+    color: #7f8c8d;
+    font-size: 0.8rem;
+    margin-left: 0.35rem;
+    white-space: nowrap;
+}
+
 #gmpTable th:nth-child(n+3),
 #gmpTable td:nth-child(n+3) {
     text-align: right;
