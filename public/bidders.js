@@ -7,66 +7,23 @@ let selectedBidders = new Set();
 async function loadBidders() {
     try {
         // Show loading message
-        document.getElementById('biddersBody').innerHTML = 
+        document.getElementById('biddersBody').innerHTML =
             '<tr><td colspan="6" class="loading">Loading bidders and packages (this may take a moment)...</td></tr>';
-            
+
         const response = await fetch(`${API_BASE}/bidders`);
-        allBidders = await response.json();
-        
-        // Get bid counts for each bidder
-        const bidderStatsResponse = await fetch(`${API_BASE}/aggregate/bidders`);
-        const bidderStats = await bidderStatsResponse.json();
-        
-        // Get all projects to find packages per bidder
-        const projectsResponse = await fetch(`${API_BASE}/projects`);
-        const projects = await projectsResponse.json();
-        
-        // For each bidder, find which packages they've bid on
-        for (const bidder of allBidders) {
-            const packages = new Set();
-            
-            for (const project of projects) {
-                try {
-                    const projectResponse = await fetch(`${API_BASE}/projects/${project.id}`);
-                    const projectData = await projectResponse.json();
-                    
-                    for (const pkg of projectData.packages || []) {
-                        if (pkg.status === 'estimated') continue;
-                        
-                        try {
-                            const bidsResponse = await fetch(`${API_BASE}/packages/${pkg.id}/bids`);
-                            const bids = await bidsResponse.json();
-                            
-                            if (bids.some(b => b.bidder_id === bidder.id)) {
-                                packages.add(pkg.package_code);
-                            }
-                        } catch (error) {
-                            console.error(`Error loading bids for package ${pkg.id}:`, error);
-                        }
-                    }
-                } catch (error) {
-                    console.error(`Error loading project ${project.id}:`, error);
-                }
-            }
-            
-            bidder.packages = Array.from(packages).sort();
-        }
-        
-        // Merge stats with bidder data
-        allBidders = allBidders.map(bidder => {
-            const stats = bidderStats.find(s => s.bidder_name === bidder.canonical_name);
-            return {
-                ...bidder,
-                bid_count: stats?.bid_count || 0,
-                wins: stats?.wins || 0
-            };
-        });
-        
+        const bidders = await response.json();
+
+        allBidders = bidders.map(bidder => ({
+            ...bidder,
+            aliases: Array.isArray(bidder.aliases) ? bidder.aliases : [],
+            packages: Array.isArray(bidder.packages) ? bidder.packages : []
+        }));
+
         // NOW display the bidders after everything is loaded
         displayBidders();
     } catch (error) {
         console.error('Error loading bidders:', error);
-        document.getElementById('biddersBody').innerHTML = 
+        document.getElementById('biddersBody').innerHTML =
             '<tr><td colspan="6" class="empty-state">Error loading bidders</td></tr>';
     }
 }
@@ -200,52 +157,14 @@ async function viewBidderDetail(bidderId, bidderName) {
     tbody.innerHTML = '<tr><td colspan="5" class="loading">Loading bid history...</td></tr>';
     
     try {
-        // Get all projects
-        const projectsResponse = await fetch(`${API_BASE}/projects`);
-        const projects = await projectsResponse.json();
-        
-        const bidHistory = [];
-        
-        // Search through all projects and packages for this bidder's bids
-        for (const project of projects) {
-            const projectResponse = await fetch(`${API_BASE}/projects/${project.id}`);
-            const projectData = await projectResponse.json();
-            
-            for (const pkg of projectData.packages || []) {
-                if (pkg.status === 'estimated') continue;
-                
-                const bidsResponse = await fetch(`${API_BASE}/packages/${pkg.id}/bids`);
-                const bids = await bidsResponse.json();
-                
-                const bidderBid = bids.find(b => b.bidder_id === bidderId);
-                if (bidderBid) {
-                    const costPerSF = projectData.building_sf ? bidderBid.bid_amount / projectData.building_sf : null;
-                    
-                    bidHistory.push({
-                        project_name: projectData.name,
-                        project_date: projectData.project_date,
-                        package_code: pkg.package_code,
-                        package_name: pkg.package_name,
-                        bid_amount: bidderBid.bid_amount,
-                        cost_per_sf: costPerSF,
-                        was_selected: bidderBid.was_selected
-                    });
-                }
-            }
-        }
-        
-        if (bidHistory.length === 0) {
+        const response = await fetch(`${API_BASE}/bidders/${bidderId}/history`);
+        const bidHistory = await response.json();
+
+        if (!bidHistory || bidHistory.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No bids found for this bidder</td></tr>';
             return;
         }
-        
-        // Sort by date (most recent first)
-        bidHistory.sort((a, b) => {
-            if (!a.project_date) return 1;
-            if (!b.project_date) return -1;
-            return new Date(b.project_date) - new Date(a.project_date);
-        });
-        
+
         tbody.innerHTML = bidHistory.map(bid => `
             <tr>
                 <td>${escapeHtml(bid.project_name)}</td>
@@ -254,12 +173,12 @@ async function viewBidderDetail(bidderId, bidderName) {
                 <td>
                     <div class="amount-with-sf">
                         <div class="amount">${formatCurrency(bid.bid_amount)}</div>
-                        ${bid.cost_per_sf ? `<div class="sf-cost">${formatCurrency(bid.cost_per_sf)}/SF</div>` : ''}
+                        ${bid.cost_per_sf !== null ? `<div class="sf-cost">${formatCurrency(bid.cost_per_sf)}/SF</div>` : ''}
                     </div>
                 </td>
                 <td>
-                    ${bid.was_selected 
-                        ? '<span class="status-badge status-bid">Selected</span>' 
+                    ${bid.was_selected
+                        ? '<span class="status-badge status-bid">Selected</span>'
                         : '<span class="status-badge status-estimated">Not Selected</span>'}
                 </td>
             </tr>
