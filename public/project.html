@@ -33,6 +33,7 @@
                 <div class="action-buttons">
                     <button id="validateProjectBtn" class="btn btn-success">✅ Validate</button>
                     <button id="validationHistoryBtn" class="btn btn-secondary btn-small">📜 History</button>
+                    <button id="preconNotesBtn" class="btn btn-secondary btn-small btn-notes" type="button" aria-haspopup="dialog" title="View or edit estimator notes">🗒️ Pre-con Notes</button>
                     <button id="editProjectBtn" class="btn btn-secondary">✏️ Edit Project</button>
                     <button id="addPackageBtn" class="btn btn-secondary">+ Add Package</button>
                     <button id="uploadBidTabBtn" class="btn btn-primary">📤 Upload Bid Tab</button>
@@ -223,6 +224,25 @@
             <div id="validationHistoryContent" class="validation-history-list">
                 <div class="loading">Loading history...</div>
             </div>
+        </div>
+    </div>
+
+    <!-- Pre-con Notes Modal -->
+    <div id="preconNotesModal" class="modal">
+        <div class="modal-content modal-narrow">
+            <span class="close" onclick="closePreconNotesModal()">&times;</span>
+            <h3>Pre-con Notes</h3>
+            <p class="modal-subtitle">Share estimator context for anyone referencing this project's numbers.</p>
+            <form id="preconNotesForm">
+                <div class="form-group">
+                    <label for="preconNotesInput">Notes</label>
+                    <textarea id="preconNotesInput" rows="6" placeholder="Add notes the team should consider when reviewing these numbers..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closePreconNotesModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="savePreconNotesBtn">Save Notes</button>
+                </div>
+            </form>
         </div>
     </div>
 
