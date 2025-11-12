@@ -34,6 +34,17 @@ const PACKAGE_COLOR_PALETTE = [
     '#34495e'
 ];
 
+const CATEGORY_DEFINITIONS = [
+    { key: 'structure', name: 'Structure', divisions: ['03', '04', '05'], color: '#2c3e50' },
+    { key: 'finishes', name: 'Finishes', divisions: ['09'], color: '#3498db' },
+    { key: 'equipment', name: 'Equipment', divisions: ['11'], color: '#e74c3c' },
+    { key: 'furnishings', name: 'Furnishings', divisions: ['12'], color: '#f39c12' },
+    { key: 'mepts', name: 'MEPTS', divisions: ['21', '22', '23', '26', '27', '28'], color: '#16a085' },
+    { key: 'sitework', name: 'Sitework', divisions: ['31', '32', '33'], color: '#95a5a6' }
+];
+
+const REMAINING_CATEGORY_COLOR = '#bdc3c7';
+
 // Load project data
 async function loadProject() {
     try {
@@ -526,15 +537,7 @@ function displayCategoryBreakdown() {
         return;
     }
     
-    // Define categories with their CSI divisions
-    const categories = [
-        { name: 'Structure', divisions: ['03', '04', '05'], color: '#2c3e50' },
-        { name: 'Finishes', divisions: ['09'], color: '#3498db' },
-        { name: 'Equipment', divisions: ['11'], color: '#e74c3c' },
-        { name: 'Furnishings', divisions: ['12'], color: '#f39c12' },
-        { name: 'MEPTS', divisions: ['21', '22', '23', '26', '27', '28'], color: '#16a085' },
-        { name: 'Sitework', divisions: ['31', '32', '33'], color: '#95a5a6' }
-    ];
+    const categories = CATEGORY_DEFINITIONS;
     
     const totalSelectedCost = packages.reduce((sum, pkg) => sum + (pkg.selected_amount || 0), 0);
     
@@ -618,29 +621,26 @@ async function displayPackages() {
         const statusText = pkg.status === 'bid-override' ? 'Override' :
                           pkg.status.charAt(0).toUpperCase() + pkg.status.slice(1);
         
-        // Helper function to format amount with cost/SF
-        const formatAmountWithSF = (amount) => {
-            if (!amount) return '—';
-            const sf = pkg.cost_per_sf && currentProject.building_sf ? 
-                       `<div class="sf-cost">${formatCurrency(amount / currentProject.building_sf)}/SF</div>` : '';
-            return `<div class="amount-with-sf"><div class="amount">${formatCurrency(amount)}</div>${sf}</div>`;
-        };
-        
         const bidCount = packageBidCounts[pkg.id] || 0;
-        const bidCountCell = pkg.status !== 'estimated' ? 
+        const bidCountCell = pkg.status !== 'estimated' ?
             `<a href="#" onclick="viewBids(${pkg.id}); return false;" style="color: #3498db; text-decoration: underline;">${bidCount}</a>` :
             '—';
-        
+
+        const selectedAmountCell = formatAmountWithSf(pkg.selected_amount, { perSfValue: pkg.cost_per_sf });
+        const lowAmountCell = formatAmountWithSf(pkg.low_bid);
+        const medianAmountCell = formatAmountWithSf(pkg.median_bid);
+        const highAmountCell = formatAmountWithSf(pkg.high_bid);
+
         return `
             <tr>
                 <td><strong>${escapeHtml(pkg.package_code)}</strong></td>
                 <td>${escapeHtml(pkg.package_name)}</td>
                 <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                 <td>${pkg.bidder_name ? escapeHtml(pkg.bidder_name) : '—'}</td>
-                <td>${formatAmountWithSF(pkg.selected_amount)}</td>
-                <td>${pkg.low_bid ? formatAmountWithSF(pkg.low_bid) : '—'}</td>
-                <td>${pkg.median_bid ? formatAmountWithSF(pkg.median_bid) : '—'}</td>
-                <td>${pkg.high_bid ? formatAmountWithSF(pkg.high_bid) : '—'}</td>
+                <td>${selectedAmountCell}</td>
+                <td>${lowAmountCell}</td>
+                <td>${medianAmountCell}</td>
+                <td>${highAmountCell}</td>
                 <td style="text-align: center;">${bidCountCell}</td>
                 <td style="white-space: nowrap;">
                     <button class="btn btn-tiny btn-secondary" onclick="editPackage(${pkg.id})">Edit</button>
@@ -750,18 +750,25 @@ function renderGmpSummary() {
         const gmpMedianClass = getBudgetDeltaClass(gmpMedianDelta);
         const medianLowClass = getSpreadDeltaClass(medianLowDelta);
 
+        const gmpCell = formatAmountWithSf(gmp);
+        const lowCell = formatAmountWithSf(low);
+        const medianCell = formatAmountWithSf(median);
+        const gmpLowCell = formatAmountWithSf(gmpLowDelta, { isDelta: true });
+        const gmpMedianCell = formatAmountWithSf(gmpMedianDelta, { isDelta: true });
+        const medianLowCell = formatAmountWithSf(medianLowDelta, { isDelta: true });
+
         return `
             <tr>
                 <td><strong>${escapeHtml(code)}</strong></td>
                 <td>${escapeHtml(name)}</td>
-                <td>${gmp != null ? formatCurrency(gmp) : '—'}</td>
-                <td>${low != null ? formatCurrency(low) : '—'}</td>
-                <td class="${gmpLowClass}">${formatDeltaCurrency(gmpLowDelta)}</td>
+                <td>${gmpCell}</td>
+                <td>${lowCell}</td>
+                <td class="${gmpLowClass}">${gmpLowCell}</td>
                 <td class="${gmpLowClass}">${formatPercentageDelta(gmpLowPercent)}</td>
-                <td>${median != null ? formatCurrency(median) : '—'}</td>
-                <td class="${gmpMedianClass}">${formatDeltaCurrency(gmpMedianDelta)}</td>
+                <td>${medianCell}</td>
+                <td class="${gmpMedianClass}">${gmpMedianCell}</td>
                 <td class="${gmpMedianClass}">${formatPercentageDelta(gmpMedianPercent)}</td>
-                <td class="${medianLowClass}">${formatDeltaCurrency(medianLowDelta)}</td>
+                <td class="${medianLowClass}">${medianLowCell}</td>
                 <td class="${medianLowClass}">${formatPercentageDelta(medianLowPercent)}</td>
             </tr>
         `;
@@ -788,17 +795,24 @@ function renderGmpSummary() {
     const totalMedianClass = getBudgetDeltaClass(totalMedianDelta);
     const totalMedianLowClass = getSpreadDeltaClass(totalMedianLowDelta);
 
+    const totalGmpCell = totals.gmpCount > 0 ? formatAmountWithSf(totals.gmp) : '—';
+    const totalLowCell = totals.lowCount > 0 ? formatAmountWithSf(totals.low) : '—';
+    const totalMedianCell = totals.medianCount > 0 ? formatAmountWithSf(totals.median) : '—';
+    const totalLowDeltaCell = formatAmountWithSf(totalLowDelta, { isDelta: true });
+    const totalMedianDeltaCell = formatAmountWithSf(totalMedianDelta, { isDelta: true });
+    const totalMedianLowDeltaCell = formatAmountWithSf(totalMedianLowDelta, { isDelta: true });
+
     totalsRow.innerHTML = `
         <th scope="row">Totals</th>
         <td>—</td>
-        <td>${totals.gmpCount > 0 ? formatCurrency(totals.gmp) : '—'}</td>
-        <td>${totals.lowCount > 0 ? formatCurrency(totals.low) : '—'}</td>
-        <td class="${totalLowClass}">${formatDeltaCurrency(totalLowDelta)}</td>
+        <td>${totalGmpCell}</td>
+        <td>${totalLowCell}</td>
+        <td class="${totalLowClass}">${totalLowDeltaCell}</td>
         <td class="${totalLowClass}">${formatPercentageDelta(totalLowPercent)}</td>
-        <td>${totals.medianCount > 0 ? formatCurrency(totals.median) : '—'}</td>
-        <td class="${totalMedianClass}">${formatDeltaCurrency(totalMedianDelta)}</td>
+        <td>${totalMedianCell}</td>
+        <td class="${totalMedianClass}">${totalMedianDeltaCell}</td>
         <td class="${totalMedianClass}">${formatPercentageDelta(totalMedianPercent)}</td>
-        <td class="${totalMedianLowClass}">${formatDeltaCurrency(totalMedianLowDelta)}</td>
+        <td class="${totalMedianLowClass}">${totalMedianLowDeltaCell}</td>
         <td class="${totalMedianLowClass}">${formatPercentageDelta(totalMedianLowPercent)}</td>
     `;
 
@@ -1587,6 +1601,45 @@ function formatDeltaCurrency(value) {
     return '$0.00';
 }
 
+function formatAmountWithSf(amount, options = {}) {
+    const { isDelta = false, perSfValue = null } = options;
+    const buildingSfOverride = options.hasOwnProperty('buildingSf') ? options.buildingSf : currentProject?.building_sf;
+
+    if (amount == null) {
+        return '—';
+    }
+
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount)) {
+        return '—';
+    }
+
+    const baseText = isDelta ? formatDeltaCurrency(numericAmount) : formatCurrency(numericAmount);
+    if (baseText === '—') {
+        return '—';
+    }
+
+    let sfValue = null;
+    let shouldShowSf = false;
+
+    if (perSfValue != null && Number.isFinite(Number(perSfValue))) {
+        sfValue = Number(perSfValue);
+        shouldShowSf = true;
+    } else if (buildingSfOverride != null) {
+        const numericBuildingSf = Number(buildingSfOverride);
+        if (Number.isFinite(numericBuildingSf) && numericBuildingSf > 0) {
+            sfValue = numericAmount / numericBuildingSf;
+            shouldShowSf = Number.isFinite(sfValue);
+        }
+    }
+
+    const sfHtml = shouldShowSf
+        ? `<div class="sf-cost">${isDelta ? formatDeltaCurrency(sfValue) : formatCurrency(sfValue)}/SF</div>`
+        : '';
+
+    return `<div class="amount-with-sf"><div class="amount">${baseText}</div>${sfHtml}</div>`;
+}
+
 function formatPercentageDelta(value) {
     if (value == null || Number.isNaN(value)) {
         return '—';
@@ -1761,15 +1814,21 @@ function displayCharts() {
             existingComparisonChart.destroy();
         }
     }
-    
+
+    window.pieChartDataSource = window.pieChartDataSource || 'median';
+    window.pieChartGrouping = window.pieChartGrouping || 'division';
+
     // Category pie chart
     displayCategoryChart();
-    
+
     // Package comparison chart
     displayPackageComparisonChart();
-    
+
     // Add event listener for pie chart data source selector
     const selector = document.getElementById('pieChartDataSource');
+    if (selector) {
+        selector.value = window.pieChartDataSource;
+    }
     if (selector && !selector.hasAttribute('data-listener-attached')) {
         selector.setAttribute('data-listener-attached', 'true');
         selector.addEventListener('change', (e) => {
@@ -1783,76 +1842,175 @@ function displayCharts() {
             displayCategoryChart();
         });
     }
+
+    const groupingSelector = document.getElementById('pieChartGrouping');
+    if (groupingSelector) {
+        groupingSelector.value = window.pieChartGrouping;
+    }
+    if (groupingSelector && !groupingSelector.hasAttribute('data-listener-attached')) {
+        groupingSelector.setAttribute('data-listener-attached', 'true');
+        groupingSelector.addEventListener('change', (e) => {
+            window.pieChartGrouping = e.target.value;
+            const canvas = document.getElementById('categoryChart');
+            const existingChart = Chart.getChart(canvas);
+            if (existingChart) {
+                existingChart.destroy();
+            }
+            displayCategoryChart();
+        });
+    }
 }
 
 function displayCategoryChart() {
     const packages = currentProject.packages || [];
-    
-    // Group packages by CSI division
-    const divisionMap = {};
-    
-    packages.forEach(pkg => {
-        if (!pkg.csi_division) return;
-        
-        const div = pkg.csi_division;
-        if (!divisionMap[div]) {
-            divisionMap[div] = {
-                division: div,
-                selectedCost: 0,
-                lowCost: 0,
-                medianCost: 0,
-                highCost: 0,
-                packages: []
-            };
-        }
-        
-        divisionMap[div].selectedCost += (pkg.selected_amount || 0);
-        divisionMap[div].lowCost += (pkg.low_bid || pkg.selected_amount || 0);
-        divisionMap[div].medianCost += (pkg.median_bid || pkg.selected_amount || 0);
-        divisionMap[div].highCost += (pkg.high_bid || pkg.selected_amount || 0);
-        divisionMap[div].packages.push(pkg.package_code);
-    });
-    
-    // Convert to array and sort by division number
-    const divisionData = Object.values(divisionMap)
-        .filter(d => d.selectedCost > 0)
-        .sort((a, b) => parseInt(a.division) - parseInt(b.division));
-    
-    if (divisionData.length === 0) return;
-    
-    // Assign colors - same color for same division, and sitework (31-33) all same color
-    const divisionColors = {
-        '03': '#2c3e50', '04': '#3498db', '05': '#e74c3c',
-        '06': '#f39c12', '07': '#16a085', '08': '#9b59b6',
-        '09': '#34495e', '10': '#1abc9c', '11': '#e67e22',
-        '12': '#d35400', '13': '#c0392b', '14': '#8e44ad',
-        '21': '#2980b9', '22': '#27ae60', '23': '#8e44ad',
-        '26': '#c0392b', '27': '#16a085', '28': '#e67e22',
-        '31': '#7f8c8d', '32': '#7f8c8d', '33': '#7f8c8d' // All sitework same color
-    };
-    
-    const colors = divisionData.map(d => divisionColors[d.division] || '#95a5a6');
-    
     const ctx = document.getElementById('categoryChart');
     if (!ctx) return;
-    
-    // Get selected data source (default to median)
+
+    const grouping = window.pieChartGrouping || 'division';
     const dataSource = window.pieChartDataSource || 'median';
-    const dataKey = dataSource === 'low' ? 'lowCost' : 
-                    dataSource === 'high' ? 'highCost' : 
-                    dataSource === 'selected' ? 'selectedCost' : 'medianCost';
-    
-    const chartTitle = dataSource === 'low' ? 'Cost Distribution by CSI Division (Low Bids)' :
-                       dataSource === 'high' ? 'Cost Distribution by CSI Division (High Bids)' :
-                       dataSource === 'selected' ? 'Cost Distribution by CSI Division (Selected Bids)' :
-                       'Cost Distribution by CSI Division (Median Bids)';
-    
+
+    const dataKey = dataSource === 'low' ? 'low' :
+                    dataSource === 'high' ? 'high' :
+                    dataSource === 'selected' ? 'selected' : 'median';
+
+    const dataLabel = dataSource === 'low' ? 'Low Bids' :
+                      dataSource === 'high' ? 'High Bids' :
+                      dataSource === 'selected' ? 'Selected Bids' : 'Median Bids';
+
+    const baseTitle = grouping === 'category'
+        ? 'Cost Distribution by Category'
+        : 'Cost Distribution by CSI Division';
+    const chartTitle = `${baseTitle} (${dataLabel})`;
+
+    let entries = [];
+
+    if (grouping === 'category') {
+        const divisionToCategory = {};
+        CATEGORY_DEFINITIONS.forEach(cat => {
+            cat.divisions.forEach(div => {
+                divisionToCategory[div] = cat.key;
+            });
+        });
+
+        const categoryEntries = CATEGORY_DEFINITIONS.map(cat => ({
+            key: cat.key,
+            label: cat.name,
+            legendLabel: cat.name,
+            color: cat.color,
+            packages: [],
+            divisions: cat.divisions.join(', '),
+            metrics: { selected: 0, low: 0, median: 0, high: 0 }
+        }));
+
+        const categoryMap = new Map(categoryEntries.map(entry => [entry.key, entry]));
+        const remainderEntry = {
+            key: 'remaining',
+            label: 'Remaining Packages',
+            legendLabel: 'Remaining Packages',
+            color: REMAINING_CATEGORY_COLOR,
+            packages: [],
+            divisions: 'Other',
+            metrics: { selected: 0, low: 0, median: 0, high: 0 }
+        };
+
+        packages.forEach(pkg => {
+            const division = pkg.csi_division;
+            const targetKey = division ? divisionToCategory[division] : null;
+            const target = targetKey ? categoryMap.get(targetKey) : remainderEntry;
+
+            const packageCode = pkg.package_code || '—';
+            target.packages.push(packageCode);
+
+            const selectedValue = toFiniteNumber(pkg.selected_amount) || 0;
+            const lowValue = toFiniteNumber(pkg.low_bid);
+            const medianValue = toFiniteNumber(pkg.median_bid);
+            const highValue = toFiniteNumber(pkg.high_bid);
+
+            target.metrics.selected += selectedValue;
+            target.metrics.low += lowValue != null ? lowValue : selectedValue;
+            target.metrics.median += medianValue != null ? medianValue : selectedValue;
+            target.metrics.high += highValue != null ? highValue : selectedValue;
+        });
+
+        entries = [...categoryEntries, remainderEntry];
+    } else {
+        const divisionMap = {};
+
+        packages.forEach(pkg => {
+            if (!pkg.csi_division) return;
+
+            const div = pkg.csi_division;
+            if (!divisionMap[div]) {
+                divisionMap[div] = {
+                    key: div,
+                    label: `Div ${div}`,
+                    legendLabel: `Div ${div}`,
+                    color: null,
+                    packages: [],
+                    divisions: div,
+                    metrics: { selected: 0, low: 0, median: 0, high: 0 }
+                };
+            }
+
+            const entry = divisionMap[div];
+            entry.packages.push(pkg.package_code || '—');
+
+            const selectedValue = toFiniteNumber(pkg.selected_amount) || 0;
+            const lowValue = toFiniteNumber(pkg.low_bid);
+            const medianValue = toFiniteNumber(pkg.median_bid);
+            const highValue = toFiniteNumber(pkg.high_bid);
+
+            entry.metrics.selected += selectedValue;
+            entry.metrics.low += lowValue != null ? lowValue : selectedValue;
+            entry.metrics.median += medianValue != null ? medianValue : selectedValue;
+            entry.metrics.high += highValue != null ? highValue : selectedValue;
+        });
+
+        const divisionColors = {
+            '03': '#2c3e50', '04': '#3498db', '05': '#e74c3c',
+            '06': '#f39c12', '07': '#16a085', '08': '#9b59b6',
+            '09': '#34495e', '10': '#1abc9c', '11': '#e67e22',
+            '12': '#d35400', '13': '#c0392b', '14': '#8e44ad',
+            '21': '#2980b9', '22': '#27ae60', '23': '#8e44ad',
+            '26': '#c0392b', '27': '#16a085', '28': '#e67e22',
+            '31': '#7f8c8d', '32': '#7f8c8d', '33': '#7f8c8d'
+        };
+
+        entries = Object.values(divisionMap)
+            .map(entry => ({ ...entry, color: divisionColors[entry.key] || '#95a5a6' }))
+            .sort((a, b) => parseInt(a.key, 10) - parseInt(b.key, 10));
+    }
+
+    const filteredEntries = entries.filter(entry => {
+        const value = entry.metrics[dataKey] || 0;
+        if (grouping === 'category' && entry.key === 'remaining') {
+            return entry.packages.length > 0 || value > 0;
+        }
+        return value > 0;
+    });
+
+    if (filteredEntries.length === 0) {
+        return;
+    }
+
+    const dataValues = filteredEntries.map(entry => entry.metrics[dataKey]);
+    const totalValue = dataValues.reduce((sum, value) => sum + value, 0);
+
+    if (totalValue <= 0) {
+        return;
+    }
+
+    const colors = filteredEntries.map(entry => entry.color || REMAINING_CATEGORY_COLOR);
+    const labels = filteredEntries.map(entry => entry.label);
+    const chartEntries = filteredEntries;
+    const groupingMode = grouping;
+
     new Chart(ctx, {
         type: 'pie',
         data: {
-            labels: divisionData.map(d => `Div ${d.division}`),
+            labels,
             datasets: [{
-                data: divisionData.map(d => d[dataKey]),
+                data: dataValues,
                 backgroundColor: colors,
                 borderColor: '#fff',
                 borderWidth: 2
@@ -1871,12 +2029,12 @@ function displayCategoryChart() {
                     position: 'right',
                     labels: {
                         generateLabels: function(chart) {
-                            const data = chart.data;
-                            return data.labels.map((label, i) => {
-                                const division = divisionData[i];
+                            const dataset = chart.data.datasets[0];
+                            return chartEntries.map((entry, i) => {
+                                const pkgList = entry.packages.length ? entry.packages.join(', ') : '—';
                                 return {
-                                    text: `${label} (${division.packages.join(', ')})`,
-                                    fillStyle: data.datasets[0].backgroundColor[i],
+                                    text: `${entry.legendLabel}${pkgList !== '—' ? ` (${pkgList})` : ''}`,
+                                    fillStyle: dataset.backgroundColor[i],
                                     hidden: false,
                                     index: i
                                 };
@@ -1887,21 +2045,26 @@ function displayCategoryChart() {
                 datalabels: {
                     color: '#fff',
                     font: { weight: 'bold', size: 12 },
-                    formatter: (value, context) => {
-                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                        const percentage = ((value / total) * 100).toFixed(1);
+                    display: (context) => context.raw > 0,
+                    formatter: (value) => {
+                        const percentage = ((value / totalValue) * 100).toFixed(1);
                         return percentage + '%';
                     }
                 },
                 tooltip: {
                     callbacks: {
                         label: (context) => {
-                            const division = divisionData[context.dataIndex];
-                            return [
-                                `Division ${division.division}`,
-                                `Packages: ${division.packages.join(', ')}`,
-                                `Cost: ${formatCurrency(context.raw)}`
-                            ];
+                            const entry = chartEntries[context.dataIndex];
+                            const pkgList = entry.packages.length ? entry.packages.join(', ') : '—';
+                            const percentage = ((context.raw / totalValue) * 100).toFixed(1);
+
+                            const lines = [entry.legendLabel];
+                            if (groupingMode === 'category') {
+                                lines.push(`Divisions: ${entry.divisions}`);
+                            }
+                            lines.push(`Packages: ${pkgList}`);
+                            lines.push(`Cost: ${formatCurrency(context.raw)} (${percentage}%)`);
+                            return lines;
                         }
                     }
                 }

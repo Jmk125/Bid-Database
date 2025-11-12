@@ -55,9 +55,16 @@ async function loadProjects(sortBy = 'date-desc') {
                         sum + (pkg.median_bid || pkg.selected_amount || 0), 0);
                     const medianCostPerSF = details.building_sf ? medianTotal / details.building_sf : null;
 
-                    return { ...project, medianCostPerSF, validation: details.validation || null };
+                    const estimatedPackageCount = (details.packages || []).filter(pkg => pkg.status === 'estimated').length;
+
+                    return {
+                        ...project,
+                        medianCostPerSF,
+                        validation: details.validation || null,
+                        estimatedPackageCount
+                    };
                 } catch (error) {
-                    return { ...project, medianCostPerSF: null, validation: null };
+                    return { ...project, medianCostPerSF: null, validation: null, estimatedPackageCount: 0 };
                 }
             })
         );
@@ -86,6 +93,12 @@ async function loadProjects(sortBy = 'date-desc') {
         
         container.innerHTML = projectsWithDetails.map(project => {
             const validationIndicator = getProjectValidationIndicator(project.validation);
+            const estimatedIndicator = project.medianCostPerSF && project.estimatedPackageCount > 0
+                ? `<span class="estimate-indicator" title="Includes ${project.estimatedPackageCount} estimated package${project.estimatedPackageCount === 1 ? '' : 's'}">
+                        <span class="symbol">!</span>
+                        <span>${project.estimatedPackageCount} est.</span>
+                   </span>`
+                : '';
             return `
             <div class="project-card" onclick="viewProject(${project.id})">
                 <div class="project-card-header">
@@ -96,7 +109,11 @@ async function loadProjects(sortBy = 'date-desc') {
                     ${project.building_sf ? `<div>📐 ${formatNumber(project.building_sf)} SF</div>` : ''}
                     ${project.project_date ? `<div>📅 ${formatDate(project.project_date)}</div>` : ''}
                     <div>🕒 Created ${formatDate(project.created_at)}</div>
-                    ${project.medianCostPerSF ? `<div style="margin-top: 0.5rem;"><strong style="font-size: 1.1rem; color: #2c3e50;">${formatCurrency(project.medianCostPerSF)}/SF</strong> <span style="color: #7f8c8d; font-size: 0.875rem;">(median)</span></div>` : ''}
+                    ${project.medianCostPerSF ? `<div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                        <strong style="font-size: 1.1rem; color: #2c3e50;">${formatCurrency(project.medianCostPerSF)}/SF</strong>
+                        <span style="color: #7f8c8d; font-size: 0.875rem;">(median)</span>
+                        ${estimatedIndicator}
+                    </div>` : ''}
                 </div>
                 <div class="actions" onclick="event.stopPropagation()">
                     <button class="btn btn-tiny btn-danger" onclick="deleteProject(${project.id}, '${escapeHtml(project.name)}')">Delete</button>

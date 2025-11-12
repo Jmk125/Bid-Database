@@ -459,6 +459,24 @@ body {
     font-size: 0.875rem;
 }
 
+.estimate-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    background: rgba(243, 156, 18, 0.12);
+    color: #d35400;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+.estimate-indicator .symbol {
+    font-size: 0.7rem;
+    line-height: 1;
+}
+
 .project-card .actions {
     margin-top: 1rem;
     display: flex;
@@ -855,4 +873,34 @@ tr:hover {
     font-size: 0.75rem;
     color: #7f8c8d;
     margin-top: 0.25rem;
+}
+
+.placement-indicator {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+}
+
+.placement-indicator .placement-rank {
+    font-weight: 600;
+    color: #2c3e50;
+    line-height: 1.1;
+}
+
+.placement-indicator .placement-diff {
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.placement-indicator .placement-diff.is-higher {
+    color: #c0392b;
+}
+
+.placement-indicator .placement-diff.is-lower {
+    color: #27ae60;
+}
+
+.placement-indicator .placement-diff.is-even {
+    color: #7f8c8d;
 }

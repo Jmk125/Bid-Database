@@ -154,14 +154,14 @@ async function viewBidderDetail(bidderId, bidderName) {
     }, 100);
     
     const tbody = document.getElementById('bidderBidsBody');
-    tbody.innerHTML = '<tr><td colspan="5" class="loading">Loading bid history...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading bid history...</td></tr>';
     
     try {
         const response = await fetch(`${API_BASE}/bidders/${bidderId}/history`);
         const bidHistory = await response.json();
 
         if (!bidHistory || bidHistory.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No bids found for this bidder</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No bids found for this bidder</td></tr>';
             return;
         }
 
@@ -181,11 +181,12 @@ async function viewBidderDetail(bidderId, bidderName) {
                         ? '<span class="status-badge status-bid">Selected</span>'
                         : '<span class="status-badge status-estimated">Not Selected</span>'}
                 </td>
+                <td>${renderPlacementCell(bid)}</td>
             </tr>
         `).join('');
     } catch (error) {
         console.error('Error loading bidder detail:', error);
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Error loading bid history</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Error loading bid history</td></tr>';
     }
 }
 
@@ -213,6 +214,54 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function formatPercentDifference(value) {
+    if (value == null || Number.isNaN(Number(value))) {
+        return '—';
+    }
+
+    const numeric = Number(value);
+    const abs = Math.abs(numeric);
+    const precision = abs >= 100 ? 0 : 1;
+    const formatted = abs.toFixed(precision);
+
+    if (numeric > 0) {
+        return `+${formatted}%`;
+    }
+
+    if (numeric < 0) {
+        return `-${formatted}%`;
+    }
+
+    return precision === 0 ? '0%' : '0.0%';
+}
+
+function renderPlacementCell(bid) {
+    const rank = Number(bid.placement_rank);
+    const total = Number(bid.placement_total);
+    const percentValue = bid.percent_from_selected != null ? Number(bid.percent_from_selected) : null;
+
+    const hasRank = Number.isFinite(rank) && Number.isFinite(total) && total > 0;
+    const hasPercent = percentValue != null && !Number.isNaN(percentValue);
+
+    if (!hasRank && !hasPercent) {
+        return '—';
+    }
+
+    const pieces = ['<div class="placement-indicator">'];
+
+    if (hasRank) {
+        pieces.push(`<span class="placement-rank">${rank}/${total}</span>`);
+    }
+
+    if (hasPercent) {
+        const diffClass = percentValue > 0 ? 'is-higher' : percentValue < 0 ? 'is-lower' : 'is-even';
+        pieces.push(`<span class="placement-diff ${diffClass}">${formatPercentDifference(percentValue)}</span>`);
+    }
+
+    pieces.push('</div>');
+    return pieces.join('');
 }
 
 // Initialize page - attach event listeners AFTER DOM is loaded
