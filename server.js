@@ -625,27 +625,44 @@ function parsePackageSheet(data, sheetName) {
   }
   
   // Parse bids (start from row after header)
+  const uniqueBids = new Map();
   const bids = [];
   for (let i = headerRowIndex + 1; i < data.length; i++) {
     const row = data[i];
     if (!row || row.length === 0) continue;
-    
+
     const bidderName = row[bidderColIndex];
     const amount = row[amountColIndex];
-    
+
     // Skip rows without bidder name or amount
     if (!bidderName || !amount) continue;
     if (typeof amount !== 'number' || amount <= 0) continue;
-    
+
     // Check if this bid is selected (marked with 'y' in first column)
     const selectedCell = row[selectedColIndex];
-    const selected = selectedCell === 'y' || selectedCell === 'Y';
-    
-    bids.push({
+    const selected = typeof selectedCell === 'string'
+      ? selectedCell.trim().toLowerCase().startsWith('y')
+      : selectedCell === true;
+
+    const normalizedName = normalizeBidderName(String(bidderName).trim()).toLowerCase();
+    const dedupeKey = `${normalizedName}|${amount}`;
+
+    if (uniqueBids.has(dedupeKey)) {
+      const existingBid = uniqueBids.get(dedupeKey);
+      if (selected && !existingBid.selected) {
+        existingBid.selected = true;
+      }
+      continue;
+    }
+
+    const bidEntry = {
       bidder: String(bidderName).trim(),
       amount: amount,
       selected: selected
-    });
+    };
+
+    uniqueBids.set(dedupeKey, bidEntry);
+    bids.push(bidEntry);
   }
   
   if (bids.length === 0) return null;
@@ -748,26 +765,103 @@ app.get('/api/aggregate/bidders', (req, res) => {
 // Get all bidders (for management)
 app.get('/api/bidders', (req, res) => {
   const db = getDatabase();
-  
+
   const query = db.exec(`
-    SELECT b.id, b.canonical_name, GROUP_CONCAT(ba.alias_name, ', ') as aliases
+    SELECT
+      b.id,
+      b.canonical_name,
+      (
+        SELECT GROUP_CONCAT(alias_name, '||')
+        FROM (
+          SELECT DISTINCT alias_name
+          FROM bidder_aliases
+          WHERE bidder_id = b.id AND alias_name IS NOT NULL
+          ORDER BY alias_name
+        ) alias_list
+      ) as aliases,
+      COUNT(DISTINCT bid.id) as bid_count,
+      SUM(CASE WHEN bid.was_selected = 1 THEN 1 ELSE 0 END) as wins,
+      (
+        SELECT GROUP_CONCAT(package_code, '||')
+        FROM (
+          SELECT DISTINCT pkg.package_code
+          FROM bids bid2
+          JOIN packages pkg ON pkg.id = bid2.package_id
+          WHERE bid2.bidder_id = b.id AND pkg.package_code IS NOT NULL
+          ORDER BY pkg.package_code
+        ) package_list
+      ) as packages
     FROM bidders b
-    LEFT JOIN bidder_aliases ba ON b.id = ba.bidder_id
-    GROUP BY b.id
+    LEFT JOIN bids bid ON bid.bidder_id = b.id
+    GROUP BY b.id, b.canonical_name
     ORDER BY b.canonical_name
   `);
-  
+
   if (query.length === 0) {
     return res.json([]);
   }
-  
-  const bidders = query[0].values.map(row => ({
-    id: row[0],
-    canonical_name: row[1],
-    aliases: row[2] ? row[2].split(', ') : []
-  }));
-  
+
+  const bidders = query[0].values.map(row => {
+    const aliasList = row[2] ? row[2].split('||').filter(Boolean) : [];
+    const packageList = row[5] ? row[5].split('||').filter(Boolean) : [];
+
+    packageList.sort((a, b) => a.localeCompare(b));
+
+    return {
+      id: row[0],
+      canonical_name: row[1],
+      aliases: aliasList,
+      bid_count: row[3] || 0,
+      wins: row[4] || 0,
+      packages: packageList
+    };
+  });
+
   res.json(bidders);
+});
+
+app.get('/api/bidders/:id/history', (req, res) => {
+  const db = getDatabase();
+  const bidderId = req.params.id;
+
+  const query = db.exec(`
+    SELECT
+      proj.name,
+      proj.project_date,
+      pkg.package_code,
+      pkg.package_name,
+      bid.bid_amount,
+      proj.building_sf,
+      bid.was_selected
+    FROM bids bid
+    JOIN packages pkg ON bid.package_id = pkg.id
+    JOIN projects proj ON pkg.project_id = proj.id
+    WHERE bid.bidder_id = ?
+    ORDER BY
+      (proj.project_date IS NULL),
+      proj.project_date DESC,
+      pkg.package_code
+  `, [bidderId]);
+
+  if (query.length === 0) {
+    return res.json([]);
+  }
+
+  const history = query[0].values.map(row => {
+    const cost_per_sf = row[5] ? row[4] / row[5] : null;
+
+    return {
+      project_name: row[0],
+      project_date: row[1],
+      package_code: row[2],
+      package_name: row[3],
+      bid_amount: row[4],
+      cost_per_sf,
+      was_selected: row[6] === 1
+    };
+  });
+
+  res.json(history);
 });
 
 // Merge bidders

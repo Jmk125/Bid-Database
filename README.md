@@ -179,7 +179,8 @@ The application uses SQLite for data storage. The database file (`bid_database.s
 - `GET /api/aggregate/bidders` - Get bidder performance
 
 ### Bidders
-- `GET /api/bidders` - List all bidders with aliases
+- `GET /api/bidders` - List all bidders with aliases, bid counts, wins, and packages
+- `GET /api/bidders/:id/history` - Detailed bid history for a bidder across projects
 - `POST /api/bidders/merge` - Merge duplicate bidders
 
 ## Troubleshooting
