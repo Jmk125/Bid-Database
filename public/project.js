@@ -17,6 +17,7 @@ let projectBidsError = false;
 let gmpDeltaChart = null;
 let gmpChartNeedsUpdate = false;
 let latestGmpChartData = null;
+let gmpChartMode = 'dollar';
 let latestComputedMetrics = null;
 let validationHistory = [];
 let validationHistoryLoaded = false;
@@ -708,6 +709,9 @@ function renderGmpSummary() {
     const lowVsGmp = [];
     const medianVsGmp = [];
     const medianVsLow = [];
+    const lowVsGmpPercent = [];
+    const medianVsGmpPercent = [];
+    const medianVsLowPercent = [];
 
     const totals = {
         gmp: 0,
@@ -760,6 +764,9 @@ function renderGmpSummary() {
         lowVsGmp.push(gmpLowDelta != null ? gmpLowDelta : null);
         medianVsGmp.push(gmpMedianDelta != null ? gmpMedianDelta : null);
         medianVsLow.push(medianLowDelta != null ? medianLowDelta : null);
+        lowVsGmpPercent.push(gmpLowPercent != null ? gmpLowPercent : null);
+        medianVsGmpPercent.push(gmpMedianPercent != null ? gmpMedianPercent : null);
+        medianVsLowPercent.push(medianLowPercent != null ? medianLowPercent : null);
 
         const gmpLowClass = getBudgetDeltaClass(gmpLowDelta);
         const gmpMedianClass = getBudgetDeltaClass(gmpMedianDelta);
@@ -848,7 +855,10 @@ function renderGmpSummary() {
         labels: chartLabels,
         lowVsGmp,
         medianVsGmp,
-        medianVsLow
+        medianVsLow,
+        lowVsGmpPercent,
+        medianVsGmpPercent,
+        medianVsLowPercent
     };
 
     if (currentTab === 'gmp') {
@@ -900,36 +910,69 @@ function renderGmpDeltaChart() {
 
     const context = canvas.getContext('2d');
 
+    const isPercentMode = gmpChartMode === 'percent';
+    const chartDatasets = [
+        {
+            label: 'Low vs GMP',
+            data: isPercentMode ? (chartData.lowVsGmpPercent || []) : (chartData.lowVsGmp || []),
+            backgroundColor: 'rgba(192, 57, 43, 0.35)',
+            borderColor: '#c0392b',
+            borderWidth: 1.5,
+            order: 1
+        },
+        {
+            label: 'Median vs GMP',
+            data: isPercentMode ? (chartData.medianVsGmpPercent || []) : (chartData.medianVsGmp || []),
+            backgroundColor: 'rgba(243, 156, 18, 0.35)',
+            borderColor: '#f39c12',
+            borderWidth: 1.5,
+            order: 2
+        },
+        {
+            label: 'Median vs Low',
+            data: isPercentMode ? (chartData.medianVsLowPercent || []) : (chartData.medianVsLow || []),
+            backgroundColor: 'rgba(41, 128, 185, 0.35)',
+            borderColor: '#2980b9',
+            borderWidth: 1.5,
+            order: 3
+        }
+    ];
+
+    const tickFormatter = (value) => {
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) {
+            return String(value ?? '');
+        }
+        if (isPercentMode) {
+            return formatPercentValue(numericValue);
+        }
+        return formatCompactCurrency(numericValue);
+    };
+
+    const tooltipFormatter = (value) => {
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) {
+            return '';
+        }
+        if (isPercentMode) {
+            return formatPercentValue(numericValue);
+        }
+        return formatDeltaCurrency(numericValue);
+    };
+
+    const datalabelFormatter = (value) => {
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) {
+            return '';
+        }
+        return isPercentMode ? formatPercentValue(numericValue) : formatCompactCurrency(numericValue);
+    };
+
     gmpDeltaChart = new Chart(context, {
         type: 'bar',
         data: {
             labels: chartData.labels,
-            datasets: [
-                {
-                    label: 'Low vs GMP',
-                    data: chartData.lowVsGmp,
-                    backgroundColor: 'rgba(192, 57, 43, 0.35)',
-                    borderColor: '#c0392b',
-                    borderWidth: 1.5,
-                    order: 1
-                },
-                {
-                    label: 'Median vs GMP',
-                    data: chartData.medianVsGmp,
-                    backgroundColor: 'rgba(243, 156, 18, 0.35)',
-                    borderColor: '#f39c12',
-                    borderWidth: 1.5,
-                    order: 2
-                },
-                {
-                    label: 'Median vs Low',
-                    data: chartData.medianVsLow,
-                    backgroundColor: 'rgba(41, 128, 185, 0.35)',
-                    borderColor: '#2980b9',
-                    borderWidth: 1.5,
-                    order: 3
-                }
-            ]
+            datasets: chartDatasets
         },
         options: {
             responsive: true,
@@ -941,11 +984,11 @@ function renderGmpDeltaChart() {
             scales: {
                 y: {
                     ticks: {
-                        callback: (value) => formatCompactCurrency(value)
+                        callback: tickFormatter
                     },
                     title: {
                         display: true,
-                        text: 'Delta ($)'
+                        text: isPercentMode ? 'Delta (%)' : 'Delta ($)'
                     }
                 },
                 x: {
@@ -964,20 +1007,39 @@ function renderGmpDeltaChart() {
                     callbacks: {
                         label: (context) => {
                             const value = context.parsed.y;
-                            return `${context.dataset.label}: ${formatDeltaCurrency(value)}`;
+                            const formatted = tooltipFormatter(value);
+                            return formatted ? `${context.dataset.label}: ${formatted}` : context.dataset.label;
                         }
                     }
                 },
                 datalabels: {
                     anchor: 'end',
                     align: 'end',
-                    formatter: (value) => value == null ? '' : formatCompactCurrency(value),
+                    formatter: datalabelFormatter,
                     color: '#34495e',
                     font: {
                         weight: '600'
                     }
                 }
             }
+        }
+    });
+}
+
+function setupGmpChartControls() {
+    const select = document.getElementById('gmpChartMode');
+    if (!select) {
+        return;
+    }
+
+    select.value = gmpChartMode;
+    select.addEventListener('change', (event) => {
+        const value = event.target.value === 'percent' ? 'percent' : 'dollar';
+        gmpChartMode = value;
+        if (currentTab === 'gmp') {
+            renderGmpDeltaChart();
+        } else {
+            gmpChartNeedsUpdate = true;
         }
     });
 }
@@ -1655,6 +1717,33 @@ function formatAmountWithSf(amount, options = {}) {
     return `<div class="amount-with-sf"><div class="amount">${baseText}</div>${sfHtml}</div>`;
 }
 
+function formatPercentValue(value, options = {}) {
+    if (value == null) {
+        return '';
+    }
+
+    const { includePlus = true, includeSymbol = true } = options;
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+        return String(value);
+    }
+
+    const abs = Math.abs(numericValue);
+    const precision = abs >= 100 ? 0 : 1;
+    const formatted = abs.toFixed(precision);
+
+    if (numericValue === 0) {
+        return `0${includeSymbol ? '%' : ''}`;
+    }
+
+    const sign = numericValue > 0
+        ? (includePlus ? '+' : '')
+        : '-';
+
+    return `${sign}${formatted}${includeSymbol ? '%' : ''}`;
+}
+
 function formatPercentageDelta(value) {
     if (value == null || Number.isNaN(value)) {
         return '—';
@@ -1697,8 +1786,22 @@ function getSpreadDeltaClass(value) {
 
 function hasChartSeriesData(data) {
     if (!data) return false;
-    const { lowVsGmp = [], medianVsGmp = [], medianVsLow = [] } = data;
-    return [...lowVsGmp, ...medianVsGmp, ...medianVsLow].some(value => value != null);
+    const {
+        lowVsGmp = [],
+        medianVsGmp = [],
+        medianVsLow = [],
+        lowVsGmpPercent = [],
+        medianVsGmpPercent = [],
+        medianVsLowPercent = []
+    } = data;
+    return [
+        ...lowVsGmp,
+        ...medianVsGmp,
+        ...medianVsLow,
+        ...lowVsGmpPercent,
+        ...medianVsGmpPercent,
+        ...medianVsLowPercent
+    ].some(value => value != null);
 }
 
 // Utility functions
@@ -2238,5 +2341,6 @@ document.getElementById('editProjectForm').onsubmit = async (e) => {
 };
 
 // Load project on page load
+setupGmpChartControls();
 setupViewTabs();
 loadProject();
