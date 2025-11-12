@@ -24,85 +24,111 @@
                 <a href="index.html" style="color: #3498db; text-decoration: none;">← Back to Projects</a>
                 <h2 id="projectName">Loading...</h2>
             </div>
-            <div style="display: flex; gap: 1rem;">
-                <button id="editProjectBtn" class="btn btn-secondary">✏️ Edit Project</button>
-                <button id="addPackageBtn" class="btn btn-secondary">+ Add Package</button>
-                <button id="uploadBidTabBtn" class="btn btn-primary">📤 Upload Bid Tab</button>
-            </div>
-        </div>
-
-        <!-- Summary Metrics -->
-        <div class="metrics-grid" id="projectMetrics">
-            <!-- Metrics will be loaded here -->
-        </div>
-
-        <!-- Category Breakdown -->
-        <div class="table-container" style="margin-top: 2rem;">
-            <h3 style="margin-bottom: 1rem;">Cost/SF by Category</h3>
-            <table id="categoryTable">
-                <thead>
-                    <tr>
-                        <th>Category</th>
-                        <th>CSI Divisions</th>
-                        <th>Total Cost</th>
-                        <th>Median Cost/SF</th>
-                        <th>Selected Cost/SF</th>
-                        <th>High Cost/SF</th>
-                        <th>% of Total</th>
-                    </tr>
-                </thead>
-                <tbody id="categoryBody">
-                    <tr><td colspan="7" class="loading">Loading categories...</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Charts -->
-        <div style="margin-top: 2rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="margin: 0;">Bid Analysis Charts</h3>
-                <div>
-                    <label for="pieChartDataSource" style="margin-right: 0.5rem; font-weight: 600;">Pie Chart Data:</label>
-                    <select id="pieChartDataSource" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
-                        <option value="median">Median Bids</option>
-                        <option value="low">Low Bids</option>
-                        <option value="high">High Bids</option>
-                        <option value="selected">Selected Bids</option>
-                    </select>
+            <div class="header-controls">
+                <div class="view-tabs" role="tablist" aria-label="Project views">
+                    <button id="overviewTabBtn" class="tab-toggle is-active" role="tab" aria-selected="true" aria-controls="overviewContent">Overview</button>
+                    <button id="bidsTabBtn" class="tab-toggle" role="tab" aria-selected="false" aria-controls="bidsContent">Bids</button>
+                </div>
+                <div class="action-buttons">
+                    <button id="editProjectBtn" class="btn btn-secondary">✏️ Edit Project</button>
+                    <button id="addPackageBtn" class="btn btn-secondary">+ Add Package</button>
+                    <button id="uploadBidTabBtn" class="btn btn-primary">📤 Upload Bid Tab</button>
                 </div>
             </div>
-            
-            <div class="chart-container" style="height: 400px; margin-bottom: 2rem;">
-                <canvas id="categoryChart"></canvas>
+        </div>
+
+        <div id="overviewContent" class="tab-content is-active" role="tabpanel" aria-labelledby="overviewTabBtn">
+            <!-- Summary Metrics -->
+            <div class="metrics-grid" id="projectMetrics">
+                <!-- Metrics will be loaded here -->
             </div>
-            
-            <div class="chart-container" style="height: 500px; margin-bottom: 2rem;">
-                <canvas id="packageComparisonChart"></canvas>
+
+            <!-- Category Breakdown -->
+            <div class="table-container" style="margin-top: 2rem;">
+                <h3 style="margin-bottom: 1rem;">Cost/SF by Category</h3>
+                <table id="categoryTable">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>CSI Divisions</th>
+                            <th>Total Cost</th>
+                            <th>Median Cost/SF</th>
+                            <th>Selected Cost/SF</th>
+                            <th>High Cost/SF</th>
+                            <th>% of Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="categoryBody">
+                        <tr><td colspan="7" class="loading">Loading categories...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Charts -->
+            <div style="margin-top: 2rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3 style="margin: 0;">Bid Analysis Charts</h3>
+                    <div>
+                        <label for="pieChartDataSource" style="margin-right: 0.5rem; font-weight: 600;">Pie Chart Data:</label>
+                        <select id="pieChartDataSource" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="median">Median Bids</option>
+                            <option value="low">Low Bids</option>
+                            <option value="high">High Bids</option>
+                            <option value="selected">Selected Bids</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="chart-container" style="height: 400px; margin-bottom: 2rem;">
+                    <canvas id="categoryChart"></canvas>
+                </div>
+
+                <div class="chart-container" style="height: 500px; margin-bottom: 2rem;">
+                    <canvas id="packageComparisonChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Packages Table -->
+            <div class="table-container">
+                <h3 style="margin-bottom: 1rem;">Bid Packages</h3>
+                <table id="packagesTable">
+                    <thead>
+                        <tr>
+                            <th>Package</th>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Selected Bidder</th>
+                            <th>Selected Amount</th>
+                            <th>Low Bid</th>
+                            <th>Median</th>
+                            <th>High Bid</th>
+                            <th># Bids</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="packagesBody">
+                        <tr><td colspan="10" class="loading">Loading packages...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <!-- Packages Table -->
-        <div class="table-container">
-            <h3 style="margin-bottom: 1rem;">Bid Packages</h3>
-            <table id="packagesTable">
-                <thead>
-                    <tr>
-                        <th>Package</th>
-                        <th>Name</th>
-                        <th>Status</th>
-                        <th>Selected Bidder</th>
-                        <th>Selected Amount</th>
-                        <th>Low Bid</th>
-                        <th>Median</th>
-                        <th>High Bid</th>
-                        <th># Bids</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="packagesBody">
-                    <tr><td colspan="10" class="loading">Loading packages...</td></tr>
-                </tbody>
-            </table>
+        <div id="bidsContent" class="tab-content" role="tabpanel" aria-labelledby="bidsTabBtn" aria-hidden="true">
+            <div class="bids-overview">
+                <section class="bids-chart-card">
+                    <div class="bids-card-header">
+                        <h3>Bid Landscape</h3>
+                        <p>Compare bidder totals by package.</p>
+                    </div>
+                    <div class="chart-container bids-chart">
+                        <canvas id="projectBidsChart" aria-label="Grouped bids chart" role="img"></canvas>
+                        <div id="projectBidsEmpty" class="chart-empty-state">Bids will appear here once they are uploaded.</div>
+                    </div>
+                </section>
+                <section class="bids-list" id="projectBidsList">
+                    <div class="loading">Loading bids...</div>
+                </section>
+            </div>
         </div>
     </div>
 

@@ -9,6 +9,22 @@ if (!projectId) {
 }
 
 let currentProject = null;
+let projectBids = [];
+let projectBidsChart = null;
+let bidsChartNeedsUpdate = false;
+let currentTab = 'overview';
+let projectBidsError = false;
+
+const PACKAGE_COLOR_PALETTE = [
+    '#0b3d91',
+    '#1f4f9c',
+    '#2d6da4',
+    '#3b88b8',
+    '#4fa3c8',
+    '#5b7f9f',
+    '#7f8c8d',
+    '#34495e'
+];
 
 // Load project data
 async function loadProject() {
@@ -22,9 +38,11 @@ async function loadProject() {
         
         // Display metrics
         displayMetrics();
-        
+
         // Display packages
         displayPackages();
+
+        await loadProjectBids();
     } catch (error) {
         console.error('Error loading project:', error);
         alert('Error loading project');
@@ -174,7 +192,7 @@ function displayCategoryBreakdown() {
 async function displayPackages() {
     const tbody = document.getElementById('packagesBody');
     const packages = currentProject.packages || [];
-    
+
     if (packages.length === 0) {
         tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No packages yet. Upload a bid tab or add a package manually.</td></tr>';
         return;
@@ -233,6 +251,387 @@ async function displayPackages() {
             </tr>
         `;
     }).join('');
+}
+
+function setupViewTabs() {
+    const overviewBtn = document.getElementById('overviewTabBtn');
+    const bidsBtn = document.getElementById('bidsTabBtn');
+    const overviewContent = document.getElementById('overviewContent');
+    const bidsContent = document.getElementById('bidsContent');
+
+    if (overviewContent) {
+        overviewContent.classList.add('is-active');
+        overviewContent.setAttribute('aria-hidden', 'false');
+    }
+
+    if (bidsContent) {
+        bidsContent.classList.remove('is-active');
+        bidsContent.setAttribute('aria-hidden', 'true');
+    }
+
+    overviewBtn?.addEventListener('click', () => setActiveTab('overview'));
+    bidsBtn?.addEventListener('click', () => setActiveTab('bids'));
+
+    setActiveTab('overview');
+}
+
+function setActiveTab(tab) {
+    currentTab = tab;
+
+    const isOverview = tab === 'overview';
+    const overviewBtn = document.getElementById('overviewTabBtn');
+    const bidsBtn = document.getElementById('bidsTabBtn');
+    const overviewContent = document.getElementById('overviewContent');
+    const bidsContent = document.getElementById('bidsContent');
+
+    overviewBtn?.classList.toggle('is-active', isOverview);
+    overviewBtn?.setAttribute('aria-selected', isOverview ? 'true' : 'false');
+    bidsBtn?.classList.toggle('is-active', !isOverview);
+    bidsBtn?.setAttribute('aria-selected', !isOverview ? 'true' : 'false');
+
+    overviewContent?.classList.toggle('is-active', isOverview);
+    overviewContent?.setAttribute('aria-hidden', isOverview ? 'false' : 'true');
+    bidsContent?.classList.toggle('is-active', !isOverview);
+    bidsContent?.setAttribute('aria-hidden', isOverview ? 'true' : 'false');
+
+    if (!isOverview) {
+        if (bidsChartNeedsUpdate || !projectBidsChart) {
+            renderProjectBidsChart(projectBidsError);
+        } else {
+            projectBidsChart.resize();
+        }
+    }
+}
+
+async function loadProjectBids() {
+    try {
+        const response = await fetch(`${API_BASE}/projects/${projectId}/bids`);
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch project bids');
+        }
+
+        const data = await response.json();
+
+        projectBids = (data || []).map(pkg => ({
+            package_id: pkg.package_id,
+            package_code: pkg.package_code,
+            package_name: pkg.package_name,
+            selected_bidder_id: pkg.selected_bidder_id,
+            bids: (pkg.bids || []).map(bid => ({
+                id: bid.id,
+                bidder_id: bid.bidder_id,
+                bidder_name: bid.bidder_name,
+                bid_amount: bid.bid_amount,
+                was_selected: Boolean(bid.was_selected)
+            }))
+        })).sort((a, b) => (a.package_code || '').localeCompare(b.package_code || ''));
+
+        renderBidsOverview(false);
+    } catch (error) {
+        console.error('Error loading project bids:', error);
+        projectBids = [];
+        renderBidsOverview(true);
+    }
+}
+
+function renderBidsOverview(hasError = false) {
+    projectBidsError = hasError;
+    renderProjectBidsList(hasError);
+
+    if (currentTab === 'bids') {
+        renderProjectBidsChart(hasError);
+    } else {
+        bidsChartNeedsUpdate = true;
+    }
+}
+
+function renderProjectBidsList(hasError = false) {
+    const listEl = document.getElementById('projectBidsList');
+    if (!listEl) return;
+
+    if (hasError) {
+        listEl.innerHTML = '<div class="empty-state">Unable to load bids for this project.</div>';
+        return;
+    }
+
+    if (!projectBids.length) {
+        listEl.innerHTML = '<div class="empty-state">No bid packages found for this project yet.</div>';
+        return;
+    }
+
+    const sections = projectBids.map(pkg => {
+        const safeCode = pkg.package_code ? escapeHtml(pkg.package_code) : '—';
+        const safeName = pkg.package_name ? escapeHtml(pkg.package_name) : '';
+        const displayName = safeName ? `${safeCode} – ${safeName}` : safeCode;
+        const bidCount = pkg.bids.length;
+        const headerMeta = bidCount === 0 ? 'No bids yet' : `${bidCount} ${bidCount === 1 ? 'bid' : 'bids'}`;
+
+        if (bidCount === 0) {
+            return `
+                <article class="bid-package-card">
+                    <div class="bid-package-header">
+                        <h4>${displayName}</h4>
+                        <span>${headerMeta}</span>
+                    </div>
+                    <div class="empty-state">No bids recorded for this package.</div>
+                </article>
+            `;
+        }
+
+        const sortedBids = [...pkg.bids].sort((a, b) => a.bid_amount - b.bid_amount);
+
+        const entries = sortedBids.map((bid, index) => {
+            const isSelected = bid.was_selected || (pkg.selected_bidder_id && bid.bidder_id === pkg.selected_bidder_id);
+            const badges = [];
+
+            if (index === 0) {
+                badges.push('<span class="badge low">Low</span>');
+            }
+
+            if (index === sortedBids.length - 1 && sortedBids.length > 1) {
+                badges.push('<span class="badge high">High</span>');
+            }
+
+            if (isSelected) {
+                badges.push('<span class="badge selected">Selected</span>');
+            }
+
+            const bidderName = escapeHtml(bid.bidder_name || 'Unknown Bidder');
+            const rankText = `Rank ${index + 1} of ${sortedBids.length}`;
+            const amount = bid.bid_amount != null ? formatCurrency(bid.bid_amount) : '—';
+            const badgeMarkup = badges.join('');
+
+            return `
+                <li class="bid-entry${isSelected ? ' is-selected' : ''}">
+                    <div class="bidder-meta">
+                        <span class="bidder-name">${bidderName}</span>
+                        <div class="bidder-flags">
+                            <span class="bidder-rank">${rankText}</span>
+                            ${badgeMarkup}
+                        </div>
+                    </div>
+                    <span class="bid-amount">${amount}</span>
+                </li>
+            `;
+        }).join('');
+
+        return `
+            <article class="bid-package-card">
+                <div class="bid-package-header">
+                    <h4>${displayName}</h4>
+                    <span>${headerMeta}</span>
+                </div>
+                <ul class="bid-entries">
+                    ${entries}
+                </ul>
+            </article>
+        `;
+    }).join('');
+
+    listEl.innerHTML = sections;
+}
+
+function renderProjectBidsChart(hasError = false) {
+    const canvas = document.getElementById('projectBidsChart');
+    const emptyState = document.getElementById('projectBidsEmpty');
+
+    if (!canvas) return;
+
+    if (projectBidsChart) {
+        projectBidsChart.destroy();
+        projectBidsChart = null;
+    }
+
+    if (hasError) {
+        if (emptyState) {
+            emptyState.style.display = 'flex';
+            emptyState.textContent = 'Unable to visualize bids at this time.';
+        }
+        canvas.style.display = 'none';
+        bidsChartNeedsUpdate = false;
+        return;
+    }
+
+    const packagesWithBids = projectBids.filter(pkg => pkg.bids && pkg.bids.length > 0);
+
+    if (packagesWithBids.length === 0) {
+        if (emptyState) {
+            emptyState.style.display = 'flex';
+            emptyState.textContent = 'Bids will appear here once they are uploaded.';
+        }
+        canvas.style.display = 'none';
+        bidsChartNeedsUpdate = false;
+        return;
+    }
+
+    if (emptyState) {
+        emptyState.style.display = 'none';
+        emptyState.textContent = 'Bids will appear here once they are uploaded.';
+    }
+
+    canvas.style.display = 'block';
+
+    const flattenedBids = [];
+
+    packagesWithBids.forEach((pkg, pkgIndex) => {
+        const numericBids = [...pkg.bids]
+            .map(bid => ({
+                ...bid,
+                bid_amount: bid && bid.bid_amount != null ? Number(bid.bid_amount) : null
+            }))
+            .filter(bid => bid && bid.bid_amount != null && Number.isFinite(bid.bid_amount))
+            .sort((a, b) => a.bid_amount - b.bid_amount);
+
+        if (!numericBids.length) {
+            return;
+        }
+
+        const baseColor = PACKAGE_COLOR_PALETTE[pkgIndex % PACKAGE_COLOR_PALETTE.length];
+        const packageCode = pkg.package_code || '—';
+        const packageLabel = pkg.package_name ? `${packageCode} – ${pkg.package_name}` : packageCode;
+
+        numericBids.forEach((bid, bidIndex) => {
+            const rankPosition = bidIndex + 1;
+            const totalBids = numericBids.length;
+            const isSelected = bid.was_selected || (pkg.selected_bidder_id && bid.bidder_id === pkg.selected_bidder_id);
+            const lightenFactor = totalBids === 1
+                ? 0.25
+                : Math.min(0.85, 0.18 + (bidIndex / Math.max(totalBids - 1, 1)) * 0.55);
+            const backgroundColor = lightenColor(baseColor, lightenFactor);
+            const borderColor = isSelected ? '#2c3e50' : lightenColor(baseColor, 0.08);
+
+            flattenedBids.push({
+                label: `${packageCode} – ${bid.bidder_name || 'Unknown Bidder'}`,
+                packageLabel,
+                packageCode,
+                bidderName: bid.bidder_name || 'Unknown Bidder',
+                bidAmount: bid.bid_amount,
+                isSelected,
+                rankPosition,
+                totalBids,
+                backgroundColor,
+                borderColor,
+                borderWidth: isSelected ? 2 : 1
+            });
+        });
+    });
+
+    if (!flattenedBids.length) {
+        if (emptyState) {
+            emptyState.style.display = 'flex';
+            emptyState.textContent = 'Bids with amounts will appear here once they are uploaded.';
+        }
+        canvas.style.display = 'none';
+        bidsChartNeedsUpdate = false;
+        return;
+    }
+
+    const labels = flattenedBids.map(entry => entry.label);
+    const data = flattenedBids.map(entry => entry.bidAmount);
+    const backgroundColors = flattenedBids.map(entry => entry.backgroundColor);
+    const borderColors = flattenedBids.map(entry => entry.borderColor);
+    const borderWidths = flattenedBids.map(entry => entry.borderWidth);
+
+    projectBidsChart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Bid Amount',
+                data,
+                backgroundColor: backgroundColors,
+                borderColor: borderColors,
+                borderWidth: borderWidths,
+                hoverBackgroundColor: backgroundColors,
+                hoverBorderColor: '#2c3e50',
+                borderRadius: 6,
+                maxBarThickness: 28,
+                bidMeta: flattenedBids
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: {
+                padding: {
+                    left: 4,
+                    right: 12,
+                    bottom: 16
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => {
+                            if (!items.length) return '';
+                            const meta = items[0].dataset.bidMeta?.[items[0].dataIndex];
+                            return meta ? meta.packageLabel : '';
+                        },
+                        label: (context) => {
+                            const meta = context.dataset.bidMeta?.[context.dataIndex];
+                            if (!meta) {
+                                return formatCurrency(context.parsed.y);
+                            }
+
+                            const selectedNote = meta.isSelected ? ' (Selected)' : '';
+                            return `${meta.bidderName}: ${formatCurrency(meta.bidAmount)}${selectedNote}`;
+                        },
+                        afterLabel: (context) => {
+                            const meta = context.dataset.bidMeta?.[context.dataIndex];
+                            if (!meta) return '';
+                            return `Rank ${meta.rankPosition} of ${meta.totalBids}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        color: '#34495e',
+                        autoSkip: false,
+                        maxRotation: 60,
+                        minRotation: 40,
+                        callback(value) {
+                            const label = this.getLabelForValue(value);
+                            return label.length > 32 ? `${label.slice(0, 32)}…` : label;
+                        }
+                    },
+                    grid: {
+                        display: false
+                    },
+                    title: {
+                        display: true,
+                        text: 'Bid packages (ordered by package, low → high bidder)',
+                        color: '#34495e',
+                        font: {
+                            weight: '600'
+                        }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: '#34495e',
+                        callback: (value) => formatCompactCurrency(value)
+                    },
+                    title: {
+                        display: true,
+                        text: 'Bid amount',
+                        color: '#34495e',
+                        font: {
+                            weight: '600'
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    bidsChartNeedsUpdate = false;
 }
 
 // Upload bid tab
@@ -466,6 +865,22 @@ function formatCurrency(num) {
     }).format(num);
 }
 
+function formatCompactCurrency(value) {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+        return value;
+    }
+
+    if (value >= 1_000_000) {
+        return `$${(value / 1_000_000).toFixed(1)}M`;
+    }
+
+    if (value >= 1_000) {
+        return `$${(value / 1_000).toFixed(0)}K`;
+    }
+
+    return `$${Math.round(value)}`;
+}
+
 function formatDate(dateString) {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -476,6 +891,31 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function lightenColor(hex, amount) {
+    if (!hex) return '#95a5a6';
+    const sanitized = hex.replace('#', '');
+
+    if (sanitized.length !== 6) {
+        return hex;
+    }
+
+    const num = parseInt(sanitized, 16);
+    const r = num >> 16;
+    const g = (num >> 8) & 0xff;
+    const b = num & 0xff;
+
+    const clamp = (channel) => {
+        const factor = Math.min(Math.max(amount, 0), 1);
+        return Math.round(channel + (255 - channel) * factor);
+    };
+
+    const newR = clamp(r);
+    const newG = clamp(g);
+    const newB = clamp(b);
+
+    return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
 }
 
 // Display charts
@@ -780,4 +1220,5 @@ document.getElementById('editProjectForm').onsubmit = async (e) => {
 };
 
 // Load project on page load
+setupViewTabs();
 loadProject();

@@ -103,6 +103,72 @@ app.get('/api/projects/:id', (req, res) => {
   res.json(project);
 });
 
+// Get all bids for a project grouped by package
+app.get('/api/projects/:id/bids', (req, res) => {
+  const db = getDatabase();
+  const projectId = req.params.id;
+
+  const projectExists = db.exec('SELECT 1 FROM projects WHERE id = ?', [projectId]);
+
+  if (projectExists.length === 0) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+
+  const packagesQuery = db.exec(`
+    SELECT p.id, p.package_code, p.package_name, p.selected_bidder_id
+    FROM packages p
+    WHERE p.project_id = ?
+    ORDER BY p.package_code
+  `, [projectId]);
+
+  if (packagesQuery.length === 0) {
+    return res.json([]);
+  }
+
+  const packages = packagesQuery[0].values.map(row => ({
+    package_id: row[0],
+    package_code: row[1],
+    package_name: row[2],
+    selected_bidder_id: row[3],
+    bids: []
+  }));
+
+  const packageIds = packages.map(pkg => pkg.package_id);
+
+  if (packageIds.length === 0) {
+    return res.json(packages);
+  }
+
+  const placeholders = packageIds.map(() => '?').join(',');
+  const bidsQuery = db.exec(`
+    SELECT b.id, b.package_id, b.bidder_id, b.bid_amount, b.was_selected, bidder.canonical_name
+    FROM bids b
+    LEFT JOIN bidders bidder ON b.bidder_id = bidder.id
+    WHERE b.package_id IN (${placeholders})
+    ORDER BY b.package_id, b.bid_amount
+  `, packageIds);
+
+  if (bidsQuery.length > 0) {
+    const rows = bidsQuery[0].values;
+    const packageMap = new Map(packages.map(pkg => [pkg.package_id, pkg]));
+
+    rows.forEach(row => {
+      const pkg = packageMap.get(row[1]);
+      if (!pkg) return;
+
+      pkg.bids.push({
+        id: row[0],
+        bidder_id: row[2],
+        bid_amount: row[3],
+        was_selected: row[4],
+        bidder_name: row[5]
+      });
+    });
+  }
+
+  res.json(packages);
+});
+
 // Create new project
 app.post('/api/projects', (req, res) => {
   const db = getDatabase();
