@@ -31,6 +31,8 @@
                     <button id="bidsTabBtn" class="tab-toggle" role="tab" aria-selected="false" aria-controls="bidsContent">Bids</button>
                 </div>
                 <div class="action-buttons">
+                    <button id="validateProjectBtn" class="btn btn-success">✅ Validate</button>
+                    <button id="validationHistoryBtn" class="btn btn-secondary btn-small">📜 History</button>
                     <button id="editProjectBtn" class="btn btn-secondary">✏️ Edit Project</button>
                     <button id="addPackageBtn" class="btn btn-secondary">+ Add Package</button>
                     <button id="uploadBidTabBtn" class="btn btn-primary">📤 Upload Bid Tab</button>
@@ -184,6 +186,42 @@
                 <section class="bids-list" id="projectBidsList">
                     <div class="loading">Loading bids...</div>
                 </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- Validate Project Modal -->
+    <div id="validateProjectModal" class="modal">
+        <div class="modal-content modal-narrow">
+            <span class="close" onclick="closeValidateModal()">&times;</span>
+            <h3>Validate Project Numbers</h3>
+            <p class="modal-subtitle">Confirm the current summary values and record your validation.</p>
+            <form id="validateProjectForm">
+                <div class="form-group">
+                    <label for="validatorInitials">Your Initials *</label>
+                    <input type="text" id="validatorInitials" maxlength="6" required placeholder="e.g., JD">
+                </div>
+                <div class="form-group">
+                    <label for="validationNotes">Notes</label>
+                    <textarea id="validationNotes" rows="3" placeholder="Optional notes about this validation"></textarea>
+                </div>
+                <div id="validationMetricsSummary" class="validation-metrics-summary"></div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeValidateModal()">Cancel</button>
+                    <button type="submit" class="btn btn-success">Validate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Validation History Modal -->
+    <div id="validationHistoryModal" class="modal">
+        <div class="modal-content modal-wide">
+            <span class="close" onclick="closeValidationHistoryModal()">&times;</span>
+            <h3>Validation History</h3>
+            <p class="modal-subtitle">Track who validated the project, when, and with which values.</p>
+            <div id="validationHistoryContent" class="validation-history-list">
+                <div class="loading">Loading history...</div>
             </div>
         </div>
     </div>

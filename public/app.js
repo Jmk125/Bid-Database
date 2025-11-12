@@ -49,15 +49,15 @@ async function loadProjects(sortBy = 'date-desc') {
                 try {
                     const detailResponse = await fetch(`${API_BASE}/projects/${project.id}`);
                     const details = await detailResponse.json();
-                    
+
                     // Calculate median cost total
-                    const medianTotal = (details.packages || []).reduce((sum, pkg) => 
+                    const medianTotal = (details.packages || []).reduce((sum, pkg) =>
                         sum + (pkg.median_bid || pkg.selected_amount || 0), 0);
                     const medianCostPerSF = details.building_sf ? medianTotal / details.building_sf : null;
-                    
-                    return { ...project, medianCostPerSF };
+
+                    return { ...project, medianCostPerSF, validation: details.validation || null };
                 } catch (error) {
-                    return { ...project, medianCostPerSF: null };
+                    return { ...project, medianCostPerSF: null, validation: null };
                 }
             })
         );
@@ -84,9 +84,14 @@ async function loadProjects(sortBy = 'date-desc') {
             }
         });
         
-        container.innerHTML = projectsWithDetails.map(project => `
+        container.innerHTML = projectsWithDetails.map(project => {
+            const validationIndicator = getProjectValidationIndicator(project.validation);
+            return `
             <div class="project-card" onclick="viewProject(${project.id})">
-                <h3>${escapeHtml(project.name)}</h3>
+                <div class="project-card-header">
+                    <h3>${escapeHtml(project.name)}</h3>
+                    ${validationIndicator}
+                </div>
                 <div class="meta">
                     ${project.building_sf ? `<div>📐 ${formatNumber(project.building_sf)} SF</div>` : ''}
                     ${project.project_date ? `<div>📅 ${formatDate(project.project_date)}</div>` : ''}
@@ -97,7 +102,8 @@ async function loadProjects(sortBy = 'date-desc') {
                     <button class="btn btn-tiny btn-danger" onclick="deleteProject(${project.id}, '${escapeHtml(project.name)}')">Delete</button>
                 </div>
             </div>
-        `).join('');
+        `;
+        }).join('');
     } catch (error) {
         console.error('Error loading projects:', error);
         container.innerHTML = '<div class="empty-state"><h3>Error loading projects</h3></div>';
@@ -194,6 +200,29 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function getProjectValidationIndicator(validation) {
+    const hasLatest = validation && validation.latest;
+    const isValid = Boolean(validation && validation.is_valid && hasLatest);
+    const statusClass = isValid ? 'is-valid' : 'needs-validation';
+    const icon = isValid ? '✔️' : '⚠️';
+    const initialsRaw = hasLatest ? (validation.latest.validator_initials || '') : 'Review';
+    const validatedAt = hasLatest && validation.latest.created_at ? new Date(validation.latest.created_at) : null;
+
+    let titleText = 'Not yet validated';
+    if (isValid) {
+        titleText = `Validated by ${initialsRaw}${validatedAt ? ` on ${validatedAt.toLocaleDateString()}` : ''}`;
+    } else if (hasLatest) {
+        titleText = `Last validated by ${initialsRaw}${validatedAt ? ` on ${validatedAt.toLocaleDateString()}` : ''}. Needs review.`;
+    }
+
+    return `
+        <span class="project-validation-indicator ${statusClass}" title="${escapeHtml(titleText)}">
+            <span>${icon}</span>
+            <span class="initials">${escapeHtml(initialsRaw)}</span>
+        </span>
+    `;
 }
 
 // Load data on page load
