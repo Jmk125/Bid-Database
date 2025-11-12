@@ -533,58 +533,73 @@ function displayCategoryBreakdown() {
     const packages = currentProject.packages || [];
     
     if (!currentProject.building_sf) {
-        tbody.innerHTML = '<tr><td colspan="7">Building SF required to calculate cost/SF by category</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6">Building SF required to calculate cost/SF by category</td></tr>';
         return;
     }
-    
+
     const categories = CATEGORY_DEFINITIONS;
-    
+
     const totalSelectedCost = packages.reduce((sum, pkg) => sum + (pkg.selected_amount || 0), 0);
-    
+    const totalMedianCost = packages.reduce((sum, pkg) => sum + (pkg.median_bid || pkg.selected_amount || 0), 0);
+    const totalHighCost = packages.reduce((sum, pkg) => sum + (pkg.high_bid || pkg.selected_amount || 0), 0);
+
+    const formatCostWithPercentage = (value, percentage, emphasize = false) => {
+        const hasValue = Number.isFinite(value);
+        const hasPercentage = Number.isFinite(percentage);
+        const costHtml = hasValue ? (emphasize ? `<strong>${formatCurrency(value)}</strong>` : formatCurrency(value)) : '—';
+        const percentageHtml = hasPercentage ? `<span class="category-percentage">(${percentage.toFixed(1)}%)</span>` : '';
+        return percentageHtml ? `${costHtml} ${percentageHtml}` : costHtml;
+    };
+
     const categoryData = categories.map(cat => {
-        const categoryPackages = packages.filter(pkg => 
+        const categoryPackages = packages.filter(pkg =>
             cat.divisions.includes(pkg.csi_division)
         );
-        
+
         const selectedCost = categoryPackages.reduce((sum, pkg) => sum + (pkg.selected_amount || 0), 0);
         const medianBidCost = categoryPackages.reduce((sum, pkg) => sum + (pkg.median_bid || pkg.selected_amount || 0), 0);
         const highBidCost = categoryPackages.reduce((sum, pkg) => sum + (pkg.high_bid || pkg.selected_amount || 0), 0);
-        
+
         const selectedCostPerSF = selectedCost / currentProject.building_sf;
         const medianBidCostPerSF = medianBidCost / currentProject.building_sf;
         const highBidCostPerSF = highBidCost / currentProject.building_sf;
-        
-        const percentage = totalSelectedCost > 0 ? (selectedCost / totalSelectedCost * 100) : 0;
-        
+
+        const selectedPercentage = totalSelectedCost > 0 ? (selectedCost / totalSelectedCost * 100) : 0;
+        const medianPercentage = totalMedianCost > 0 ? (medianBidCost / totalMedianCost * 100) : 0;
+        const highPercentage = totalHighCost > 0 ? (highBidCost / totalHighCost * 100) : 0;
+
         return {
             name: cat.name,
             divisions: cat.divisions.join(', '),
+            medianCost: medianBidCost,
             selectedCost: selectedCost,
+            highCost: highBidCost,
             selectedCostPerSF: selectedCostPerSF,
             medianBidCostPerSF: medianBidCostPerSF,
             highBidCostPerSF: highBidCostPerSF,
-            percentage: percentage,
+            selectedPercentage,
+            medianPercentage,
+            highPercentage,
             color: cat.color
         };
     });
-    
+
     // Filter out categories with no cost
-    const nonZeroCategories = categoryData.filter(cat => cat.selectedCost > 0);
-    
+    const nonZeroCategories = categoryData.filter(cat => (cat.selectedCost > 0 || cat.medianCost > 0 || cat.highCost > 0));
+
     if (nonZeroCategories.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7">No packages assigned to standard categories yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6">No packages assigned to standard categories yet</td></tr>';
         return;
     }
-    
+
     tbody.innerHTML = nonZeroCategories.map(cat => `
         <tr>
             <td><strong style="color: ${cat.color}">${escapeHtml(cat.name)}</strong></td>
             <td>${escapeHtml(cat.divisions)}</td>
-            <td>${formatCurrency(cat.selectedCost)}</td>
-            <td><strong>${formatCurrency(cat.medianBidCostPerSF)}</strong></td>
-            <td>${formatCurrency(cat.selectedCostPerSF)}</td>
-            <td>${formatCurrency(cat.highBidCostPerSF)}</td>
-            <td>${cat.percentage.toFixed(1)}%</td>
+            <td>${formatCurrency(cat.medianCost)}</td>
+            <td>${formatCostWithPercentage(cat.medianBidCostPerSF, cat.medianPercentage, true)}</td>
+            <td>${formatCostWithPercentage(cat.selectedCostPerSF, cat.selectedPercentage)}</td>
+            <td>${formatCostWithPercentage(cat.highBidCostPerSF, cat.highPercentage)}</td>
         </tr>
     `).join('');
 }
