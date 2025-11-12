@@ -506,6 +506,31 @@ td {
     font-size: 0.9rem;
 }
 
+#gmpTable th:nth-child(n+3),
+#gmpTable td:nth-child(n+3) {
+    text-align: right;
+    white-space: nowrap;
+}
+
+#gmpTable tfoot th,
+#gmpTable tfoot td {
+    background-color: #f4f6f7;
+    font-weight: 700;
+    border-bottom: none;
+}
+
+.delta-positive {
+    color: #27ae60;
+}
+
+.delta-negative {
+    color: #c0392b;
+}
+
+.delta-neutral {
+    color: #7f8c8d;
+}
+
 tr:hover {
     background-color: #f8f9fa;
 }

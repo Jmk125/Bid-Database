@@ -8,19 +8,45 @@ let db = null;
 
 async function initDatabase() {
   const SQL = await initSqlJs();
-  
+
+  const databaseExists = fs.existsSync(DB_PATH);
+
   // Try to load existing database
-  if (fs.existsSync(DB_PATH)) {
+  if (databaseExists) {
     const buffer = fs.readFileSync(DB_PATH);
     db = new SQL.Database(buffer);
     console.log('Loaded existing database');
   } else {
     db = new SQL.Database();
     console.log('Created new database');
-    createTables();
   }
-  
+
+  const schemaUpdated = ensureSchema();
+
+  if (!databaseExists || schemaUpdated) {
+    saveDatabase();
+  }
+
   return db;
+}
+
+function ensureSchema() {
+  let schemaUpdated = false;
+
+  createTables();
+
+  // Ensure packages table has GMP estimate column
+  const pragmaResult = db.exec('PRAGMA table_info(packages)');
+  const packageColumns = pragmaResult[0]?.values || [];
+  const hasGmpAmount = packageColumns.some(column => column[1] === 'gmp_amount');
+
+  if (!hasGmpAmount) {
+    db.run('ALTER TABLE packages ADD COLUMN gmp_amount REAL');
+    schemaUpdated = true;
+    console.log('Added gmp_amount column to packages table');
+  }
+
+  return schemaUpdated;
 }
 
 function createTables() {
@@ -78,6 +104,7 @@ function createTables() {
       status TEXT DEFAULT 'bid' CHECK(status IN ('bid', 'estimated', 'bid-override')),
       selected_bidder_id INTEGER,
       selected_amount REAL,
+      gmp_amount REAL,
       low_bid REAL,
       median_bid REAL,
       high_bid REAL,
@@ -105,8 +132,7 @@ function createTables() {
     )
   `);
 
-  console.log('Database tables created');
-  saveDatabase();
+  console.log('Database tables ensured');
 }
 
 function saveDatabase() {
