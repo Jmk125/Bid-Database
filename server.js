@@ -1349,18 +1349,41 @@ app.get('/api/bidders/:id/history', (req, res) => {
   const bidderId = req.params.id;
 
   const query = db.exec(`
+    WITH bidder_stats AS (
+      SELECT
+        bid.id,
+        bid.package_id,
+        bid.bidder_id,
+        bid.bid_amount,
+        bid.was_selected,
+        COUNT(*) OVER (PARTITION BY bid.package_id) AS total_bids,
+        RANK() OVER (
+          PARTITION BY bid.package_id
+          ORDER BY
+            CASE WHEN bid.bid_amount IS NULL THEN 1 ELSE 0 END,
+            bid.bid_amount ASC
+        ) AS bid_rank
+      FROM bids bid
+    )
     SELECT
       proj.name,
       proj.project_date,
       pkg.package_code,
       pkg.package_name,
-      bid.bid_amount,
+      stats.bid_amount,
       proj.building_sf,
-      bid.was_selected
-    FROM bids bid
-    JOIN packages pkg ON bid.package_id = pkg.id
+      stats.was_selected,
+      stats.total_bids,
+      stats.bid_rank,
+      CASE
+        WHEN pkg.selected_amount IS NOT NULL AND pkg.selected_amount > 0
+          THEN ((stats.bid_amount - pkg.selected_amount) * 100.0) / pkg.selected_amount
+        ELSE NULL
+      END AS percent_from_selected
+    FROM bidder_stats stats
+    JOIN packages pkg ON stats.package_id = pkg.id
     JOIN projects proj ON pkg.project_id = proj.id
-    WHERE bid.bidder_id = ?
+    WHERE stats.bidder_id = ?
     ORDER BY
       (proj.project_date IS NULL),
       proj.project_date DESC,
@@ -1373,6 +1396,9 @@ app.get('/api/bidders/:id/history', (req, res) => {
 
   const history = query[0].values.map(row => {
     const cost_per_sf = row[5] ? row[4] / row[5] : null;
+    const totalBids = row[7] != null ? Number(row[7]) : null;
+    const bidRank = row[8] != null ? Number(row[8]) : null;
+    const percentFromSelected = row[9] != null ? Number(row[9]) : null;
 
     return {
       project_name: row[0],
@@ -1381,7 +1407,10 @@ app.get('/api/bidders/:id/history', (req, res) => {
       package_name: row[3],
       bid_amount: row[4],
       cost_per_sf,
-      was_selected: row[6] === 1
+      was_selected: row[6] === 1,
+      placement_rank: bidRank,
+      placement_total: totalBids,
+      percent_from_selected: percentFromSelected
     };
   });
 
