@@ -140,6 +140,15 @@ body {
     background-color: #2980b9;
 }
 
+.btn-success {
+    background-color: #27ae60;
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: #1e874b;
+}
+
 .btn-secondary {
     background-color: #95a5a6;
     color: white;
@@ -388,10 +397,43 @@ body {
     box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 
-.project-card h3 {
-    font-size: 1.25rem;
+.project-card-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: flex-start;
     margin-bottom: 1rem;
+}
+
+.project-card-header h3 {
+    font-size: 1.25rem;
     color: #2c3e50;
+    margin: 0;
+}
+
+.project-validation-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.project-validation-indicator .initials {
+    letter-spacing: 0.6px;
+}
+
+.project-validation-indicator.is-valid {
+    background: rgba(39, 174, 96, 0.15);
+    color: #1e8449;
+}
+
+.project-validation-indicator.needs-validation {
+    background: rgba(230, 126, 34, 0.15);
+    color: #d35400;
 }
 
 .project-card .meta {
@@ -427,6 +469,140 @@ body {
     width: 90%;
     max-width: 500px;
     position: relative;
+}
+
+.modal-content.modal-narrow {
+    max-width: 420px;
+}
+
+.modal-content.modal-wide {
+    max-width: 720px;
+}
+
+.modal-subtitle {
+    margin-top: -0.5rem;
+    margin-bottom: 1.5rem;
+    color: #7f8c8d;
+    font-size: 0.95rem;
+}
+
+.validation-metrics-summary {
+    background: #f8f9fa;
+    border: 1px solid #ecf0f1;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.validation-metric-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.9rem;
+    color: #2c3e50;
+}
+
+.validation-metric-row span:first-child {
+    color: #7f8c8d;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+}
+
+.validation-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+}
+
+.validation-history-item {
+    border: 1px solid #ecf0f1;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.validation-history-item.is-current {
+    border-color: rgba(39, 174, 96, 0.4);
+    box-shadow: 0 2px 6px rgba(39, 174, 96, 0.15);
+}
+
+.validation-history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.75rem;
+    gap: 1rem;
+}
+
+.validation-history-header .validator {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.validation-history-header .timestamp {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: #ecf0f1;
+    color: #636e72;
+}
+
+.status-pill.is-valid {
+    background: rgba(39, 174, 96, 0.15);
+    color: #1e8449;
+}
+
+.status-pill.needs-review {
+    background: rgba(230, 126, 34, 0.15);
+    color: #d35400;
+}
+
+.history-metrics {
+    display: grid;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+    color: #2c3e50;
+}
+
+.history-metrics span {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.history-metrics .metric-label {
+    color: #7f8c8d;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+}
+
+.history-metrics .metric-value {
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.history-note {
+    margin-top: 0.75rem;
+    background: #fdf8e4;
+    border-radius: 6px;
+    padding: 0.75rem;
+    font-size: 0.9rem;
+    color: #7f5f1a;
 }
 
 .close {
@@ -563,6 +739,34 @@ tr:hover {
     border-radius: 8px;
     padding: 1.5rem;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    position: relative;
+}
+
+.metric-validation-badge {
+    position: absolute;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.metric-validation-badge .badge-icon {
+    font-size: 1rem;
+}
+
+.metric-validation-badge .badge-text {
+    letter-spacing: 0.5px;
+}
+
+.metric-validation-badge.is-valid {
+    color: #27ae60;
+}
+
+.metric-validation-badge.needs-validation {
+    color: #e67e22;
 }
 
 .metric-card h4 {

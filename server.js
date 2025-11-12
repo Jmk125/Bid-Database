@@ -7,6 +7,157 @@ const { initDatabase, getDatabase, saveDatabase } = require('./database');
 const app = express();
 const PORT = 3020;
 
+function toFiniteNumber(value) {
+  if (value == null) {
+    return null;
+  }
+
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function roundToTwo(value) {
+  const num = toFiniteNumber(value);
+  if (num == null) {
+    return null;
+  }
+  return Number(num.toFixed(2));
+}
+
+function normalizeValidationMetrics(metrics) {
+  if (!metrics) {
+    return null;
+  }
+
+  return {
+    building_sf: metrics.building_sf != null ? Number(metrics.building_sf) : null,
+    project_bid_date: metrics.project_bid_date || null,
+    selected_total: roundToTwo(metrics.selected_total),
+    selected_cost_per_sf: roundToTwo(metrics.selected_cost_per_sf),
+    low_bid_total: roundToTwo(metrics.low_bid_total),
+    low_bid_cost_per_sf: roundToTwo(metrics.low_bid_cost_per_sf),
+    median_bid_total: roundToTwo(metrics.median_bid_total),
+    median_bid_cost_per_sf: roundToTwo(metrics.median_bid_cost_per_sf)
+  };
+}
+
+function metricsAreEqual(a, b) {
+  if (!a && !b) {
+    return true;
+  }
+
+  if (!a || !b) {
+    return false;
+  }
+
+  const keys = [
+    'building_sf',
+    'project_bid_date',
+    'selected_total',
+    'selected_cost_per_sf',
+    'low_bid_total',
+    'low_bid_cost_per_sf',
+    'median_bid_total',
+    'median_bid_cost_per_sf'
+  ];
+
+  return keys.every((key) => {
+    const valueA = key === 'project_bid_date' ? (a[key] || null) : toFiniteNumber(a[key]);
+    const valueB = key === 'project_bid_date' ? (b[key] || null) : toFiniteNumber(b[key]);
+
+    if (valueA == null && valueB == null) {
+      return true;
+    }
+
+    if (valueA == null || valueB == null) {
+      return false;
+    }
+
+    if (key === 'project_bid_date') {
+      return valueA === valueB;
+    }
+
+    return Number(valueA.toFixed(2)) === Number(valueB.toFixed(2));
+  });
+}
+
+function computeProjectMetrics(project, packages) {
+  const buildingSf = toFiniteNumber(project.building_sf);
+
+  const totals = (packages || []).reduce(
+    (acc, pkg) => {
+      const selectedAmount = toFiniteNumber(pkg.selected_amount) || 0;
+      const lowBid = toFiniteNumber(pkg.low_bid);
+      const medianBid = toFiniteNumber(pkg.median_bid);
+
+      acc.selected_total += selectedAmount;
+      acc.low_bid_total += lowBid != null ? lowBid : selectedAmount;
+      acc.median_bid_total += medianBid != null ? medianBid : selectedAmount;
+
+      return acc;
+    },
+    { selected_total: 0, low_bid_total: 0, median_bid_total: 0 }
+  );
+
+  const metrics = {
+    building_sf: buildingSf,
+    project_bid_date: project.project_date || null,
+    selected_total: totals.selected_total,
+    selected_cost_per_sf: buildingSf ? totals.selected_total / buildingSf : null,
+    low_bid_total: totals.low_bid_total,
+    low_bid_cost_per_sf: buildingSf ? totals.low_bid_total / buildingSf : null,
+    median_bid_total: totals.median_bid_total,
+    median_bid_cost_per_sf: buildingSf ? totals.median_bid_total / buildingSf : null
+  };
+
+  return normalizeValidationMetrics(metrics);
+}
+
+function getLatestValidation(db, projectId) {
+  const latestQuery = db.exec(
+    `SELECT id, validator_initials, metrics_json, notes, created_at
+     FROM project_validations
+     WHERE project_id = ?
+     ORDER BY datetime(created_at) DESC
+     LIMIT 1`,
+    [projectId]
+  );
+
+  if (latestQuery.length === 0 || latestQuery[0].values.length === 0) {
+    return null;
+  }
+
+  const row = latestQuery[0].values[0];
+  const metrics = normalizeValidationMetrics(JSON.parse(row[2]));
+
+  return {
+    id: row[0],
+    validator_initials: row[1],
+    metrics,
+    notes: row[3],
+    created_at: row[4]
+  };
+}
+
+function getProjectPackagesForMetrics(db, projectId) {
+  const query = db.exec(
+    `SELECT selected_amount, low_bid, median_bid
+     FROM packages
+     WHERE project_id = ?`,
+    [projectId]
+  );
+
+  if (query.length === 0) {
+    return [];
+  }
+
+  return query[0].values.map((row) => ({
+    selected_amount: row[0],
+    low_bid: row[1],
+    median_bid: row[2]
+  }));
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -119,7 +270,18 @@ app.get('/api/projects/:id', (req, res) => {
       bidder_name: row[18]
     }));
   }
-  
+
+  const metrics = computeProjectMetrics(project, project.packages);
+  const latestValidation = getLatestValidation(db, projectId);
+  const isValid = latestValidation ? metricsAreEqual(metrics, latestValidation.metrics) : false;
+
+  project.metrics = metrics;
+  project.validation = {
+    latest: latestValidation,
+    is_valid: Boolean(latestValidation && isValid),
+    needs_revalidation: latestValidation ? !isValid : true
+  };
+
   res.json(project);
 });
 
@@ -187,6 +349,117 @@ app.get('/api/projects/:id/bids', (req, res) => {
   }
 
   res.json(packages);
+});
+
+// Get validation history for a project
+app.get('/api/projects/:id/validations', (req, res) => {
+  const db = getDatabase();
+  const projectId = req.params.id;
+
+  const projectQuery = db.exec('SELECT id, building_sf, project_date FROM projects WHERE id = ?', [projectId]);
+
+  if (projectQuery.length === 0) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+
+  const projectRow = projectQuery[0].values[0];
+  const project = {
+    id: projectRow[0],
+    building_sf: projectRow[1],
+    project_date: projectRow[2]
+  };
+
+  const packages = getProjectPackagesForMetrics(db, projectId);
+  const currentMetrics = computeProjectMetrics(project, packages);
+
+  const historyQuery = db.exec(
+    `SELECT id, validator_initials, metrics_json, notes, created_at
+     FROM project_validations
+     WHERE project_id = ?
+     ORDER BY datetime(created_at) DESC`,
+    [projectId]
+  );
+
+  if (historyQuery.length === 0) {
+    return res.json([]);
+  }
+
+  const history = historyQuery[0].values.map((row) => {
+    const metrics = normalizeValidationMetrics(JSON.parse(row[2]));
+    return {
+      id: row[0],
+      validator_initials: row[1],
+      metrics,
+      notes: row[3],
+      created_at: row[4],
+      is_current: metricsAreEqual(metrics, currentMetrics)
+    };
+  });
+
+  res.json(history);
+});
+
+// Create a validation record for a project
+app.post('/api/projects/:id/validations', (req, res) => {
+  const db = getDatabase();
+  const projectId = req.params.id;
+  const { validator_initials, notes } = req.body;
+
+  if (!validator_initials || !validator_initials.trim()) {
+    return res.status(400).json({ error: 'Validator initials are required' });
+  }
+
+  const trimmedInitials = validator_initials.trim().toUpperCase().slice(0, 6);
+
+  const projectQuery = db.exec('SELECT id, building_sf, project_date FROM projects WHERE id = ?', [projectId]);
+
+  if (projectQuery.length === 0) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+
+  const projectRow = projectQuery[0].values[0];
+  const project = {
+    id: projectRow[0],
+    building_sf: projectRow[1],
+    project_date: projectRow[2]
+  };
+
+  const packages = getProjectPackagesForMetrics(db, projectId);
+  const metrics = computeProjectMetrics(project, packages);
+
+  db.run(
+    `INSERT INTO project_validations (project_id, validator_initials, metrics_json, notes)
+     VALUES (?, ?, ?, ?)`,
+    [projectId, trimmedInitials, JSON.stringify(metrics), notes || null]
+  );
+
+  const result = db.exec('SELECT last_insert_rowid()');
+  const validationId = result[0].values[0][0];
+
+  const insertedQuery = db.exec(
+    `SELECT id, validator_initials, metrics_json, notes, created_at
+     FROM project_validations
+     WHERE id = ?`,
+    [validationId]
+  );
+
+  saveDatabase();
+
+  if (insertedQuery.length === 0 || insertedQuery[0].values.length === 0) {
+    return res.status(500).json({ error: 'Failed to record validation' });
+  }
+
+  const row = insertedQuery[0].values[0];
+  const storedMetrics = normalizeValidationMetrics(JSON.parse(row[2]));
+
+  res.json({
+    id: row[0],
+    validator_initials: row[1],
+    metrics: storedMetrics,
+    notes: row[3],
+    created_at: row[4],
+    is_current: true
+  });
 });
 
 // Create new project

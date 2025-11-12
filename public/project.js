@@ -17,6 +17,10 @@ let projectBidsError = false;
 let gmpDeltaChart = null;
 let gmpChartNeedsUpdate = false;
 let latestGmpChartData = null;
+let latestComputedMetrics = null;
+let validationHistory = [];
+let validationHistoryLoaded = false;
+let isSavingValidation = false;
 
 const PACKAGE_COLOR_PALETTE = [
     '#0b3d91',
@@ -34,11 +38,14 @@ async function loadProject() {
     try {
         const response = await fetch(`${API_BASE}/projects/${projectId}`);
         currentProject = await response.json();
-        
+        validationHistoryLoaded = false;
+        validationHistory = [];
+        latestComputedMetrics = currentProject.metrics || null;
+
         // Update page title
         document.getElementById('projectName').textContent = currentProject.name;
         document.title = `${currentProject.name} - Bid Database`;
-        
+
         // Display metrics
         displayMetrics();
 
@@ -54,19 +61,19 @@ async function loadProject() {
 
 function displayMetrics() {
     const container = document.getElementById('projectMetrics');
-    
+
     const packages = currentProject.packages || [];
     const totalCost = packages.reduce((sum, pkg) => sum + (pkg.selected_amount || 0), 0);
-    const totalLowBid = packages.reduce((sum, pkg) => sum + (pkg.low_bid || pkg.selected_amount || 0), 0);
-    const totalMedianBid = packages.reduce((sum, pkg) => sum + (pkg.median_bid || pkg.selected_amount || 0), 0);
-    
-    const avgCostPerSF = currentProject.building_sf ? totalCost / currentProject.building_sf : 0;
-    const lowBidCostPerSF = currentProject.building_sf ? totalLowBid / currentProject.building_sf : 0;
-    const medianBidCostPerSF = currentProject.building_sf ? totalMedianBid / currentProject.building_sf : 0;
-    
+    const totalLowBid = packages.reduce((sum, pkg) => sum + (pkg.low_bid != null ? pkg.low_bid : (pkg.selected_amount || 0)), 0);
+    const totalMedianBid = packages.reduce((sum, pkg) => sum + (pkg.median_bid != null ? pkg.median_bid : (pkg.selected_amount || 0)), 0);
+
+    const avgCostPerSF = currentProject.building_sf ? totalCost / currentProject.building_sf : null;
+    const lowBidCostPerSF = currentProject.building_sf ? totalLowBid / currentProject.building_sf : null;
+    const medianBidCostPerSF = currentProject.building_sf ? totalMedianBid / currentProject.building_sf : null;
+
     const bidCount = packages.filter(p => p.status !== 'estimated').length;
     const estimatedCount = packages.filter(p => p.status === 'estimated').length;
-    
+
     // Helper function to add responsive class based on value length
     const getValueClass = (value) => {
         const str = String(value);
@@ -74,53 +81,333 @@ function displayMetrics() {
         if (str.length > 12) return 'long-value';
         return '';
     };
-    
-    container.innerHTML = `
-        <div class="metric-card">
-            <h4>Building Size</h4>
-            <div class="value">${currentProject.building_sf ? formatNumber(currentProject.building_sf) : 'N/A'} <span style="font-size: 1rem;">SF</span></div>
+
+    latestComputedMetrics = {
+        building_sf: currentProject.building_sf ? Number(currentProject.building_sf) : null,
+        project_bid_date: currentProject.project_date || null,
+        selected_total: totalCost,
+        selected_cost_per_sf: avgCostPerSF,
+        low_bid_total: totalLowBid,
+        low_bid_cost_per_sf: lowBidCostPerSF,
+        median_bid_total: totalMedianBid,
+        median_bid_cost_per_sf: medianBidCostPerSF
+    };
+
+    const validationBadge = getValidationBadgeHtml();
+
+    const metricsCards = [
+        {
+            key: 'building-size',
+            title: 'Building Size',
+            valueHtml: currentProject.building_sf ? `${formatNumber(currentProject.building_sf)} <span style="font-size: 1rem;">SF</span>` : 'N/A',
+            valueClass: getValueClass(currentProject.building_sf ? formatNumber(currentProject.building_sf) : 'N/A'),
+            showValidation: true
+        },
+        {
+            key: 'selected-cost',
+            title: 'Selected Cost/SF',
+            valueHtml: currentProject.building_sf ? formatCurrency(avgCostPerSF) : 'N/A',
+            subHtml: `<div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">Total: ${formatCurrency(totalCost)}</div>`,
+            showValidation: true
+        },
+        {
+            key: 'low-cost',
+            title: 'Low Bid Cost/SF',
+            valueHtml: currentProject.building_sf ? formatCurrency(lowBidCostPerSF) : 'N/A',
+            subHtml: `<div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">Total: ${formatCurrency(totalLowBid)}</div>`,
+            showValidation: true
+        },
+        {
+            key: 'median-cost',
+            title: 'Median Bid Cost/SF',
+            valueHtml: currentProject.building_sf ? formatCurrency(medianBidCostPerSF) : 'N/A',
+            subHtml: `<div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">Total: ${formatCurrency(totalMedianBid)}</div>`,
+            showValidation: true
+        },
+        {
+            key: 'packages',
+            title: 'Packages',
+            valueHtml: `${packages.length}`,
+            subHtml: `<div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">${bidCount} bid, ${estimatedCount} estimated</div>`,
+            showValidation: false
+        },
+        {
+            key: 'project-date',
+            title: 'Project Bid Date',
+            valueHtml: currentProject.project_date
+                ? `<span style="font-size: 1.5rem;">${formatDate(currentProject.project_date)}</span>`
+                : '<span style="font-size: 1.2rem; color: #7f8c8d;">Not set</span>',
+            showValidation: true
+        }
+    ];
+
+    container.innerHTML = metricsCards.map(card => `
+        <div class="metric-card" data-metric-key="${card.key}">
+            <h4>${card.title}</h4>
+            <div class="value ${card.valueClass || ''}">${card.valueHtml}</div>
+            ${card.subHtml || ''}
+            ${card.showValidation ? validationBadge : ''}
         </div>
-        <div class="metric-card">
-            <h4>Selected Cost/SF</h4>
-            <div class="value">${currentProject.building_sf ? formatCurrency(avgCostPerSF) : 'N/A'}</div>
-            <div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">
-                Total: ${formatCurrency(totalCost)}
-            </div>
-        </div>
-        <div class="metric-card">
-            <h4>Low Bid Cost/SF</h4>
-            <div class="value">${currentProject.building_sf ? formatCurrency(lowBidCostPerSF) : 'N/A'}</div>
-            <div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">
-                Total: ${formatCurrency(totalLowBid)}
-            </div>
-        </div>
-        <div class="metric-card">
-            <h4>Median Bid Cost/SF</h4>
-            <div class="value">${currentProject.building_sf ? formatCurrency(medianBidCostPerSF) : 'N/A'}</div>
-            <div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">
-                Total: ${formatCurrency(totalMedianBid)}
-            </div>
-        </div>
-        <div class="metric-card">
-            <h4>Packages</h4>
-            <div class="value">${packages.length}</div>
-            <div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">
-                ${bidCount} bid, ${estimatedCount} estimated
-            </div>
-        </div>
-        ${currentProject.project_date ? `
-        <div class="metric-card">
-            <h4>Project Bid Date</h4>
-            <div class="value" style="font-size: 1.5rem;">${formatDate(currentProject.project_date)}</div>
-        </div>
-        ` : ''}
-    `;
-    
+    `).join('');
+
+    updateValidationControls();
+
     // Display category breakdown
     displayCategoryBreakdown();
-    
+
     // Display charts
     displayCharts();
+}
+
+function getValidationBadgeHtml() {
+    if (!currentProject) {
+        return '';
+    }
+
+    const validation = currentProject.validation || {};
+    const latest = validation.latest;
+    const isValid = Boolean(validation.is_valid && latest);
+    const badgeClass = isValid ? 'metric-validation-badge is-valid' : 'metric-validation-badge needs-validation';
+    const icon = isValid ? '✔️' : '⚠️';
+    const text = latest ? escapeHtml(latest.validator_initials) : 'Review';
+
+    return `
+        <div class="${badgeClass}">
+            <span class="badge-icon">${icon}</span>
+            <span class="badge-text">${text}</span>
+        </div>
+    `;
+}
+
+function updateValidationControls() {
+    const validateBtn = document.getElementById('validateProjectBtn');
+    const historyBtn = document.getElementById('validationHistoryBtn');
+
+    const validation = currentProject?.validation || {};
+    const hasValidation = Boolean(validation.latest);
+
+    if (validateBtn) {
+        validateBtn.textContent = hasValidation ? '🔁 Revalidate' : '✅ Validate';
+        validateBtn.disabled = Boolean(isSavingValidation);
+    }
+
+    if (historyBtn) {
+        historyBtn.disabled = false;
+        const hasRecords = hasValidation || validationHistoryLoaded;
+        historyBtn.style.opacity = hasRecords ? '1' : '0.85';
+        historyBtn.style.cursor = 'pointer';
+    }
+}
+
+function openValidateModal() {
+    if (!currentProject) return;
+
+    const modal = document.getElementById('validateProjectModal');
+    if (!modal) return;
+
+    const initialsInput = document.getElementById('validatorInitials');
+    const notesInput = document.getElementById('validationNotes');
+    const submitBtn = document.querySelector('#validateProjectForm button[type="submit"]');
+
+    if (initialsInput) {
+        initialsInput.value = '';
+    }
+
+    if (notesInput) {
+        notesInput.value = '';
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Validate';
+    }
+
+    renderValidationMetricsSummary();
+    modal.style.display = 'block';
+
+    if (initialsInput) {
+        initialsInput.focus();
+    }
+}
+
+function closeValidateModal() {
+    const modal = document.getElementById('validateProjectModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+
+    const form = document.getElementById('validateProjectForm');
+    if (form) {
+        form.reset();
+    }
+
+    isSavingValidation = false;
+    updateValidationControls();
+}
+
+function renderValidationMetricsSummary() {
+    const summaryEl = document.getElementById('validationMetricsSummary');
+    if (!summaryEl) return;
+
+    if (!latestComputedMetrics) {
+        summaryEl.innerHTML = '<div class="empty-state" style="padding: 1.5rem 1rem;">Metrics are not available.</div>';
+        return;
+    }
+
+    const metrics = latestComputedMetrics;
+
+    const buildingText = metrics.building_sf != null ? `${formatNumber(metrics.building_sf)} SF` : 'N/A';
+    const selectedText = formatValidationCostLine(metrics.selected_cost_per_sf, metrics.selected_total);
+    const lowText = formatValidationCostLine(metrics.low_bid_cost_per_sf, metrics.low_bid_total);
+    const medianText = formatValidationCostLine(metrics.median_bid_cost_per_sf, metrics.median_bid_total);
+    const projectDateText = metrics.project_bid_date ? formatDate(metrics.project_bid_date) : 'Not set';
+
+    summaryEl.innerHTML = `
+        <div class="validation-metric-row"><span>Building Size</span><span>${buildingText}</span></div>
+        <div class="validation-metric-row"><span>Selected Cost/SF</span><span>${selectedText}</span></div>
+        <div class="validation-metric-row"><span>Low Bid Cost/SF</span><span>${lowText}</span></div>
+        <div class="validation-metric-row"><span>Median Bid Cost/SF</span><span>${medianText}</span></div>
+        <div class="validation-metric-row"><span>Project Bid Date</span><span>${projectDateText}</span></div>
+    `;
+}
+
+async function openValidationHistoryModal() {
+    const modal = document.getElementById('validationHistoryModal');
+    const content = document.getElementById('validationHistoryContent');
+
+    if (!modal || !content) return;
+
+    modal.style.display = 'block';
+    content.innerHTML = '<div class="loading">Loading history...</div>';
+
+    try {
+        const response = await fetch(`${API_BASE}/projects/${projectId}/validations`);
+        if (!response.ok) {
+            throw new Error('Failed to load history');
+        }
+
+        const history = await response.json();
+        validationHistory = history;
+        validationHistoryLoaded = true;
+        renderValidationHistory(history);
+        updateValidationControls();
+    } catch (error) {
+        console.error('Error loading validation history:', error);
+        content.innerHTML = '<div class="empty-state"><h3>Error loading validation history</h3><p>Please try again.</p></div>';
+    }
+}
+
+function closeValidationHistoryModal() {
+    const modal = document.getElementById('validationHistoryModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function renderValidationHistory(entries) {
+    const content = document.getElementById('validationHistoryContent');
+    if (!content) return;
+
+    if (!entries || entries.length === 0) {
+        content.innerHTML = `
+            <div class="empty-state" style="padding: 2rem 1rem;">
+                <h3>No validations yet</h3>
+                <p>Validate the project to start the audit trail.</p>
+            </div>
+        `;
+        return;
+    }
+
+    content.innerHTML = entries.map(entry => {
+        const metrics = entry.metrics || {};
+        const isCurrent = Boolean(entry.is_current);
+        const statusClass = isCurrent ? 'status-pill is-valid' : 'status-pill needs-review';
+        const statusLabel = isCurrent ? '✔️ Matches current numbers' : '⚠️ Needs revalidation';
+
+        const buildingText = metrics.building_sf != null ? `${formatNumber(metrics.building_sf)} SF` : 'N/A';
+        const selectedText = formatValidationCostLine(metrics.selected_cost_per_sf, metrics.selected_total);
+        const lowText = formatValidationCostLine(metrics.low_bid_cost_per_sf, metrics.low_bid_total);
+        const medianText = formatValidationCostLine(metrics.median_bid_cost_per_sf, metrics.median_bid_total);
+        const projectDateText = metrics.project_bid_date ? formatDate(metrics.project_bid_date) : 'Not set';
+        const notesHtml = entry.notes ? `<div class="history-note">${escapeHtml(entry.notes)}</div>` : '';
+
+        return `
+            <article class="validation-history-item${isCurrent ? ' is-current' : ''}">
+                <div class="validation-history-header">
+                    <div class="validator">${escapeHtml(entry.validator_initials)}</div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem;">
+                        <span class="${statusClass}">${statusLabel}</span>
+                        <span class="timestamp">${formatDateTime(entry.created_at)}</span>
+                    </div>
+                </div>
+                <div class="history-metrics">
+                    <span><span class="metric-label">Building Size</span><span class="metric-value">${buildingText}</span></span>
+                    <span><span class="metric-label">Selected Cost/SF</span><span class="metric-value">${selectedText}</span></span>
+                    <span><span class="metric-label">Low Bid Cost/SF</span><span class="metric-value">${lowText}</span></span>
+                    <span><span class="metric-label">Median Bid Cost/SF</span><span class="metric-value">${medianText}</span></span>
+                    <span><span class="metric-label">Project Bid Date</span><span class="metric-value">${projectDateText}</span></span>
+                </div>
+                ${notesHtml}
+            </article>
+        `;
+    }).join('');
+}
+
+async function handleValidationSubmit(event) {
+    event.preventDefault();
+
+    if (isSavingValidation) {
+        return;
+    }
+
+    const initialsInput = document.getElementById('validatorInitials');
+    const notesInput = document.getElementById('validationNotes');
+    const submitBtn = document.querySelector('#validateProjectForm button[type="submit"]');
+
+    const validatorInitials = initialsInput ? initialsInput.value.trim() : '';
+    const notes = notesInput ? notesInput.value.trim() : '';
+
+    if (!validatorInitials) {
+        alert('Please enter your initials to validate.');
+        return;
+    }
+
+    isSavingValidation = true;
+    updateValidationControls();
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Validating...';
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/projects/${projectId}/validations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                validator_initials: validatorInitials,
+                notes: notes || null
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to save validation');
+        }
+
+        await response.json();
+
+        closeValidateModal();
+        await loadProject();
+    } catch (error) {
+        console.error('Error validating project:', error);
+        alert('Unable to save the validation. Please try again.');
+        isSavingValidation = false;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Validate';
+        }
+        updateValidationControls();
+    }
 }
 
 function displayCategoryBreakdown() {
@@ -1275,6 +1562,39 @@ function formatDate(dateString) {
     return date.toLocaleDateString();
 }
 
+function formatDateTime(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+        return dateString;
+    }
+    return date.toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+    });
+}
+
+function formatValidationCostLine(costPerSf, total) {
+    const hasCost = costPerSf != null && Number.isFinite(Number(costPerSf));
+    const hasTotal = total != null && Number.isFinite(Number(total));
+
+    if (!hasCost && !hasTotal) {
+        return 'N/A';
+    }
+
+    const pieces = [];
+
+    if (hasCost) {
+        pieces.push(`${formatCurrency(Number(costPerSf))} /SF`);
+    }
+
+    if (hasTotal) {
+        pieces.push(`${formatCurrency(Number(total))} total`);
+    }
+
+    return pieces.join(' · ');
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -1567,6 +1887,21 @@ function displayPackageComparisonChart() {
             }
         }
     });
+}
+
+const validateBtn = document.getElementById('validateProjectBtn');
+if (validateBtn) {
+    validateBtn.addEventListener('click', openValidateModal);
+}
+
+const validationHistoryBtn = document.getElementById('validationHistoryBtn');
+if (validationHistoryBtn) {
+    validationHistoryBtn.addEventListener('click', openValidationHistoryModal);
+}
+
+const validateProjectForm = document.getElementById('validateProjectForm');
+if (validateProjectForm) {
+    validateProjectForm.addEventListener('submit', handleValidationSubmit);
 }
 
 // Edit project

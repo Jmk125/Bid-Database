@@ -119,6 +119,19 @@ function createTables() {
     )
   `);
 
+  // Project validations table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS project_validations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      validator_initials TEXT NOT NULL,
+      metrics_json TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    )
+  `);
+
   // Bids table (stores all bids received for each package)
   db.run(`
     CREATE TABLE IF NOT EXISTS bids (
