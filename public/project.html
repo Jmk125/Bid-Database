@@ -27,6 +27,7 @@
             <div class="header-controls">
                 <div class="view-tabs" role="tablist" aria-label="Project views">
                     <button id="overviewTabBtn" class="tab-toggle is-active" role="tab" aria-selected="true" aria-controls="overviewContent">Overview</button>
+                    <button id="gmpTabBtn" class="tab-toggle" role="tab" aria-selected="false" aria-controls="gmpContent">GMP/EST</button>
                     <button id="bidsTabBtn" class="tab-toggle" role="tab" aria-selected="false" aria-controls="bidsContent">Bids</button>
                 </div>
                 <div class="action-buttons">
@@ -110,6 +111,61 @@
                         <tr><td colspan="10" class="loading">Loading packages...</td></tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <div id="gmpContent" class="tab-content" role="tabpanel" aria-labelledby="gmpTabBtn" aria-hidden="true">
+            <div class="table-container">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 1rem;">
+                    <div>
+                        <h3 style="margin: 0;">GMP vs Bid Comparison</h3>
+                        <p style="margin: 0; color: #7f8c8d; font-size: 0.95rem;">Review how each package's bids stack up against the GMP or estimate.</p>
+                    </div>
+                </div>
+                <table id="gmpTable">
+                    <thead>
+                        <tr>
+                            <th>Package</th>
+                            <th>Name</th>
+                            <th>GMP / Estimate</th>
+                            <th>Low Bid</th>
+                            <th>Δ Low vs GMP</th>
+                            <th>%</th>
+                            <th>Median Bid</th>
+                            <th>Δ Median vs GMP</th>
+                            <th>%</th>
+                            <th>Δ Median vs Low</th>
+                            <th>%</th>
+                        </tr>
+                    </thead>
+                    <tbody id="gmpTableBody">
+                        <tr><td colspan="11" class="loading">Loading GMP data...</td></tr>
+                    </tbody>
+                    <tfoot>
+                        <tr id="gmpTotalsRow">
+                            <th scope="row">Totals</th>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                        </tr>
+                    </tfoot>
+                </table>
+                <div id="gmpTableEmpty" class="empty-state" style="display: none;">
+                    <h3>No GMP data yet</h3>
+                    <p>Upload a bid tab with a GMP summary or add estimated packages to compare values.</p>
+                </div>
+            </div>
+
+            <div class="chart-container" style="height: 420px;">
+                <canvas id="gmpDeltaChart"></canvas>
+                <div id="gmpChartEmpty" class="chart-empty-state">GMP delta chart will appear when estimates and bids are available.</div>
             </div>
         </div>
 

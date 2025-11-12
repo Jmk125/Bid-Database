@@ -69,7 +69,26 @@ app.get('/api/projects/:id', (req, res) => {
   
   // Get all packages for this project
   const packagesQuery = db.exec(`
-    SELECT p.*, b.canonical_name as bidder_name
+    SELECT
+      p.id,
+      p.project_id,
+      p.bid_event_id,
+      p.package_code,
+      p.package_name,
+      p.csi_division,
+      p.status,
+      p.selected_bidder_id,
+      p.selected_amount,
+      p.gmp_amount,
+      p.low_bid,
+      p.median_bid,
+      p.high_bid,
+      p.average_bid,
+      p.cost_per_sf,
+      p.override_flag,
+      p.notes,
+      p.created_at,
+      b.canonical_name as bidder_name
     FROM packages p
     LEFT JOIN bidders b ON p.selected_bidder_id = b.id
     WHERE p.project_id = ?
@@ -88,15 +107,16 @@ app.get('/api/projects/:id', (req, res) => {
       status: row[6],
       selected_bidder_id: row[7],
       selected_amount: row[8],
-      low_bid: row[9],
-      median_bid: row[10],
-      high_bid: row[11],
-      average_bid: row[12],
-      cost_per_sf: row[13],
-      override_flag: row[14],
-      notes: row[15],
-      created_at: row[16],
-      bidder_name: row[17]
+      gmp_amount: row[9],
+      low_bid: row[10],
+      median_bid: row[11],
+      high_bid: row[12],
+      average_bid: row[13],
+      cost_per_sf: row[14],
+      override_flag: row[15],
+      notes: row[16],
+      created_at: row[17],
+      bidder_name: row[18]
     }));
   }
   
@@ -240,12 +260,12 @@ app.post('/api/packages', (req, res) => {
   // For estimated packages, set low_bid, median_bid, and high_bid equal to selected_amount
   // This ensures they're included in all totals (low, median, high, and selected)
   db.run(
-    `INSERT INTO packages 
-    (project_id, package_code, package_name, csi_division, status, selected_amount, 
-     low_bid, median_bid, high_bid, average_bid, cost_per_sf) 
-    VALUES (?, ?, ?, ?, 'estimated', ?, ?, ?, ?, ?, ?)`,
-    [project_id, package_code, package_name, csi_division, selected_amount, 
-     selected_amount, selected_amount, selected_amount, selected_amount, cost_per_sf]
+    `INSERT INTO packages
+    (project_id, package_code, package_name, csi_division, status, selected_amount,
+     gmp_amount, low_bid, median_bid, high_bid, average_bid, cost_per_sf)
+    VALUES (?, ?, ?, ?, 'estimated', ?, ?, ?, ?, ?, ?, ?)`,
+    [project_id, package_code, package_name, csi_division, selected_amount,
+     selected_amount, selected_amount, selected_amount, selected_amount, selected_amount, cost_per_sf]
   );
   
   const result = db.exec('SELECT last_insert_rowid()');
@@ -261,6 +281,7 @@ app.post('/api/packages', (req, res) => {
     csi_division,
     status: 'estimated',
     selected_amount,
+    gmp_amount: selected_amount,
     low_bid: selected_amount,
     median_bid: selected_amount,
     high_bid: selected_amount,
@@ -272,16 +293,17 @@ app.post('/api/packages', (req, res) => {
 app.put('/api/packages/:id', (req, res) => {
   const db = getDatabase();
   const packageId = req.params.id;
-  const { 
-    selected_amount, 
+  const {
+    selected_amount,
+    gmp_amount,
     low_bid,
     median_bid,
     high_bid,
-    status, 
+    status,
     bidder_name,
     package_code,
     package_name,
-    notes 
+    notes
   } = req.body;
   
   // Get package's project_id to calculate cost_per_sf
@@ -311,7 +333,12 @@ app.put('/api/packages/:id', (req, res) => {
     updates.push('cost_per_sf = ?');
     values.push(cost_per_sf);
   }
-  
+
+  if (gmp_amount !== undefined) {
+    updates.push('gmp_amount = ?');
+    values.push(gmp_amount);
+  }
+
   if (low_bid !== undefined) {
     updates.push('low_bid = ?');
     values.push(low_bid);
@@ -478,7 +505,9 @@ function normalizeBidderName(name) {
 async function parseBidTab(workbook, projectId, filename) {
   const db = getDatabase();
   const XLSX = require('xlsx');
-  
+
+  const gmpEstimates = extractGmpEstimates(workbook, XLSX);
+
   // Create bid event
   db.run(
     'INSERT INTO bid_events (project_id, source_filename) VALUES (?, ?)',
@@ -575,19 +604,24 @@ async function parseBidTab(workbook, projectId, filename) {
       // Calculate cost per SF
       const cost_per_sf = currentBuildingSf ? selected_amount / currentBuildingSf : null;
       
+      const normalizedPackageCode = packageData.package_code ? packageData.package_code.toUpperCase() : null;
+      const gmp_amount = normalizedPackageCode && gmpEstimates[normalizedPackageCode] != null
+        ? gmpEstimates[normalizedPackageCode]
+        : null;
+
       // Insert package
       db.run(`
-        INSERT INTO packages 
-        (project_id, bid_event_id, package_code, package_name, csi_division, status, 
-         selected_bidder_id, selected_amount, low_bid, median_bid, high_bid, average_bid, 
+        INSERT INTO packages
+        (project_id, bid_event_id, package_code, package_name, csi_division, status,
+         selected_bidder_id, selected_amount, gmp_amount, low_bid, median_bid, high_bid, average_bid,
          cost_per_sf, override_flag)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         projectId, bidEventId, packageData.package_code, packageData.package_name,
-        csi_division, status, selected_bidder_id, selected_amount,
+        csi_division, status, selected_bidder_id, selected_amount, gmp_amount,
         low_bid, median_bid, high_bid, average_bid, cost_per_sf, override_flag
       ]);
-      
+
       const packageResult = db.exec('SELECT last_insert_rowid()');
       const packageId = packageResult[0].values[0][0];
       
@@ -605,7 +639,8 @@ async function parseBidTab(workbook, projectId, filename) {
       packagesAdded.push({
         package_code: packageData.package_code,
         package_name: packageData.package_name,
-        bid_count: packageData.bids.length
+        bid_count: packageData.bids.length,
+        gmp_amount
       });
     }
   }
@@ -738,6 +773,99 @@ function parsePackageSheet(data, sheetName) {
     package_name,
     bids
   };
+}
+
+function extractGmpEstimates(workbook, XLSX) {
+  if (!workbook || !Array.isArray(workbook.SheetNames)) {
+    return {};
+  }
+
+  // Prefer an explicit GMP Summary sheet, otherwise fall back to the first sheet containing "summary"
+  const summarySheetName = workbook.SheetNames.find(name => name.toLowerCase() === 'gmp summary')
+    || workbook.SheetNames.find(name => name.toLowerCase().includes('summary'));
+
+  if (!summarySheetName) {
+    return {};
+  }
+
+  const sheet = workbook.Sheets[summarySheetName];
+  if (!sheet) {
+    return {};
+  }
+
+  const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+  const estimates = {};
+
+  data.forEach(row => {
+    if (!Array.isArray(row) || row.length < 2) {
+      return;
+    }
+
+    const rawAmount = row[1];
+    let amount = null;
+
+    if (typeof rawAmount === 'number') {
+      amount = rawAmount;
+    } else if (typeof rawAmount === 'string') {
+      const cleaned = rawAmount
+        .replace(/[$,\s]/g, '')
+        .replace(/\(/g, '-')
+        .replace(/\)/g, '');
+      const parsed = parseFloat(cleaned);
+      if (!Number.isNaN(parsed)) {
+        amount = parsed;
+      }
+    }
+
+    if (!Number.isFinite(amount)) {
+      return;
+    }
+
+    let shouldSkipRow = false;
+    let detectedCode = null;
+
+    for (let i = 0; i < Math.min(row.length, 4); i++) {
+      const cell = row[i];
+      if (cell == null || typeof cell === 'number') {
+        continue;
+      }
+
+      const text = String(cell).trim();
+      if (!text) {
+        continue;
+      }
+
+      const lowered = text.toLowerCase();
+      if (lowered.includes('total') || lowered.includes('subtotal') || lowered.includes('allowance')) {
+        shouldSkipRow = true;
+        break;
+      }
+
+      if (lowered.includes('bid package')) {
+        continue;
+      }
+
+      const match = text.toUpperCase().match(/\b\d{2}[A-Z]?\b/);
+      if (match) {
+        detectedCode = match[0].toUpperCase();
+        break;
+      }
+    }
+
+    if (shouldSkipRow || !detectedCode) {
+      return;
+    }
+
+    if (!Number.isFinite(amount)) {
+      return;
+    }
+
+    if (estimates[detectedCode] == null) {
+      estimates[detectedCode] = amount;
+    }
+  });
+
+  return estimates;
 }
 
 function calculateMedian(arr) {

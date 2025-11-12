@@ -14,6 +14,9 @@ let projectBidsChart = null;
 let bidsChartNeedsUpdate = false;
 let currentTab = 'overview';
 let projectBidsError = false;
+let gmpDeltaChart = null;
+let gmpChartNeedsUpdate = false;
+let latestGmpChartData = null;
 
 const PACKAGE_COLOR_PALETTE = [
     '#0b3d91',
@@ -195,6 +198,7 @@ async function displayPackages() {
 
     if (packages.length === 0) {
         tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No packages yet. Upload a bid tab or add a package manually.</td></tr>';
+        renderGmpSummary();
         return;
     }
     
@@ -217,7 +221,7 @@ async function displayPackages() {
     
     tbody.innerHTML = packages.map(pkg => {
         const statusClass = `status-${pkg.status}`;
-        const statusText = pkg.status === 'bid-override' ? 'Override' : 
+        const statusText = pkg.status === 'bid-override' ? 'Override' :
                           pkg.status.charAt(0).toUpperCase() + pkg.status.slice(1);
         
         // Helper function to format amount with cost/SF
@@ -251,26 +255,321 @@ async function displayPackages() {
             </tr>
         `;
     }).join('');
+
+    renderGmpSummary();
+}
+
+function renderGmpSummary() {
+    const tbody = document.getElementById('gmpTableBody');
+    const totalsRow = document.getElementById('gmpTotalsRow');
+    const emptyState = document.getElementById('gmpTableEmpty');
+
+    if (!tbody || !totalsRow) {
+        return;
+    }
+
+    const packages = (currentProject?.packages || [])
+        .slice()
+        .sort((a, b) => (a.package_code || '').localeCompare(b.package_code || ''));
+
+    if (packages.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No packages yet. Upload a bid tab or add an estimated package to begin.</td></tr>';
+        totalsRow.innerHTML = '<th scope="row">Totals</th>' + '<td>—</td>'.repeat(10);
+        if (emptyState) {
+            emptyState.style.display = 'block';
+            const heading = emptyState.querySelector('h3');
+            const paragraph = emptyState.querySelector('p');
+            if (heading) heading.textContent = 'No packages yet';
+            if (paragraph) paragraph.textContent = 'Upload a bid tab with GMP information or add an estimated package to calculate comparisons.';
+        }
+        latestGmpChartData = null;
+        if (currentTab === 'gmp') {
+            renderGmpDeltaChart();
+        } else {
+            gmpChartNeedsUpdate = false;
+            const chartEmpty = document.getElementById('gmpChartEmpty');
+            const canvas = document.getElementById('gmpDeltaChart');
+            if (chartEmpty) chartEmpty.style.display = 'flex';
+            if (canvas) canvas.style.display = 'none';
+        }
+        return;
+    }
+
+    const chartLabels = [];
+    const lowVsGmp = [];
+    const medianVsGmp = [];
+    const medianVsLow = [];
+
+    const totals = {
+        gmp: 0,
+        gmpCount: 0,
+        low: 0,
+        lowCount: 0,
+        median: 0,
+        medianCount: 0
+    };
+
+    const rowsHtml = packages.map(pkg => {
+        const code = pkg.package_code || '—';
+        const name = pkg.package_name || '—';
+        const gmp = toFiniteNumber(pkg.gmp_amount);
+        const low = toFiniteNumber(pkg.low_bid);
+        const median = toFiniteNumber(pkg.median_bid);
+
+        if (gmp != null) {
+            totals.gmp += gmp;
+            totals.gmpCount += 1;
+        }
+
+        if (low != null) {
+            totals.low += low;
+            totals.lowCount += 1;
+        }
+
+        if (median != null) {
+            totals.median += median;
+            totals.medianCount += 1;
+        }
+
+        const gmpLowDelta = gmp != null && low != null ? low - gmp : null;
+        const gmpLowPercent = gmpLowDelta != null && isValidPercentBase(gmp)
+            ? (gmpLowDelta / gmp) * 100
+            : null;
+
+        const gmpMedianDelta = gmp != null && median != null ? median - gmp : null;
+        const gmpMedianPercent = gmpMedianDelta != null && isValidPercentBase(gmp)
+            ? (gmpMedianDelta / gmp) * 100
+            : null;
+
+        const medianLowDelta = median != null && low != null ? median - low : null;
+        const medianLowPercent = medianLowDelta != null && isValidPercentBase(low)
+            ? (medianLowDelta / low) * 100
+            : null;
+
+        const label = name && name !== '—' ? `${code} – ${name}` : code;
+        chartLabels.push(label);
+        lowVsGmp.push(gmpLowDelta != null ? gmpLowDelta : null);
+        medianVsGmp.push(gmpMedianDelta != null ? gmpMedianDelta : null);
+        medianVsLow.push(medianLowDelta != null ? medianLowDelta : null);
+
+        const gmpLowClass = getBudgetDeltaClass(gmpLowDelta);
+        const gmpMedianClass = getBudgetDeltaClass(gmpMedianDelta);
+        const medianLowClass = getSpreadDeltaClass(medianLowDelta);
+
+        return `
+            <tr>
+                <td><strong>${escapeHtml(code)}</strong></td>
+                <td>${escapeHtml(name)}</td>
+                <td>${gmp != null ? formatCurrency(gmp) : '—'}</td>
+                <td>${low != null ? formatCurrency(low) : '—'}</td>
+                <td class="${gmpLowClass}">${formatDeltaCurrency(gmpLowDelta)}</td>
+                <td class="${gmpLowClass}">${formatPercentageDelta(gmpLowPercent)}</td>
+                <td>${median != null ? formatCurrency(median) : '—'}</td>
+                <td class="${gmpMedianClass}">${formatDeltaCurrency(gmpMedianDelta)}</td>
+                <td class="${gmpMedianClass}">${formatPercentageDelta(gmpMedianPercent)}</td>
+                <td class="${medianLowClass}">${formatDeltaCurrency(medianLowDelta)}</td>
+                <td class="${medianLowClass}">${formatPercentageDelta(medianLowPercent)}</td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.innerHTML = rowsHtml;
+
+    const totalLowDelta = totals.lowCount > 0 && totals.gmpCount > 0 ? totals.low - totals.gmp : null;
+    const totalLowPercent = totalLowDelta != null && isValidPercentBase(totals.gmp)
+        ? (totalLowDelta / totals.gmp) * 100
+        : null;
+
+    const totalMedianDelta = totals.medianCount > 0 && totals.gmpCount > 0 ? totals.median - totals.gmp : null;
+    const totalMedianPercent = totalMedianDelta != null && isValidPercentBase(totals.gmp)
+        ? (totalMedianDelta / totals.gmp) * 100
+        : null;
+
+    const totalMedianLowDelta = totals.lowCount > 0 && totals.medianCount > 0 ? totals.median - totals.low : null;
+    const totalMedianLowPercent = totalMedianLowDelta != null && isValidPercentBase(totals.low)
+        ? (totalMedianLowDelta / totals.low) * 100
+        : null;
+
+    const totalLowClass = getBudgetDeltaClass(totalLowDelta);
+    const totalMedianClass = getBudgetDeltaClass(totalMedianDelta);
+    const totalMedianLowClass = getSpreadDeltaClass(totalMedianLowDelta);
+
+    totalsRow.innerHTML = `
+        <th scope="row">Totals</th>
+        <td>—</td>
+        <td>${totals.gmpCount > 0 ? formatCurrency(totals.gmp) : '—'}</td>
+        <td>${totals.lowCount > 0 ? formatCurrency(totals.low) : '—'}</td>
+        <td class="${totalLowClass}">${formatDeltaCurrency(totalLowDelta)}</td>
+        <td class="${totalLowClass}">${formatPercentageDelta(totalLowPercent)}</td>
+        <td>${totals.medianCount > 0 ? formatCurrency(totals.median) : '—'}</td>
+        <td class="${totalMedianClass}">${formatDeltaCurrency(totalMedianDelta)}</td>
+        <td class="${totalMedianClass}">${formatPercentageDelta(totalMedianPercent)}</td>
+        <td class="${totalMedianLowClass}">${formatDeltaCurrency(totalMedianLowDelta)}</td>
+        <td class="${totalMedianLowClass}">${formatPercentageDelta(totalMedianLowPercent)}</td>
+    `;
+
+    const hasAnyGmp = packages.some(pkg => toFiniteNumber(pkg.gmp_amount) != null);
+    if (emptyState) {
+        if (hasAnyGmp) {
+            emptyState.style.display = 'none';
+        } else {
+            emptyState.style.display = 'block';
+            const heading = emptyState.querySelector('h3');
+            const paragraph = emptyState.querySelector('p');
+            if (heading) heading.textContent = 'No GMP data yet';
+            if (paragraph) paragraph.textContent = 'Upload a bid tab with a GMP summary or add estimated packages to compare values.';
+        }
+    }
+
+    latestGmpChartData = {
+        labels: chartLabels,
+        lowVsGmp,
+        medianVsGmp,
+        medianVsLow
+    };
+
+    if (currentTab === 'gmp') {
+        renderGmpDeltaChart();
+        gmpChartNeedsUpdate = false;
+    } else {
+        gmpChartNeedsUpdate = true;
+        const chartEmpty = document.getElementById('gmpChartEmpty');
+        const canvas = document.getElementById('gmpDeltaChart');
+        if (chartEmpty) {
+            const hasData = latestGmpChartData && hasChartSeriesData(latestGmpChartData);
+            chartEmpty.style.display = hasData ? 'none' : 'flex';
+        }
+        if (canvas) {
+            canvas.style.display = 'none';
+        }
+    }
+}
+
+function renderGmpDeltaChart() {
+    const canvas = document.getElementById('gmpDeltaChart');
+    const emptyState = document.getElementById('gmpChartEmpty');
+
+    if (!canvas || !emptyState) {
+        return;
+    }
+
+    if (gmpDeltaChart) {
+        gmpDeltaChart.destroy();
+        gmpDeltaChart = null;
+    }
+
+    const chartData = latestGmpChartData;
+    const hasData = chartData ? hasChartSeriesData(chartData) : false;
+
+    if (!chartData || !hasData) {
+        canvas.style.display = 'none';
+        emptyState.style.display = 'flex';
+        emptyState.textContent = 'GMP delta chart will appear when estimates and bids are available.';
+        return;
+    }
+
+    if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
+        Chart.register(ChartDataLabels);
+    }
+
+    emptyState.style.display = 'none';
+    canvas.style.display = 'block';
+
+    const context = canvas.getContext('2d');
+
+    gmpDeltaChart = new Chart(context, {
+        type: 'bar',
+        data: {
+            labels: chartData.labels,
+            datasets: [
+                {
+                    label: 'Low vs GMP',
+                    data: chartData.lowVsGmp,
+                    backgroundColor: 'rgba(192, 57, 43, 0.35)',
+                    borderColor: '#c0392b',
+                    borderWidth: 1.5,
+                    order: 1
+                },
+                {
+                    label: 'Median vs GMP',
+                    data: chartData.medianVsGmp,
+                    backgroundColor: 'rgba(243, 156, 18, 0.35)',
+                    borderColor: '#f39c12',
+                    borderWidth: 1.5,
+                    order: 2
+                },
+                {
+                    label: 'Median vs Low',
+                    data: chartData.medianVsLow,
+                    backgroundColor: 'rgba(41, 128, 185, 0.35)',
+                    borderColor: '#2980b9',
+                    borderWidth: 1.5,
+                    order: 3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            scales: {
+                y: {
+                    ticks: {
+                        callback: (value) => formatCompactCurrency(value)
+                    },
+                    title: {
+                        display: true,
+                        text: 'Delta ($)'
+                    }
+                },
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 0,
+                        autoSkip: false
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const value = context.parsed.y;
+                            return `${context.dataset.label}: ${formatDeltaCurrency(value)}`;
+                        }
+                    }
+                },
+                datalabels: {
+                    anchor: 'end',
+                    align: 'end',
+                    formatter: (value) => value == null ? '' : formatCompactCurrency(value),
+                    color: '#34495e',
+                    font: {
+                        weight: '600'
+                    }
+                }
+            }
+        }
+    });
 }
 
 function setupViewTabs() {
-    const overviewBtn = document.getElementById('overviewTabBtn');
-    const bidsBtn = document.getElementById('bidsTabBtn');
-    const overviewContent = document.getElementById('overviewContent');
-    const bidsContent = document.getElementById('bidsContent');
+    const tabs = [
+        { id: 'overview', buttonId: 'overviewTabBtn', contentId: 'overviewContent' },
+        { id: 'gmp', buttonId: 'gmpTabBtn', contentId: 'gmpContent' },
+        { id: 'bids', buttonId: 'bidsTabBtn', contentId: 'bidsContent' }
+    ];
 
-    if (overviewContent) {
-        overviewContent.classList.add('is-active');
-        overviewContent.setAttribute('aria-hidden', 'false');
-    }
-
-    if (bidsContent) {
-        bidsContent.classList.remove('is-active');
-        bidsContent.setAttribute('aria-hidden', 'true');
-    }
-
-    overviewBtn?.addEventListener('click', () => setActiveTab('overview'));
-    bidsBtn?.addEventListener('click', () => setActiveTab('bids'));
+    tabs.forEach(tab => {
+        const button = document.getElementById(tab.buttonId);
+        button?.addEventListener('click', () => setActiveTab(tab.id));
+    });
 
     setActiveTab('overview');
 }
@@ -278,28 +577,39 @@ function setupViewTabs() {
 function setActiveTab(tab) {
     currentTab = tab;
 
-    const isOverview = tab === 'overview';
-    const overviewBtn = document.getElementById('overviewTabBtn');
-    const bidsBtn = document.getElementById('bidsTabBtn');
-    const overviewContent = document.getElementById('overviewContent');
-    const bidsContent = document.getElementById('bidsContent');
+    const configs = [
+        { id: 'overview', buttonId: 'overviewTabBtn', contentId: 'overviewContent' },
+        { id: 'gmp', buttonId: 'gmpTabBtn', contentId: 'gmpContent' },
+        { id: 'bids', buttonId: 'bidsTabBtn', contentId: 'bidsContent' }
+    ];
 
-    overviewBtn?.classList.toggle('is-active', isOverview);
-    overviewBtn?.setAttribute('aria-selected', isOverview ? 'true' : 'false');
-    bidsBtn?.classList.toggle('is-active', !isOverview);
-    bidsBtn?.setAttribute('aria-selected', !isOverview ? 'true' : 'false');
+    configs.forEach(({ id, buttonId, contentId }) => {
+        const isActive = id === tab;
+        const button = document.getElementById(buttonId);
+        const content = document.getElementById(contentId);
 
-    overviewContent?.classList.toggle('is-active', isOverview);
-    overviewContent?.setAttribute('aria-hidden', isOverview ? 'false' : 'true');
-    bidsContent?.classList.toggle('is-active', !isOverview);
-    bidsContent?.setAttribute('aria-hidden', isOverview ? 'true' : 'false');
+        button?.classList.toggle('is-active', isActive);
+        button?.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        content?.classList.toggle('is-active', isActive);
+        content?.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+    });
 
-    if (!isOverview) {
+    if (tab === 'bids') {
         if (bidsChartNeedsUpdate || !projectBidsChart) {
             renderProjectBidsChart(projectBidsError);
-        } else {
+        } else if (projectBidsChart) {
             projectBidsChart.resize();
         }
+        bidsChartNeedsUpdate = false;
+    }
+
+    if (tab === 'gmp') {
+        if (gmpChartNeedsUpdate || !gmpDeltaChart) {
+            renderGmpDeltaChart();
+        } else if (gmpDeltaChart) {
+            gmpDeltaChart.resize();
+        }
+        gmpChartNeedsUpdate = false;
     }
 }
 
@@ -849,6 +1159,84 @@ async function viewBids(packageId) {
         console.error('Error loading bids:', error);
         alert('Error loading bids');
     }
+}
+
+function toFiniteNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+}
+
+function isValidPercentBase(value) {
+    const num = Number(value);
+    return Number.isFinite(num) && Math.abs(num) > 0.0001;
+}
+
+function formatDeltaCurrency(value) {
+    if (value == null || Number.isNaN(value)) {
+        return '—';
+    }
+
+    const abs = Math.abs(value);
+    if (abs < 0.005) {
+        return '$0.00';
+    }
+
+    const formatted = formatCurrency(abs);
+    if (value > 0) {
+        return `+${formatted}`;
+    }
+
+    if (value < 0) {
+        return `-${formatted}`;
+    }
+
+    return '$0.00';
+}
+
+function formatPercentageDelta(value) {
+    if (value == null || Number.isNaN(value)) {
+        return '—';
+    }
+
+    const abs = Math.abs(value);
+    if (abs < 0.05) {
+        return '0.0%';
+    }
+
+    const precision = abs >= 100 ? 0 : 1;
+    const formatted = abs.toFixed(precision);
+
+    if (value > 0) {
+        return `+${formatted}%`;
+    }
+
+    if (value < 0) {
+        return `-${formatted}%`;
+    }
+
+    return '0.0%';
+}
+
+function getBudgetDeltaClass(value) {
+    if (value == null || Math.abs(value) < 0.005) {
+        return 'delta-neutral';
+    }
+
+    return value > 0 ? 'delta-negative' : 'delta-positive';
+}
+
+function getSpreadDeltaClass(value) {
+    if (value == null || Math.abs(value) < 0.005) {
+        return 'delta-neutral';
+    }
+
+    return value >= 0 ? 'delta-positive' : 'delta-negative';
+}
+
+function hasChartSeriesData(data) {
+    if (!data) return false;
+    const { lowVsGmp = [], medianVsGmp = [], medianVsLow = [] } = data;
+    return [...lowVsGmp, ...medianVsGmp, ...medianVsLow].some(value => value != null);
 }
 
 // Utility functions
