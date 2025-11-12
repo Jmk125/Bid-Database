@@ -178,7 +178,11 @@ initDatabase().then(() => {
 // Get all projects
 app.get('/api/projects', (req, res) => {
   const db = getDatabase();
-  const projects = db.exec('SELECT * FROM projects ORDER BY created_at DESC');
+  const projects = db.exec(`
+    SELECT id, name, building_sf, project_date, precon_notes, created_at, modified_at
+    FROM projects
+    ORDER BY created_at DESC
+  `);
   
   if (projects.length === 0) {
     return res.json([]);
@@ -189,8 +193,9 @@ app.get('/api/projects', (req, res) => {
     name: row[1],
     building_sf: row[2],
     project_date: row[3],
-    created_at: row[4],
-    modified_at: row[5]
+    precon_notes: row[4],
+    created_at: row[5],
+    modified_at: row[6]
   }));
   
   res.json(result);
@@ -202,7 +207,10 @@ app.get('/api/projects/:id', (req, res) => {
   const projectId = req.params.id;
   
   // Get project details
-  const projectQuery = db.exec('SELECT * FROM projects WHERE id = ?', [projectId]);
+  const projectQuery = db.exec(
+    `SELECT id, name, building_sf, project_date, precon_notes, created_at, modified_at FROM projects WHERE id = ?`,
+    [projectId]
+  );
   
   if (projectQuery.length === 0) {
     return res.status(404).json({ error: 'Project not found' });
@@ -214,8 +222,9 @@ app.get('/api/projects/:id', (req, res) => {
     name: projectRow[1],
     building_sf: projectRow[2],
     project_date: projectRow[3],
-    created_at: projectRow[4],
-    modified_at: projectRow[5]
+    precon_notes: projectRow[4],
+    created_at: projectRow[5],
+    modified_at: projectRow[6]
   };
   
   // Get all packages for this project
@@ -481,23 +490,71 @@ app.post('/api/projects', (req, res) => {
   
   saveDatabase();
   
-  res.json({ id: projectId, name, building_sf, project_date });
+  res.json({ id: projectId, name, building_sf, project_date, precon_notes: null });
 });
 
 // Update project
 app.put('/api/projects/:id', (req, res) => {
   const db = getDatabase();
-  const { name, building_sf, project_date } = req.body;
+  const { name, building_sf, project_date, precon_notes } = req.body;
   const projectId = req.params.id;
-  
+
+  const updates = [];
+  const values = [];
+
+  if (name !== undefined) {
+    updates.push('name = ?');
+    values.push(name);
+  }
+
+  if (building_sf !== undefined) {
+    updates.push('building_sf = ?');
+    values.push(building_sf === null ? null : building_sf);
+  }
+
+  if (project_date !== undefined) {
+    updates.push('project_date = ?');
+    values.push(project_date === null ? null : project_date);
+  }
+
+  if (precon_notes !== undefined) {
+    updates.push('precon_notes = ?');
+    values.push(precon_notes === null ? null : precon_notes);
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No valid fields provided for update' });
+  }
+
+  updates.push('modified_at = CURRENT_TIMESTAMP');
+
   db.run(
-    'UPDATE projects SET name = ?, building_sf = ?, project_date = ?, modified_at = CURRENT_TIMESTAMP WHERE id = ?',
-    [name, building_sf || null, project_date || null, projectId]
+    `UPDATE projects SET ${updates.join(', ')} WHERE id = ?`,
+    [...values, projectId]
   );
-  
+
   saveDatabase();
-  
-  res.json({ id: projectId, name, building_sf, project_date });
+
+  const updatedProject = db.exec(
+    `SELECT id, name, building_sf, project_date, precon_notes, created_at, modified_at FROM projects WHERE id = ?`,
+    [projectId]
+  );
+
+  if (updatedProject.length === 0 || updatedProject[0].values.length === 0) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+
+  const row = updatedProject[0].values[0];
+
+  res.json({
+    id: row[0],
+    name: row[1],
+    building_sf: row[2],
+    project_date: row[3],
+    precon_notes: row[4],
+    created_at: row[5],
+    modified_at: row[6]
+  });
 });
 
 // Delete project

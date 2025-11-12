@@ -21,6 +21,7 @@ let latestComputedMetrics = null;
 let validationHistory = [];
 let validationHistoryLoaded = false;
 let isSavingValidation = false;
+let isSavingPreconNotes = false;
 
 const PACKAGE_COLOR_PALETTE = [
     '#0b3d91',
@@ -45,6 +46,8 @@ async function loadProject() {
         // Update page title
         document.getElementById('projectName').textContent = currentProject.name;
         document.title = `${currentProject.name} - Bid Database`;
+
+        updatePreconNotesButton();
 
         // Display metrics
         displayMetrics();
@@ -199,6 +202,21 @@ function updateValidationControls() {
     }
 }
 
+function updatePreconNotesButton() {
+    const notesBtn = document.getElementById('preconNotesBtn');
+
+    if (!notesBtn) {
+        return;
+    }
+
+    const notesValue = typeof currentProject?.precon_notes === 'string' ? currentProject.precon_notes.trim() : '';
+    const hasNotes = Boolean(notesValue);
+
+    notesBtn.classList.toggle('has-notes', hasNotes);
+    notesBtn.title = hasNotes ? 'View pre-con notes' : 'Add pre-con notes';
+    notesBtn.setAttribute('aria-label', hasNotes ? 'View pre-con notes' : 'Add pre-con notes');
+}
+
 function openValidateModal() {
     if (!currentProject) return;
 
@@ -301,6 +319,95 @@ function closeValidationHistoryModal() {
     const modal = document.getElementById('validationHistoryModal');
     if (modal) {
         modal.style.display = 'none';
+    }
+}
+
+function openPreconNotesModal() {
+    if (!currentProject) {
+        return;
+    }
+
+    const modal = document.getElementById('preconNotesModal');
+    const textarea = document.getElementById('preconNotesInput');
+    const saveBtn = document.getElementById('savePreconNotesBtn');
+
+    if (textarea) {
+        textarea.value = currentProject.precon_notes || '';
+    }
+
+    if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Notes';
+    }
+
+    isSavingPreconNotes = false;
+
+    if (modal) {
+        modal.style.display = 'block';
+        if (textarea) {
+            textarea.focus();
+        }
+    }
+}
+
+function closePreconNotesModal() {
+    const modal = document.getElementById('preconNotesModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+
+    const saveBtn = document.getElementById('savePreconNotesBtn');
+    if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Notes';
+    }
+
+    isSavingPreconNotes = false;
+}
+
+async function handlePreconNotesSubmit(event) {
+    event.preventDefault();
+
+    if (isSavingPreconNotes) {
+        return;
+    }
+
+    const textarea = document.getElementById('preconNotesInput');
+    const saveBtn = document.getElementById('savePreconNotesBtn');
+    const notesValue = textarea ? textarea.value.trim() : '';
+
+    try {
+        isSavingPreconNotes = true;
+
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+        }
+
+        const response = await fetch(`${API_BASE}/projects/${projectId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                precon_notes: notesValue ? notesValue : null
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to save pre-con notes');
+        }
+
+        closePreconNotesModal();
+        await loadProject();
+    } catch (error) {
+        console.error('Error saving pre-con notes:', error);
+        alert('Error saving pre-con notes');
+    } finally {
+        isSavingPreconNotes = false;
+
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Notes';
+        }
     }
 }
 
@@ -1897,6 +2004,16 @@ if (validateBtn) {
 const validationHistoryBtn = document.getElementById('validationHistoryBtn');
 if (validationHistoryBtn) {
     validationHistoryBtn.addEventListener('click', openValidationHistoryModal);
+}
+
+const preconNotesBtn = document.getElementById('preconNotesBtn');
+if (preconNotesBtn) {
+    preconNotesBtn.addEventListener('click', openPreconNotesModal);
+}
+
+const preconNotesForm = document.getElementById('preconNotesForm');
+if (preconNotesForm) {
+    preconNotesForm.addEventListener('submit', handlePreconNotesSubmit);
 }
 
 const validateProjectForm = document.getElementById('validateProjectForm');

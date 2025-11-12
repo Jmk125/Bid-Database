@@ -46,6 +46,17 @@ function ensureSchema() {
     console.log('Added gmp_amount column to packages table');
   }
 
+  // Ensure projects table has precon notes column
+  const projectPragma = db.exec('PRAGMA table_info(projects)');
+  const projectColumns = projectPragma[0]?.values || [];
+  const hasPreconNotes = projectColumns.some(column => column[1] === 'precon_notes');
+
+  if (!hasPreconNotes) {
+    db.run('ALTER TABLE projects ADD COLUMN precon_notes TEXT');
+    schemaUpdated = true;
+    console.log('Added precon_notes column to projects table');
+  }
+
   return schemaUpdated;
 }
 
@@ -57,6 +68,7 @@ function createTables() {
       name TEXT NOT NULL,
       building_sf REAL,
       project_date TEXT,
+      precon_notes TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       modified_at TEXT DEFAULT CURRENT_TIMESTAMP
     )

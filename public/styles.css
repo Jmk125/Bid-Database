@@ -158,6 +158,21 @@ body {
     background-color: #7f8c8d;
 }
 
+.btn-notes {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.btn-notes.has-notes {
+    background-color: #f39c12;
+    color: #fff;
+}
+
+.btn-notes.has-notes:hover {
+    background-color: #d68910;
+}
+
 .btn-danger {
     background-color: #e74c3c;
     color: white;
