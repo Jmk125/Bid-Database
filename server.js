@@ -1349,25 +1349,41 @@ app.get('/api/bidders/:id/history', (req, res) => {
   const bidderId = req.params.id;
 
   const query = db.exec(`
+    WITH bidder_stats AS (
+      SELECT
+        bid.id,
+        bid.package_id,
+        bid.bidder_id,
+        bid.bid_amount,
+        bid.was_selected,
+        COUNT(*) OVER (PARTITION BY bid.package_id) AS total_bids,
+        RANK() OVER (
+          PARTITION BY bid.package_id
+          ORDER BY
+            CASE WHEN bid.bid_amount IS NULL THEN 1 ELSE 0 END,
+            bid.bid_amount ASC
+        ) AS bid_rank
+      FROM bids bid
+    )
     SELECT
       proj.name,
       proj.project_date,
       pkg.package_code,
       pkg.package_name,
-      bid.bid_amount,
+      stats.bid_amount,
       proj.building_sf,
-      bid.was_selected,
-      COUNT(*) OVER (PARTITION BY bid.package_id) AS total_bids,
-      RANK() OVER (PARTITION BY bid.package_id ORDER BY bid.bid_amount ASC) AS bid_rank,
+      stats.was_selected,
+      stats.total_bids,
+      stats.bid_rank,
       CASE
         WHEN pkg.selected_amount IS NOT NULL AND pkg.selected_amount > 0
-          THEN ((bid.bid_amount - pkg.selected_amount) * 100.0) / pkg.selected_amount
+          THEN ((stats.bid_amount - pkg.selected_amount) * 100.0) / pkg.selected_amount
         ELSE NULL
       END AS percent_from_selected
-    FROM bids bid
-    JOIN packages pkg ON bid.package_id = pkg.id
+    FROM bidder_stats stats
+    JOIN packages pkg ON stats.package_id = pkg.id
     JOIN projects proj ON pkg.project_id = proj.id
-    WHERE bid.bidder_id = ?
+    WHERE stats.bidder_id = ?
     ORDER BY
       (proj.project_date IS NULL),
       proj.project_date DESC,
