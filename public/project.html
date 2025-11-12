@@ -70,11 +70,16 @@
 
             <!-- Charts -->
             <div style="margin-top: 2rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;">
                     <h3 style="margin: 0;">Bid Analysis Charts</h3>
-                    <div>
-                        <label for="pieChartDataSource" style="margin-right: 0.5rem; font-weight: 600;">Pie Chart Data:</label>
-                        <select id="pieChartDataSource" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; justify-content: flex-end;">
+                        <label for="pieChartGrouping" style="font-weight: 600;">Pie Chart View:</label>
+                        <select id="pieChartGrouping" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; min-width: 170px;">
+                            <option value="division">By CSI Division</option>
+                            <option value="category">By Category</option>
+                        </select>
+                        <label for="pieChartDataSource" style="font-weight: 600;">Data:</label>
+                        <select id="pieChartDataSource" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;">
                             <option value="median">Median Bids</option>
                             <option value="low">Low Bids</option>
                             <option value="high">High Bids</option>

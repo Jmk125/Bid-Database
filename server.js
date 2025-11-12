@@ -1356,7 +1356,14 @@ app.get('/api/bidders/:id/history', (req, res) => {
       pkg.package_name,
       bid.bid_amount,
       proj.building_sf,
-      bid.was_selected
+      bid.was_selected,
+      COUNT(*) OVER (PARTITION BY bid.package_id) AS total_bids,
+      RANK() OVER (PARTITION BY bid.package_id ORDER BY bid.bid_amount ASC) AS bid_rank,
+      CASE
+        WHEN pkg.selected_amount IS NOT NULL AND pkg.selected_amount > 0
+          THEN ((bid.bid_amount - pkg.selected_amount) * 100.0) / pkg.selected_amount
+        ELSE NULL
+      END AS percent_from_selected
     FROM bids bid
     JOIN packages pkg ON bid.package_id = pkg.id
     JOIN projects proj ON pkg.project_id = proj.id
@@ -1373,6 +1380,9 @@ app.get('/api/bidders/:id/history', (req, res) => {
 
   const history = query[0].values.map(row => {
     const cost_per_sf = row[5] ? row[4] / row[5] : null;
+    const totalBids = row[7] != null ? Number(row[7]) : null;
+    const bidRank = row[8] != null ? Number(row[8]) : null;
+    const percentFromSelected = row[9] != null ? Number(row[9]) : null;
 
     return {
       project_name: row[0],
@@ -1381,7 +1391,10 @@ app.get('/api/bidders/:id/history', (req, res) => {
       package_name: row[3],
       bid_amount: row[4],
       cost_per_sf,
-      was_selected: row[6] === 1
+      was_selected: row[6] === 1,
+      placement_rank: bidRank,
+      placement_total: totalBids,
+      percent_from_selected: percentFromSelected
     };
   });
 
