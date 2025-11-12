@@ -472,74 +472,118 @@ function renderProjectBidsChart(hasError = false) {
 
     canvas.style.display = 'block';
 
-    const maxBidCount = Math.max(...packagesWithBids.map(pkg => pkg.bids.length));
-    const labels = Array.from({ length: maxBidCount }, (_, idx) => `Bid ${idx + 1}`);
+    const flattenedBids = [];
 
-    const datasets = packagesWithBids.map((pkg, index) => {
-        const sortedBids = [...pkg.bids].sort((a, b) => a.bid_amount - b.bid_amount);
-        const baseColor = PACKAGE_COLOR_PALETTE[index % PACKAGE_COLOR_PALETTE.length];
-        const data = labels.map((_, bidIdx) => sortedBids[bidIdx] ? sortedBids[bidIdx].bid_amount : null);
-        const backgroundColor = labels.map((_, bidIdx) => {
-            if (!sortedBids[bidIdx]) return 'rgba(0,0,0,0)';
-            const lightenFactor = Math.min(0.75, 0.05 + bidIdx * 0.12);
-            return lightenColor(baseColor, lightenFactor);
+    packagesWithBids.forEach((pkg, pkgIndex) => {
+        const numericBids = [...pkg.bids]
+            .map(bid => ({
+                ...bid,
+                bid_amount: bid && bid.bid_amount != null ? Number(bid.bid_amount) : null
+            }))
+            .filter(bid => bid && bid.bid_amount != null && Number.isFinite(bid.bid_amount))
+            .sort((a, b) => a.bid_amount - b.bid_amount);
+
+        if (!numericBids.length) {
+            return;
+        }
+
+        const baseColor = PACKAGE_COLOR_PALETTE[pkgIndex % PACKAGE_COLOR_PALETTE.length];
+        const packageCode = pkg.package_code || '—';
+        const packageLabel = pkg.package_name ? `${packageCode} – ${pkg.package_name}` : packageCode;
+
+        numericBids.forEach((bid, bidIndex) => {
+            const rankPosition = bidIndex + 1;
+            const totalBids = numericBids.length;
+            const isSelected = bid.was_selected || (pkg.selected_bidder_id && bid.bidder_id === pkg.selected_bidder_id);
+            const lightenFactor = totalBids === 1
+                ? 0.25
+                : Math.min(0.85, 0.18 + (bidIndex / Math.max(totalBids - 1, 1)) * 0.55);
+            const backgroundColor = lightenColor(baseColor, lightenFactor);
+            const borderColor = isSelected ? '#2c3e50' : lightenColor(baseColor, 0.08);
+
+            flattenedBids.push({
+                label: `${packageCode} – ${bid.bidder_name || 'Unknown Bidder'}`,
+                packageLabel,
+                packageCode,
+                bidderName: bid.bidder_name || 'Unknown Bidder',
+                bidAmount: bid.bid_amount,
+                isSelected,
+                rankPosition,
+                totalBids,
+                backgroundColor,
+                borderColor,
+                borderWidth: isSelected ? 2 : 1
+            });
         });
-
-        return {
-            label: pkg.package_name ? `${pkg.package_code} – ${pkg.package_name}` : pkg.package_code,
-            data,
-            backgroundColor,
-            borderColor: baseColor,
-            borderWidth: 1,
-            borderRadius: 6,
-            maxBarThickness: 42,
-            bidDetails: sortedBids,
-            selectedBidderId: pkg.selected_bidder_id,
-            spanGaps: true
-        };
     });
+
+    if (!flattenedBids.length) {
+        if (emptyState) {
+            emptyState.style.display = 'flex';
+            emptyState.textContent = 'Bids with amounts will appear here once they are uploaded.';
+        }
+        canvas.style.display = 'none';
+        bidsChartNeedsUpdate = false;
+        return;
+    }
+
+    const labels = flattenedBids.map(entry => entry.label);
+    const data = flattenedBids.map(entry => entry.bidAmount);
+    const backgroundColors = flattenedBids.map(entry => entry.backgroundColor);
+    const borderColors = flattenedBids.map(entry => entry.borderColor);
+    const borderWidths = flattenedBids.map(entry => entry.borderWidth);
 
     projectBidsChart = new Chart(canvas, {
         type: 'bar',
         data: {
             labels,
-            datasets
+            datasets: [{
+                label: 'Bid Amount',
+                data,
+                backgroundColor: backgroundColors,
+                borderColor: borderColors,
+                borderWidth: borderWidths,
+                hoverBackgroundColor: backgroundColors,
+                hoverBorderColor: '#2c3e50',
+                borderRadius: 6,
+                maxBarThickness: 28,
+                bidMeta: flattenedBids
+            }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false
+            layout: {
+                padding: {
+                    left: 4,
+                    right: 12,
+                    bottom: 16
+                }
             },
             plugins: {
                 legend: {
-                    position: 'top',
-                    labels: {
-                        usePointStyle: true,
-                        padding: 16,
-                        color: '#2c3e50'
-                    }
+                    display: false
                 },
                 tooltip: {
                     callbacks: {
                         title: (items) => {
                             if (!items.length) return '';
-                            return `Bid Rank ${items[0].dataIndex + 1}`;
+                            const meta = items[0].dataset.bidMeta?.[items[0].dataIndex];
+                            return meta ? meta.packageLabel : '';
                         },
                         label: (context) => {
-                            const dataset = context.dataset;
-                            const bid = dataset.bidDetails?.[context.dataIndex];
-                            if (!bid) {
-                                return 'No bid recorded';
+                            const meta = context.dataset.bidMeta?.[context.dataIndex];
+                            if (!meta) {
+                                return formatCurrency(context.parsed.y);
                             }
 
-                            const bidderName = bid.bidder_name || 'Unknown Bidder';
-                            const amount = formatCurrency(bid.bid_amount);
-                            const isSelected = bid.was_selected || (dataset.selectedBidderId && bid.bidder_id === dataset.selectedBidderId);
-                            const packageLabel = dataset.label || 'Package';
-
-                            return `${packageLabel}: ${bidderName} – ${amount}${isSelected ? ' (Selected)' : ''}`;
+                            const selectedNote = meta.isSelected ? ' (Selected)' : '';
+                            return `${meta.bidderName}: ${formatCurrency(meta.bidAmount)}${selectedNote}`;
+                        },
+                        afterLabel: (context) => {
+                            const meta = context.dataset.bidMeta?.[context.dataIndex];
+                            if (!meta) return '';
+                            return `Rank ${meta.rankPosition} of ${meta.totalBids}`;
                         }
                     }
                 }
@@ -547,11 +591,21 @@ function renderProjectBidsChart(hasError = false) {
             scales: {
                 x: {
                     ticks: {
-                        color: '#34495e'
+                        color: '#34495e',
+                        autoSkip: false,
+                        maxRotation: 60,
+                        minRotation: 40,
+                        callback(value) {
+                            const label = this.getLabelForValue(value);
+                            return label.length > 32 ? `${label.slice(0, 32)}…` : label;
+                        }
+                    },
+                    grid: {
+                        display: false
                     },
                     title: {
                         display: true,
-                        text: 'Bid rank (low → high)',
+                        text: 'Bid packages (ordered by package, low → high bidder)',
                         color: '#34495e',
                         font: {
                             weight: '600'
