@@ -303,12 +303,22 @@ function renderValidationMetricsSummary() {
 
 async function openValidationHistoryModal() {
     const modal = document.getElementById('validationHistoryModal');
-    const content = document.getElementById('validationHistoryContent');
-
-    if (!modal || !content) return;
+    if (!modal) return;
 
     modal.style.display = 'block';
-    content.innerHTML = '<div class="loading">Loading history...</div>';
+    await loadValidationHistoryEntries({ showLoading: true });
+}
+
+async function loadValidationHistoryEntries({ showLoading = false } = {}) {
+    const content = document.getElementById('validationHistoryContent');
+
+    if (!content) {
+        return;
+    }
+
+    if (showLoading) {
+        content.innerHTML = '<div class="loading">Loading history...</div>';
+    }
 
     try {
         const response = await apiFetch(`${API_BASE}/projects/${projectId}/validations`);
@@ -323,6 +333,7 @@ async function openValidationHistoryModal() {
         updateValidationControls();
     } catch (error) {
         console.error('Error loading validation history:', error);
+        validationHistoryLoaded = false;
         content.innerHTML = '<div class="empty-state"><h3>Error loading validation history</h3><p>Please try again.</p></div>';
     }
 }
@@ -454,9 +465,10 @@ function renderValidationHistory(entries) {
             <article class="validation-history-item${isCurrent ? ' is-current' : ''}">
                 <div class="validation-history-header">
                     <div class="validator">${escapeHtml(entry.validator_initials)}</div>
-                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem;">
+                    <div class="validation-history-controls">
                         <span class="${statusClass}">${statusLabel}</span>
                         <span class="timestamp">${formatDateTime(entry.created_at)}</span>
+                        <button type="button" class="validation-history-delete-btn" data-delete-validation-id="${entry.id}">Delete</button>
                     </div>
                 </div>
                 <div class="history-metrics">
@@ -470,6 +482,67 @@ function renderValidationHistory(entries) {
             </article>
         `;
     }).join('');
+
+    attachValidationHistoryEvents();
+}
+
+function attachValidationHistoryEvents() {
+    const content = document.getElementById('validationHistoryContent');
+    if (!content) return;
+
+    const deleteButtons = content.querySelectorAll('[data-delete-validation-id]');
+    deleteButtons.forEach(button => {
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            const id = Number(button.getAttribute('data-delete-validation-id'));
+            if (!id) {
+                return;
+            }
+            deleteValidationEntry(id, button);
+        });
+    });
+}
+
+async function deleteValidationEntry(validationId, triggerButton) {
+    if (!validationId) {
+        return;
+    }
+
+    const confirmed = window.confirm('Delete this validation entry? This action cannot be undone.');
+    if (!confirmed) {
+        return;
+    }
+
+    const originalText = triggerButton ? triggerButton.textContent : '';
+    if (triggerButton) {
+        triggerButton.disabled = true;
+        triggerButton.textContent = 'Deleting...';
+    }
+
+    let didDelete = false;
+
+    try {
+        const response = await apiFetch(`${API_BASE}/projects/${projectId}/validations/${validationId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete validation');
+        }
+
+        didDelete = true;
+
+        await loadProject();
+        await loadValidationHistoryEntries({ showLoading: true });
+    } catch (error) {
+        console.error('Error deleting validation:', error);
+        alert('Unable to delete validation. Please try again.');
+    } finally {
+        if (!didDelete && triggerButton && document.body.contains(triggerButton)) {
+            triggerButton.disabled = false;
+            triggerButton.textContent = originalText || 'Delete';
+        }
+    }
 }
 
 async function handleValidationSubmit(event) {

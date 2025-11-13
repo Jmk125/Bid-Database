@@ -764,6 +764,13 @@ body {
     gap: 1rem;
 }
 
+.validation-history-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+}
+
 .validation-history-header .validator {
     font-weight: 600;
     color: #2c3e50;
@@ -772,6 +779,25 @@ body {
 .validation-history-header .timestamp {
     font-size: 0.85rem;
     color: #7f8c8d;
+}
+
+.validation-history-delete-btn {
+    background: none;
+    border: none;
+    color: #c0392b;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.validation-history-delete-btn:hover:not(:disabled) {
+    color: #e74c3c;
+}
+
+.validation-history-delete-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 .status-pill {
