@@ -14,11 +14,11 @@ async function loadDashboard() {
 async function loadSummaryMetrics() {
     try {
         // Get all projects
-        const projectsResponse = await fetch(`${API_BASE}/projects`);
+        const projectsResponse = await apiFetch(`${API_BASE}/projects`);
         const projects = await projectsResponse.json();
         
         // Get all bidders
-        const biddersResponse = await fetch(`${API_BASE}/bidders`);
+        const biddersResponse = await apiFetch(`${API_BASE}/bidders`);
         const bidders = await biddersResponse.json();
         
         // Calculate totals
@@ -26,14 +26,14 @@ async function loadSummaryMetrics() {
         let totalBids = 0;
         
         for (const project of projects) {
-            const projectResponse = await fetch(`${API_BASE}/projects/${project.id}`);
+            const projectResponse = await apiFetch(`${API_BASE}/projects/${project.id}`);
             const projectData = await projectResponse.json();
             totalPackages += projectData.packages?.length || 0;
             
             // Count bids for each package
             for (const pkg of projectData.packages || []) {
                 if (pkg.status !== 'estimated') {
-                    const bidsResponse = await fetch(`${API_BASE}/packages/${pkg.id}/bids`);
+                    const bidsResponse = await apiFetch(`${API_BASE}/packages/${pkg.id}/bids`);
                     const bids = await bidsResponse.json();
                     totalBids += bids.length;
                 }
@@ -54,7 +54,7 @@ async function loadDivisionMetrics() {
     const tbody = document.getElementById('divisionsBody');
     
     try {
-        const response = await fetch(`${API_BASE}/aggregate/divisions`);
+        const response = await apiFetch(`${API_BASE}/aggregate/divisions`);
         const divisions = await response.json();
         
         if (divisions.length === 0) {
@@ -90,7 +90,7 @@ async function loadBidderMetrics() {
     const tbody = document.getElementById('biddersBody');
     
     try {
-        const response = await fetch(`${API_BASE}/aggregate/bidders`);
+        const response = await apiFetch(`${API_BASE}/aggregate/bidders`);
         let bidders = await response.json();
         
         if (bidders.length === 0) {
@@ -124,7 +124,7 @@ async function loadProjectsOverview() {
     const tbody = document.getElementById('projectsBody');
     
     try {
-        const response = await fetch(`${API_BASE}/projects`);
+        const response = await apiFetch(`${API_BASE}/projects`);
         const projects = await response.json();
         
         if (projects.length === 0) {
@@ -135,7 +135,7 @@ async function loadProjectsOverview() {
         // Get detailed info for each project
         const projectDetails = await Promise.all(
             projects.map(async (project) => {
-                const detailResponse = await fetch(`${API_BASE}/projects/${project.id}`);
+                const detailResponse = await apiFetch(`${API_BASE}/projects/${project.id}`);
                 return await detailResponse.json();
             })
         );

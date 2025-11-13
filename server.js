@@ -1,3 +1,4 @@
+require('./load-env');
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -6,6 +7,9 @@ const { initDatabase, getDatabase, saveDatabase } = require('./database');
 
 const app = express();
 const PORT = 3020;
+const EDIT_KEY = (process.env.EDIT_KEY || process.env.DEFAULT_EDIT_KEY || 'letmein').trim();
+const EDIT_KEY_HEADER = 'x-edit-key';
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 function toFiniteNumber(value) {
   if (value == null) {
@@ -163,6 +167,21 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
+app.use((req, res, next) => {
+  const method = req.method ? req.method.toUpperCase() : 'GET';
+
+  if (!MUTATING_METHODS.has(method)) {
+    return next();
+  }
+
+  const providedKey = (req.get(EDIT_KEY_HEADER) || '').trim();
+  if (!providedKey || providedKey !== EDIT_KEY) {
+    return res.status(401).json({ error: 'A valid edit key is required for this action.' });
+  }
+
+  next();
+});
+
 // File upload configuration
 const upload = multer({ dest: 'uploads/' });
 
@@ -199,6 +218,107 @@ app.get('/api/projects', (req, res) => {
   }));
   
   res.json(result);
+});
+
+// Compare multiple projects at once
+app.get('/api/projects/compare', (req, res) => {
+  const db = getDatabase();
+  const idsParam = req.query.ids;
+
+  if (!idsParam) {
+    return res.status(400).json({ error: 'Project IDs are required for comparison.' });
+  }
+
+  const ids = idsParam
+    .split(',')
+    .map((id) => Number(id.trim()))
+    .filter((id, index, arr) => Number.isFinite(id) && arr.indexOf(id) === index);
+
+  if (ids.length === 0) {
+    return res.status(400).json({ error: 'At least one valid project ID is required.' });
+  }
+
+  const placeholders = ids.map(() => '?').join(',');
+
+  const projectQuery = db.exec(
+    `SELECT id, name, building_sf, project_date, precon_notes, created_at, modified_at
+     FROM projects
+     WHERE id IN (${placeholders})
+     ORDER BY project_date DESC, created_at DESC`,
+    ids
+  );
+
+  if (projectQuery.length === 0) {
+    return res.json([]);
+  }
+
+  const packageQuery = db.exec(
+    `SELECT
+       id,
+       project_id,
+       package_code,
+       package_name,
+       csi_division,
+       status,
+       selected_bidder_id,
+       selected_amount,
+       low_bid,
+       median_bid,
+       high_bid
+     FROM packages
+     WHERE project_id IN (${placeholders})
+     ORDER BY project_id, package_code`,
+    ids
+  );
+
+  const packagesByProject = new Map();
+  if (packageQuery.length > 0) {
+    packageQuery[0].values.forEach((row) => {
+      const pkg = {
+        id: row[0],
+        project_id: row[1],
+        package_code: row[2],
+        package_name: row[3],
+        csi_division: row[4],
+        status: row[5],
+        selected_bidder_id: row[6],
+        selected_amount: row[7],
+        low_bid: row[8],
+        median_bid: row[9],
+        high_bid: row[10]
+      };
+
+      if (!packagesByProject.has(pkg.project_id)) {
+        packagesByProject.set(pkg.project_id, []);
+      }
+
+      packagesByProject.get(pkg.project_id).push(pkg);
+    });
+  }
+
+  const projects = projectQuery[0].values.map((row) => {
+    const project = {
+      id: row[0],
+      name: row[1],
+      building_sf: row[2],
+      project_date: row[3],
+      precon_notes: row[4],
+      created_at: row[5],
+      modified_at: row[6]
+    };
+
+    const packages = packagesByProject.get(project.id) || [];
+    const metrics = computeProjectMetrics(project, packages);
+
+    return {
+      ...project,
+      package_count: packages.length,
+      metrics,
+      packages
+    };
+  });
+
+  res.json(projects);
 });
 
 // Get single project with all packages
