@@ -79,7 +79,16 @@ To keep the server running permanently, you can set it up as a systemd service:
 
 ### Protecting edits
 
-All POST/PUT/PATCH/DELETE requests require a shared edit key. Set the `EDIT_KEY` environment variable before starting the server and share it only with trusted collaborators (the fallback development key is `letmein`, so override it in production). The UI prompts for the key the first time you attempt to make a change and stores it in session storage until you click the "🔓/🔒" toggle in the navigation bar to lock the session again.
+All POST/PUT/PATCH/DELETE requests require a shared edit key. The easiest way to change it is to copy `.env.example` to `.env` and set `EDIT_KEY` to whatever passphrase you want to share with trusted collaborators:
+
+```bash
+cp .env.example .env
+echo "EDIT_KEY=my-new-passphrase" >> .env
+```
+
+Restart the server so the new value is picked up. You can also set `EDIT_KEY` (or `DEFAULT_EDIT_KEY`) via any other environment management system if you prefer.
+
+The UI prompts for the key the first time you attempt to make a change and stores it in session storage until you click the "🔓/🔒" toggle in the navigation bar to lock the session again.
 
 ### Adding a Project
 
