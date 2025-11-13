@@ -70,16 +70,50 @@
             <div class="table-container">
                 <h3 id="bidderDetailName" style="margin-bottom: 1rem;"></h3>
                 <button onclick="closeBidderDetail()" class="btn btn-secondary btn-small" style="margin-bottom: 1rem;">← Back to List</button>
-                
+
+                <div id="bidderMetrics" class="bidder-metrics" style="display: none;">
+                    <div class="bidder-metric-card">
+                        <div class="metric-label">Total Bids</div>
+                        <div class="metric-value" id="bidderMetricTotal">—</div>
+                    </div>
+                    <div class="bidder-metric-card">
+                        <div class="metric-label">Selections</div>
+                        <div class="metric-value" id="bidderMetricWins">—</div>
+                    </div>
+                    <div class="bidder-metric-card">
+                        <div class="metric-label">Win Rate</div>
+                        <div class="metric-value" id="bidderMetricWinRate">—</div>
+                    </div>
+                    <div class="bidder-metric-card">
+                        <div class="metric-label">Avg. Placement</div>
+                        <div class="metric-value" id="bidderMetricAvgRank">—</div>
+                    </div>
+                </div>
+
                 <h4 style="margin-bottom: 0.5rem;">Bid History</h4>
                 <table id="bidderBidsTable">
                     <thead>
                         <tr>
                             <th>Project</th>
-                            <th>Project Date</th>
+                            <th>
+                                <button type="button" class="sortable-header" data-sort-field="project_date">
+                                    Project Date
+                                    <span class="sort-indicator" aria-hidden="true"></span>
+                                </button>
+                            </th>
                             <th>Package</th>
-                            <th>Bid Amount</th>
-                            <th>Status</th>
+                            <th>
+                                <button type="button" class="sortable-header" data-sort-field="bid_amount">
+                                    Bid Amount
+                                    <span class="sort-indicator" aria-hidden="true"></span>
+                                </button>
+                            </th>
+                            <th>
+                                <button type="button" class="sortable-header" data-sort-field="status">
+                                    Status
+                                    <span class="sort-indicator" aria-hidden="true"></span>
+                                </button>
+                            </th>
                             <th>Placement</th>
                         </tr>
                     </thead>

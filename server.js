@@ -1303,20 +1303,21 @@ app.get('/api/bidders', (req, res) => {
           ORDER BY alias_name
         ) alias_list
       ) as aliases,
-      COUNT(DISTINCT bid.id) as bid_count,
-      SUM(CASE WHEN bid.was_selected = 1 THEN 1 ELSE 0 END) as wins,
+      COUNT(DISTINCT CASE WHEN pkg.id IS NOT NULL THEN bid.id END) as bid_count,
+      SUM(CASE WHEN bid.was_selected = 1 AND pkg.id IS NOT NULL THEN 1 ELSE 0 END) as wins,
       (
         SELECT GROUP_CONCAT(package_code, '||')
         FROM (
-          SELECT DISTINCT pkg.package_code
+          SELECT DISTINCT pkg2.package_code
           FROM bids bid2
-          JOIN packages pkg ON pkg.id = bid2.package_id
-          WHERE bid2.bidder_id = b.id AND pkg.package_code IS NOT NULL
-          ORDER BY pkg.package_code
+          JOIN packages pkg2 ON pkg2.id = bid2.package_id
+          WHERE bid2.bidder_id = b.id AND pkg2.package_code IS NOT NULL
+          ORDER BY pkg2.package_code
         ) package_list
       ) as packages
     FROM bidders b
     LEFT JOIN bids bid ON bid.bidder_id = b.id
+    LEFT JOIN packages pkg ON pkg.id = bid.package_id
     GROUP BY b.id, b.canonical_name
     ORDER BY b.canonical_name
   `);
