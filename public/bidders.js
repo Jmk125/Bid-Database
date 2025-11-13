@@ -12,7 +12,7 @@ async function loadBidders() {
         document.getElementById('biddersBody').innerHTML =
             '<tr><td colspan="6" class="loading">Loading bidders and packages (this may take a moment)...</td></tr>';
 
-        const response = await fetch(`${API_BASE}/bidders`);
+        const response = await apiFetch(`${API_BASE}/bidders`);
         const bidders = await response.json();
 
         allBidders = bidders.map(bidder => ({
@@ -159,7 +159,7 @@ async function viewBidderDetail(bidderId, bidderName) {
     tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading bid history...</td></tr>';
 
     try {
-        const response = await fetch(`${API_BASE}/bidders/${bidderId}/history`);
+        const response = await apiFetch(`${API_BASE}/bidders/${bidderId}/history`);
         const bidHistory = await response.json();
         currentBidderHistory = Array.isArray(bidHistory) ? bidHistory : [];
         bidderHistorySort = { field: 'project_date', direction: 'desc' };
@@ -455,7 +455,7 @@ document.addEventListener('DOMContentLoaded', function() {
             for (const mergeId of selectedBidders) {
                 if (mergeId === keepId) continue;
                 
-                await fetch(`${API_BASE}/bidders/merge`, {
+                await apiFetch(`${API_BASE}/bidders/merge`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
