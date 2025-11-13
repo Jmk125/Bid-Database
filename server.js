@@ -182,6 +182,16 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get('/api/edit-key/status', (req, res) => {
+  const providedKey = (req.get(EDIT_KEY_HEADER) || '').trim();
+
+  if (!providedKey || providedKey !== EDIT_KEY) {
+    return res.status(401).json({ valid: false, error: 'Invalid edit key.' });
+  }
+
+  res.json({ valid: true });
+});
+
 // File upload configuration
 const upload = multer({ dest: 'uploads/' });
 

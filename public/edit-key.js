@@ -3,6 +3,28 @@ const EDIT_KEY_HEADER = 'x-edit-key';
 const NON_MUTATING_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 let cachedEditKey = sessionStorage.getItem(STORAGE_KEY) || '';
 
+async function verifyEditKey(candidate) {
+    if (!candidate) {
+        return false;
+    }
+
+    try {
+        const response = await fetch('/api/edit-key/status', {
+            headers: { [EDIT_KEY_HEADER]: candidate }
+        });
+
+        if (!response.ok) {
+            return false;
+        }
+
+        const payload = await response.json();
+        return !!payload.valid;
+    } catch (error) {
+        console.error('Failed to verify edit key', error);
+        throw error;
+    }
+}
+
 function setEditKey(value) {
     cachedEditKey = value;
     if (value) {
@@ -38,9 +60,22 @@ async function ensureEditKey() {
     }
 
     const input = window.prompt('Enter the shared edit key to make changes:');
-    if (input && input.trim()) {
-        setEditKey(input.trim());
-        return cachedEditKey;
+    const candidate = input ? input.trim() : '';
+
+    if (!candidate) {
+        return null;
+    }
+
+    try {
+        const isValid = await verifyEditKey(candidate);
+        if (isValid) {
+            setEditKey(candidate);
+            return cachedEditKey;
+        }
+
+        alert('That edit key was not accepted. Please try again.');
+    } catch (error) {
+        alert('Unable to verify the edit key right now. Please try again.');
     }
 
     return null;
@@ -67,7 +102,15 @@ async function apiFetch(resource, options = {}) {
     }
 
     opts.headers = headers;
-    return fetch(resource, opts);
+
+    const response = await fetch(resource, opts);
+
+    if (response.status === 401) {
+        setEditKey('');
+        throw new Error('Edit key rejected');
+    }
+
+    return response;
 }
 
 window.apiFetch = apiFetch;
