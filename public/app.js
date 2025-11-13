@@ -30,7 +30,7 @@ async function loadProjects(sortBy = 'date-desc') {
     container.innerHTML = '<div class="loading">Loading projects...</div>';
     
     try {
-        const response = await fetch(`${API_BASE}/projects`);
+        const response = await apiFetch(`${API_BASE}/projects`);
         let projects = await response.json();
         
         if (projects.length === 0) {
@@ -47,7 +47,7 @@ async function loadProjects(sortBy = 'date-desc') {
         const projectsWithDetails = await Promise.all(
             projects.map(async (project) => {
                 try {
-                    const detailResponse = await fetch(`${API_BASE}/projects/${project.id}`);
+                    const detailResponse = await apiFetch(`${API_BASE}/projects/${project.id}`);
                     const details = await detailResponse.json();
 
                     // Calculate median cost total
@@ -146,7 +146,7 @@ if (addProjectForm) {
         const project_date = document.getElementById('projectDate').value;
         
         try {
-            const response = await fetch(`${API_BASE}/projects`, {
+            const response = await apiFetch(`${API_BASE}/projects`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -177,7 +177,7 @@ async function deleteProject(id, name) {
     }
     
     try {
-        await fetch(`${API_BASE}/projects/${id}`, {
+        await apiFetch(`${API_BASE}/projects/${id}`, {
             method: 'DELETE'
         });
         

@@ -49,7 +49,7 @@ const REMAINING_CATEGORY_COLOR = '#bdc3c7';
 // Load project data
 async function loadProject() {
     try {
-        const response = await fetch(`${API_BASE}/projects/${projectId}`);
+        const response = await apiFetch(`${API_BASE}/projects/${projectId}`);
         currentProject = await response.json();
         validationHistoryLoaded = false;
         validationHistory = [];
@@ -311,7 +311,7 @@ async function openValidationHistoryModal() {
     content.innerHTML = '<div class="loading">Loading history...</div>';
 
     try {
-        const response = await fetch(`${API_BASE}/projects/${projectId}/validations`);
+        const response = await apiFetch(`${API_BASE}/projects/${projectId}/validations`);
         if (!response.ok) {
             throw new Error('Failed to load history');
         }
@@ -396,7 +396,7 @@ async function handlePreconNotesSubmit(event) {
             saveBtn.textContent = 'Saving...';
         }
 
-        const response = await fetch(`${API_BASE}/projects/${projectId}`, {
+        const response = await apiFetch(`${API_BASE}/projects/${projectId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -500,7 +500,7 @@ async function handleValidationSubmit(event) {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/projects/${projectId}/validations`, {
+        const response = await apiFetch(`${API_BASE}/projects/${projectId}/validations`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -623,7 +623,7 @@ async function displayPackages() {
     for (const pkg of packages) {
         if (pkg.status !== 'estimated') {
             try {
-                const response = await fetch(`${API_BASE}/packages/${pkg.id}/bids`);
+                const response = await apiFetch(`${API_BASE}/packages/${pkg.id}/bids`);
                 const bids = await response.json();
                 packageBidCounts[pkg.id] = bids.length;
             } catch (error) {
@@ -1102,7 +1102,7 @@ function setActiveTab(tab) {
 
 async function loadProjectBids() {
     try {
-        const response = await fetch(`${API_BASE}/projects/${projectId}/bids`);
+        const response = await apiFetch(`${API_BASE}/projects/${projectId}/bids`);
 
         if (!response.ok) {
             throw new Error('Failed to fetch project bids');
@@ -1464,7 +1464,7 @@ document.getElementById('uploadForm').onsubmit = async (e) => {
     document.getElementById('uploadProgress').style.display = 'block';
     
     try {
-        const response = await fetch(`${API_BASE}/upload-bid-tab`, {
+        const response = await apiFetch(`${API_BASE}/upload-bid-tab`, {
             method: 'POST',
             body: formData
         });
@@ -1523,7 +1523,7 @@ document.getElementById('addPackageForm').onsubmit = async (e) => {
     const selected_amount = parseFloat(document.getElementById('estimatedAmount').value);
     
     try {
-        await fetch(`${API_BASE}/packages`, {
+        await apiFetch(`${API_BASE}/packages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1581,7 +1581,7 @@ document.getElementById('editPackageForm').onsubmit = async (e) => {
     const notes = document.getElementById('editNotes').value;
     
     try {
-        await fetch(`${API_BASE}/packages/${packageId}`, {
+        await apiFetch(`${API_BASE}/packages/${packageId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1612,7 +1612,7 @@ async function deletePackage(packageId, packageCode) {
     }
     
     try {
-        await fetch(`${API_BASE}/packages/${packageId}`, {
+        await apiFetch(`${API_BASE}/packages/${packageId}`, {
             method: 'DELETE'
         });
         
@@ -1626,7 +1626,7 @@ async function deletePackage(packageId, packageCode) {
 // View bids for a package
 async function viewBids(packageId) {
     try {
-        const response = await fetch(`${API_BASE}/packages/${packageId}/bids`);
+        const response = await apiFetch(`${API_BASE}/packages/${packageId}/bids`);
         const bids = await response.json();
         
         if (bids.length === 0) {
@@ -2344,7 +2344,7 @@ document.getElementById('editProjectForm').onsubmit = async (e) => {
     const project_date = document.getElementById('editProjectDate').value;
     
     try {
-        await fetch(`${API_BASE}/projects/${projectId}`, {
+        await apiFetch(`${API_BASE}/projects/${projectId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
