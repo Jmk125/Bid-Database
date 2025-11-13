@@ -179,6 +179,21 @@ function renderComparison(projects) {
     }
 
     const ctx = document.getElementById('compareMetricChart');
+    if (!ctx) {
+        return;
+    }
+
+    const parentContainer = ctx.closest('.compare-chart');
+    if (parentContainer) {
+        const { clientWidth, clientHeight } = parentContainer;
+        if (clientWidth > 0) {
+            ctx.width = clientWidth;
+        }
+        if (clientHeight > 0) {
+            ctx.height = clientHeight;
+        }
+    }
+
     comparisonChart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -194,6 +209,7 @@ function renderComparison(projects) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
             plugins: {
                 tooltip: {
                     callbacks: {

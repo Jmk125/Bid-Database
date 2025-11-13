@@ -134,6 +134,23 @@ body {
     margin-bottom: 2rem;
 }
 
+.compare-chart {
+    position: relative;
+    height: 380px;
+    overflow: hidden;
+}
+
+.compare-chart canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+@media (max-width: 768px) {
+    .compare-chart {
+        height: 320px;
+    }
+}
+
 .chart-header {
     display: flex;
     flex-direction: column;
