@@ -122,7 +122,7 @@ function getLatestValidation(db, projectId) {
     `SELECT id, validator_initials, metrics_json, notes, created_at
      FROM project_validations
      WHERE project_id = ?
-     ORDER BY datetime(created_at) DESC
+     ORDER BY datetime(created_at) DESC, id DESC
      LIMIT 1`,
     [projectId]
   );
@@ -515,7 +515,7 @@ app.get('/api/projects/:id/validations', (req, res) => {
     `SELECT id, validator_initials, metrics_json, notes, created_at
      FROM project_validations
      WHERE project_id = ?
-     ORDER BY datetime(created_at) DESC`,
+     ORDER BY datetime(created_at) DESC, id DESC`,
     [projectId]
   );
 
@@ -599,6 +599,26 @@ app.post('/api/projects/:id/validations', (req, res) => {
     created_at: row[4],
     is_current: true
   });
+});
+
+// Delete a validation record for a project
+app.delete('/api/projects/:projectId/validations/:validationId', (req, res) => {
+  const db = getDatabase();
+  const { projectId, validationId } = req.params;
+
+  const validationQuery = db.exec(
+    `SELECT id FROM project_validations WHERE id = ? AND project_id = ?`,
+    [validationId, projectId]
+  );
+
+  if (validationQuery.length === 0 || validationQuery[0].values.length === 0) {
+    return res.status(404).json({ error: 'Validation record not found' });
+  }
+
+  db.run('DELETE FROM project_validations WHERE id = ?', [validationId]);
+  saveDatabase();
+
+  res.json({ success: true });
 });
 
 // Create new project
