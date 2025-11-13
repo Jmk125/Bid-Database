@@ -2,6 +2,7 @@ const API_BASE = '/api';
 const projectSelector = document.getElementById('projectSelector');
 const compareMetricSelect = document.getElementById('compareMetric');
 const pieDatasetSelect = document.getElementById('pieDataset');
+const pieGroupingSelect = document.getElementById('pieGrouping');
 const comparisonResults = document.getElementById('comparisonResults');
 const chartTitleEl = document.getElementById('compareChartTitle');
 const chartSubtitleEl = document.getElementById('compareChartSubtitle');
@@ -9,6 +10,27 @@ const metricDescriptionEl = document.getElementById('metricDescription');
 let comparisonChart = null;
 const projectPieCharts = new Map();
 let currentProjects = [];
+
+const CATEGORY_DEFINITIONS = [
+    { key: 'structure', name: 'Structure', divisions: ['03', '04', '05'], color: '#2c3e50' },
+    { key: 'finishes', name: 'Finishes', divisions: ['09'], color: '#3498db' },
+    { key: 'equipment', name: 'Equipment', divisions: ['11'], color: '#e74c3c' },
+    { key: 'furnishings', name: 'Furnishings', divisions: ['12'], color: '#f39c12' },
+    { key: 'mepts', name: 'MEPTS', divisions: ['21', '22', '23', '26', '27', '28'], color: '#16a085' },
+    { key: 'sitework', name: 'Sitework', divisions: ['31', '32', '33'], color: '#95a5a6' }
+];
+
+const REMAINING_CATEGORY_COLOR = '#bdc3c7';
+
+const DIVISION_COLORS = {
+    '03': '#2c3e50', '04': '#3498db', '05': '#e74c3c',
+    '06': '#f39c12', '07': '#16a085', '08': '#9b59b6',
+    '09': '#34495e', '10': '#1abc9c', '11': '#e67e22',
+    '12': '#d35400', '13': '#c0392b', '14': '#8e44ad',
+    '21': '#2980b9', '22': '#27ae60', '23': '#8e44ad',
+    '26': '#c0392b', '27': '#16a085', '28': '#e67e22',
+    '31': '#7f8c8d', '32': '#7f8c8d', '33': '#7f8c8d'
+};
 
 const METRIC_OPTIONS = {
     selected_total: {
@@ -52,9 +74,14 @@ const PIE_DATA_OPTIONS = {
     }
 };
 
-const PIE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#f1c40f', '#e67e22', '#e74c3c', '#34495e'];
-
+registerChartPlugins();
 initComparisonPage();
+
+function registerChartPlugins() {
+    if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
+        Chart.register(ChartDataLabels);
+    }
+}
 
 function initComparisonPage() {
     loadProjects();
@@ -65,6 +92,11 @@ function initComparisonPage() {
         }
     });
     pieDatasetSelect.addEventListener('change', () => {
+        if (currentProjects.length) {
+            renderComparison(currentProjects);
+        }
+    });
+    pieGroupingSelect.addEventListener('change', () => {
         if (currentProjects.length) {
             renderComparison(currentProjects);
         }
@@ -188,60 +220,68 @@ function renderProjectPieCharts(projects) {
     projectPieCharts.forEach((chart) => chart.destroy());
     projectPieCharts.clear();
 
+    const datasetKey = pieDatasetSelect.value;
+    const datasetConfig = PIE_DATA_OPTIONS[datasetKey] || PIE_DATA_OPTIONS.median;
+    const grouping = pieGroupingSelect.value || 'division';
+
     projects.forEach((project) => {
         const canvas = document.getElementById(`comparisonPie-${project.id}`);
         if (!canvas) return;
-        const datasetKey = pieDatasetSelect.value;
-        const datasetConfig = PIE_DATA_OPTIONS[datasetKey] || PIE_DATA_OPTIONS.median;
-        const totals = new Map();
-
-        (project.packages || []).forEach((pkg) => {
-            const value = datasetConfig.getValue(pkg);
-            if (!Number.isFinite(value) || value <= 0) {
-                return;
-            }
-
-            const division = pkg.csi_division ? String(pkg.csi_division) : 'Uncoded';
-            totals.set(division, (totals.get(division) || 0) + value);
-        });
-
-        let entries = Array.from(totals.entries()).sort((a, b) => b[1] - a[1]);
-        if (entries.length > 7) {
-            const top = entries.slice(0, 7);
-            const remainder = entries.slice(7).reduce((sum, [, value]) => sum + value, 0);
-            entries = [...top, ['Other', remainder]];
-        }
-
-        if (entries.length === 0) {
-            entries = [['No bid data', 1]];
-        }
-
-        const labels = entries.map(([label]) => label);
-        const data = entries.map(([, value]) => Number(value.toFixed(2)));
-        const colors = labels.map((_, index) => PIE_COLORS[index % PIE_COLORS.length]);
+        const entries = buildPieEntries(project.packages || [], grouping, datasetConfig);
+        const hasData = entries.length > 0;
+        const chartEntries = hasData
+            ? entries
+            : [{ label: 'No bid data', legendLabel: 'No bid data', color: '#d5d8dc', value: 1 }];
+        const totalValue = chartEntries.reduce((sum, entry) => sum + entry.value, 0);
 
         const chart = new Chart(canvas, {
             type: 'pie',
             data: {
-                labels,
+                labels: chartEntries.map((entry) => entry.legendLabel),
                 datasets: [
                     {
                         label: datasetConfig.label,
-                        data,
-                        backgroundColor: colors,
+                        data: chartEntries.map((entry) => Number(entry.value.toFixed(2))),
+                        backgroundColor: chartEntries.map((entry) => entry.color || REMAINING_CATEGORY_COLOR),
                         borderColor: '#ffffff',
-                        borderWidth: 1
+                        borderWidth: 2
                     }
                 ]
             },
             options: {
+                responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'bottom'
+                        position: 'right',
+                        labels: {
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            boxWidth: 12
+                        }
                     },
+                    datalabels: hasData
+                        ? {
+                              color: '#ffffff',
+                              font: { weight: 'bold', size: 11 },
+                              formatter: (value) => {
+                                  if (!totalValue) return '';
+                                  return `${((value / totalValue) * 100).toFixed(1)}%`;
+                              },
+                              display: (context) => context.raw > 0
+                          }
+                        : {
+                              display: false
+                          },
                     tooltip: {
                         callbacks: {
-                            label: (context) => `${context.label}: ${formatCurrency(context.parsed)}`
+                            label: (context) => {
+                                if (!hasData || !totalValue) {
+                                    return context.label;
+                                }
+                                const percentage = ((context.raw / totalValue) * 100).toFixed(1);
+                                return `${context.label}: ${formatCurrency(context.raw)} (${percentage}%)`;
+                            }
                         }
                     }
                 }
@@ -250,6 +290,134 @@ function renderProjectPieCharts(projects) {
 
         projectPieCharts.set(project.id, chart);
     });
+}
+
+function buildPieEntries(packages, grouping, datasetConfig) {
+    if (!packages || !packages.length) {
+        return [];
+    }
+
+    const getValue = datasetConfig.getValue;
+    if (grouping === 'category') {
+        return buildCategoryEntries(packages, getValue);
+    }
+    return buildDivisionEntries(packages, getValue);
+}
+
+function buildCategoryEntries(packages, getValue) {
+    const divisionToCategory = {};
+    CATEGORY_DEFINITIONS.forEach((cat) => {
+        cat.divisions.forEach((div) => {
+            divisionToCategory[div] = cat.key;
+        });
+    });
+
+    const categoryEntries = CATEGORY_DEFINITIONS.map((cat) => ({
+        key: cat.key,
+        label: cat.name,
+        legendLabel: cat.name,
+        color: cat.color,
+        divisions: cat.divisions.join(', '),
+        value: 0
+    }));
+    const categoryMap = new Map(categoryEntries.map((entry) => [entry.key, entry]));
+    const remainderEntry = {
+        key: 'remaining',
+        label: 'Remaining Packages',
+        legendLabel: 'Remaining Packages',
+        color: REMAINING_CATEGORY_COLOR,
+        divisions: 'Other',
+        value: 0,
+        packages: []
+    };
+
+    packages.forEach((pkg) => {
+        const rawValue = getValue(pkg);
+        const value = toFiniteNumber(rawValue);
+        if (value == null || value <= 0) {
+            return;
+        }
+
+        const division = formatDivisionKey(pkg.csi_division);
+        const targetKey = division ? divisionToCategory[division] : null;
+        const entry = targetKey ? categoryMap.get(targetKey) : remainderEntry;
+        entry.value += value;
+    });
+
+    return [...categoryEntries, remainderEntry]
+        .filter((entry) => entry.value > 0)
+        .map((entry) => ({
+            key: entry.key,
+            label: entry.label,
+            legendLabel: entry.legendLabel,
+            color: entry.color,
+            value: entry.value,
+            divisions: entry.divisions
+        }));
+}
+
+function buildDivisionEntries(packages, getValue) {
+    const divisionMap = new Map();
+
+    packages.forEach((pkg) => {
+        const rawValue = getValue(pkg);
+        const value = toFiniteNumber(rawValue);
+        if (value == null || value <= 0) {
+            return;
+        }
+
+        const division = formatDivisionKey(pkg.csi_division);
+        if (!division) {
+            return;
+        }
+
+        if (!divisionMap.has(division)) {
+            divisionMap.set(division, {
+                key: division,
+                label: `Div ${division}`,
+                legendLabel: `Div ${division}`,
+                color: DIVISION_COLORS[division] || '#95a5a6',
+                value: 0
+            });
+        }
+
+        const entry = divisionMap.get(division);
+        entry.value += value;
+    });
+
+    return Array.from(divisionMap.values()).sort((a, b) => {
+        const aVal = parseInt(a.key, 10);
+        const bVal = parseInt(b.key, 10);
+        if (Number.isNaN(aVal) || Number.isNaN(bVal)) {
+            return a.key.localeCompare(b.key);
+        }
+        return aVal - bVal;
+    });
+}
+
+function formatDivisionKey(value) {
+    if (value == null) {
+        return null;
+    }
+    const str = String(value).trim();
+    if (!str) {
+        return null;
+    }
+    if (/^\d+$/.test(str)) {
+        return str.padStart(2, '0');
+    }
+    return str;
+}
+
+function toFiniteNumber(value) {
+    if (value == null) {
+        return null;
+    }
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
 }
 
 function createProjectCard(project) {

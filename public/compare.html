@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Compare Projects - Bid Database</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
 </head>
 <body>
     <nav class="main-nav">
@@ -52,7 +53,15 @@
                     <option value="selected">Selected bids</option>
                     <option value="low">Low bids</option>
                 </select>
-                <small class="form-hint">Break down each project by CSI division.</small>
+                <small class="form-hint">Choose which bid values to visualize.</small>
+            </div>
+            <div class="form-group">
+                <label for="pieGrouping">Pie chart grouping</label>
+                <select id="pieGrouping">
+                    <option value="division" selected>By CSI division</option>
+                    <option value="category">By category</option>
+                </select>
+                <small class="form-hint">Match the project detail pie charts by toggling between divisions or standard categories.</small>
             </div>
         </section>
 
