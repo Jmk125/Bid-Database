@@ -10,6 +10,8 @@ A comprehensive web-based application for managing and analyzing construction bi
 - **Manual Package Entry**: Add estimated packages for future bid events
 - **Bidder Normalization**: Track bidder performance across projects
 - **Cross-Project Analytics**: View aggregate metrics by CSI division
+- **Project Comparison**: Compare metrics and bid mix across multiple projects side-by-side
+- **Shared Edit Key**: Require a shared passphrase before any data can be added, edited, or deleted
 - **Cost/SF Analysis**: Calculate and track cost per square foot metrics
 
 ## Installation
@@ -30,7 +32,7 @@ A comprehensive web-based application for managing and analyzing construction bi
 
 3. **Start the server**:
    ```bash
-   node server.js
+   EDIT_KEY="your-shared-key" node server.js
    ```
 
 4. **Access the application**:
@@ -75,6 +77,19 @@ To keep the server running permanently, you can set it up as a systemd service:
 
 ## Usage
 
+### Protecting edits
+
+All POST/PUT/PATCH/DELETE requests require a shared edit key. The easiest way to change it is to copy `.env.example` to `.env` and set `EDIT_KEY` to whatever passphrase you want to share with trusted collaborators:
+
+```bash
+cp .env.example .env
+echo "EDIT_KEY=my-new-passphrase" >> .env
+```
+
+Restart the server so the new value is picked up. You can also set `EDIT_KEY` (or `DEFAULT_EDIT_KEY`) via any other environment management system if you prefer.
+
+The UI prompts for the key the first time you attempt to make a change and stores it in session storage until you click the "🔓/🔒" toggle in the navigation bar to lock the session again.
+
 ### Adding a Project
 
 1. Click "+ Add Project" on the main page
@@ -117,6 +132,13 @@ To keep the server running permanently, you can set it up as a systemd service:
 2. View aggregate metrics by CSI division
 3. See bidder performance across all projects
 4. Filter and sort data as needed
+
+### Comparing Projects
+
+1. Click "Compare" in the navigation
+2. Select two or more projects from the list
+3. Choose which metric to plot on the bar chart and which data set to use in the bid-mix pies
+4. Review totals, $/SF metrics, and CSI breakdowns to benchmark projects against each other
 
 ## Bid Tab Format Requirements
 
@@ -161,6 +183,7 @@ The application uses SQLite for data storage. The database file (`bid_database.s
 ### Projects
 - `GET /api/projects` - List all projects
 - `GET /api/projects/:id` - Get project with packages
+- `GET /api/projects/compare?ids=1,2` - Compare multiple projects with computed metrics and package data
 - `POST /api/projects` - Create new project
 - `PUT /api/projects/:id` - Update project
 - `DELETE /api/projects/:id` - Delete project
