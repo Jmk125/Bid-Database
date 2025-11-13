@@ -10,12 +10,16 @@
 </head>
 <body>
     <nav class="main-nav">
-        <h1>Bid Database <span style="font-size: 0.75rem; font-weight: normal; color: #95a5a6;">v2.5</span></h1>
-        <ul>
-            <li><a href="index.html">Projects</a></li>
-            <li><a href="dashboard.html">Dashboard</a></li>
-            <li><a href="bidders.html">Bidders</a></li>
-        </ul>
+        <div class="nav-left">
+            <h1>Bid Database <span style="font-size: 0.75rem; font-weight: normal; color: #95a5a6;">v2.5</span></h1>
+            <ul>
+                <li><a href="index.html">Projects</a></li>
+                <li><a href="compare.html">Compare</a></li>
+                <li><a href="dashboard.html">Dashboard</a></li>
+                <li><a href="bidders.html">Bidders</a></li>
+            </ul>
+        </div>
+        <button type="button" class="edit-lock-toggle" data-edit-lock-toggle aria-pressed="false">🔒 Locked</button>
     </nav>
 
     <div class="container">
@@ -390,6 +394,7 @@
         </div>
     </div>
 
+    <script src="edit-key.js"></script>
     <script src="project.js"></script>
 </body>
 </html>
