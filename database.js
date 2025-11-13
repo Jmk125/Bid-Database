@@ -21,6 +21,9 @@ async function initDatabase() {
     console.log('Created new database');
   }
 
+  // Enforce foreign key cascades so deletions clean up related records
+  db.run('PRAGMA foreign_keys = ON');
+
   const schemaUpdated = ensureSchema();
 
   if (!databaseExists || schemaUpdated) {
@@ -34,6 +37,7 @@ function ensureSchema() {
   let schemaUpdated = false;
 
   createTables();
+  cleanupOrphanedRecords();
 
   // Ensure packages table has GMP estimate column
   const pragmaResult = db.exec('PRAGMA table_info(packages)');
@@ -158,6 +162,33 @@ function createTables() {
   `);
 
   console.log('Database tables ensured');
+}
+
+function cleanupOrphanedRecords() {
+  if (!db) {
+    return;
+  }
+
+  // Remove bids whose packages were deleted or belong to deleted projects
+  db.run(`
+    DELETE FROM bids
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM packages pkg
+      JOIN projects proj ON proj.id = pkg.project_id
+      WHERE pkg.id = bids.package_id
+    )
+  `);
+
+  // Remove packages that belong to deleted projects
+  db.run(`
+    DELETE FROM packages
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM projects proj
+      WHERE proj.id = packages.project_id
+    )
+  `);
 }
 
 function saveDatabase() {

@@ -197,6 +197,59 @@ body {
     gap: 2rem;
 }
 
+.bidder-metrics {
+    display: none;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.bidder-metric-card {
+    background-color: #f8f9fa;
+    border: 1px solid #e1e4e8;
+    border-radius: 8px;
+    padding: 1rem;
+    min-height: 90px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.bidder-metric-card .metric-label {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.35rem;
+}
+
+.bidder-metric-card .metric-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.sortable-header {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    cursor: pointer;
+}
+
+.sortable-header:focus {
+    outline: 2px solid #3498db;
+    outline-offset: 2px;
+}
+
+.sort-indicator {
+    font-size: 0.75rem;
+    color: #7f8c8d;
+}
+
 @media (min-width: 992px) {
     .bids-overview {
         grid-template-columns: minmax(0, 5fr) minmax(0, 2fr);

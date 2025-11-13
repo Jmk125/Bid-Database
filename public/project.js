@@ -610,7 +610,7 @@ async function displayPackages() {
     const packages = currentProject.packages || [];
 
     if (packages.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No packages yet. Upload a bid tab or add a package manually.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No packages yet. Upload a bid tab or add a package manually.</td></tr>';
         renderGmpSummary();
         return;
     }
@@ -646,6 +646,7 @@ async function displayPackages() {
         const lowAmountCell = formatAmountWithSf(pkg.low_bid);
         const medianAmountCell = formatAmountWithSf(pkg.median_bid);
         const highAmountCell = formatAmountWithSf(pkg.high_bid);
+        const bidSpreadCell = formatBidSpread(pkg.low_bid, pkg.high_bid);
 
         return `
             <tr>
@@ -657,6 +658,7 @@ async function displayPackages() {
                 <td>${lowAmountCell}</td>
                 <td>${medianAmountCell}</td>
                 <td>${highAmountCell}</td>
+                <td>${bidSpreadCell}</td>
                 <td style="text-align: center;">${bidCountCell}</td>
                 <td style="white-space: nowrap;">
                     <button class="btn btn-tiny btn-secondary" onclick="editPackage(${pkg.id})">Edit</button>
@@ -1766,6 +1768,26 @@ function formatPercentageDelta(value) {
     }
 
     return '0.0%';
+}
+
+function formatBidSpread(lowBid, highBid) {
+    const low = toFiniteNumber(lowBid);
+    const high = toFiniteNumber(highBid);
+
+    if (low == null || high == null || !Number.isFinite(low) || !Number.isFinite(high) || low <= 0) {
+        return '—';
+    }
+
+    const spreadPercent = ((high - low) / low) * 100;
+    if (!Number.isFinite(spreadPercent) || spreadPercent < 0) {
+        return '—';
+    }
+
+    if (spreadPercent < 0.05) {
+        return '0.0%';
+    }
+
+    return formatPercentValue(spreadPercent, { includePlus: false });
 }
 
 function getBudgetDeltaClass(value) {
