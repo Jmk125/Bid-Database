@@ -2,6 +2,8 @@ const API_BASE = '/api';
 
 let allBidders = [];
 let selectedBidders = new Set();
+let currentBidderHistory = [];
+let bidderHistorySort = { field: 'project_date', direction: 'desc' };
 
 // Load all bidders
 async function loadBidders() {
@@ -147,7 +149,7 @@ function updateMergeSection() {
 async function viewBidderDetail(bidderId, bidderName) {
     document.getElementById('bidderDetailName').textContent = `${bidderName} - Bid History`;
     document.getElementById('bidderDetail').style.display = 'block';
-    
+
     // Scroll to the details section
     setTimeout(() => {
         document.getElementById('bidderDetail').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -155,43 +157,34 @@ async function viewBidderDetail(bidderId, bidderName) {
     
     const tbody = document.getElementById('bidderBidsBody');
     tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading bid history...</td></tr>';
-    
+
     try {
         const response = await fetch(`${API_BASE}/bidders/${bidderId}/history`);
         const bidHistory = await response.json();
+        currentBidderHistory = Array.isArray(bidHistory) ? bidHistory : [];
+        bidderHistorySort = { field: 'project_date', direction: 'desc' };
 
-        if (!bidHistory || bidHistory.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No bids found for this bidder</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = bidHistory.map(bid => `
-            <tr>
-                <td>${escapeHtml(bid.project_name)}</td>
-                <td>${bid.project_date ? formatDate(bid.project_date) : '—'}</td>
-                <td><strong>${escapeHtml(bid.package_code)}</strong> ${escapeHtml(bid.package_name)}</td>
-                <td>
-                    <div class="amount-with-sf">
-                        <div class="amount">${formatCurrency(bid.bid_amount)}</div>
-                        ${bid.cost_per_sf !== null ? `<div class="sf-cost">${formatCurrency(bid.cost_per_sf)}/SF</div>` : ''}
-                    </div>
-                </td>
-                <td>
-                    ${bid.was_selected
-                        ? '<span class="status-badge status-bid">Selected</span>'
-                        : '<span class="status-badge status-estimated">Not Selected</span>'}
-                </td>
-                <td>${renderPlacementCell(bid)}</td>
-            </tr>
-        `).join('');
+        renderBidderHistoryTable();
+        updateBidderMetrics();
+        updateBidderSortIndicators();
     } catch (error) {
         console.error('Error loading bidder detail:', error);
         tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Error loading bid history</td></tr>';
+        currentBidderHistory = [];
+        const metrics = document.getElementById('bidderMetrics');
+        if (metrics) {
+            metrics.style.display = 'none';
+        }
     }
 }
 
 function closeBidderDetail() {
     document.getElementById('bidderDetail').style.display = 'none';
+    currentBidderHistory = [];
+    const metrics = document.getElementById('bidderMetrics');
+    if (metrics) {
+        metrics.style.display = 'none';
+    }
 }
 
 // Utility functions
@@ -264,6 +257,144 @@ function renderPlacementCell(bid) {
     return pieces.join('');
 }
 
+function renderBidderHistoryTable() {
+    const tbody = document.getElementById('bidderBidsBody');
+
+    if (!currentBidderHistory || currentBidderHistory.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No bids found for this bidder</td></tr>';
+        return;
+    }
+
+    const sortedHistory = currentBidderHistory.slice().sort((a, b) =>
+        compareBidderHistoryEntries(a, b, bidderHistorySort.field, bidderHistorySort.direction)
+    );
+
+    tbody.innerHTML = sortedHistory.map(bid => `
+        <tr>
+            <td>${escapeHtml(bid.project_name)}</td>
+            <td>${bid.project_date ? formatDate(bid.project_date) : '—'}</td>
+            <td><strong>${escapeHtml(bid.package_code)}</strong> ${escapeHtml(bid.package_name)}</td>
+            <td>
+                <div class="amount-with-sf">
+                    <div class="amount">${bid.bid_amount != null ? formatCurrency(bid.bid_amount) : '—'}</div>
+                    ${bid.cost_per_sf !== null ? `<div class="sf-cost">${formatCurrency(bid.cost_per_sf)}/SF</div>` : ''}
+                </div>
+            </td>
+            <td>
+                ${bid.was_selected
+                    ? '<span class="status-badge status-bid">Selected</span>'
+                    : '<span class="status-badge status-estimated">Not Selected</span>'}
+            </td>
+            <td>${renderPlacementCell(bid)}</td>
+        </tr>
+    `).join('');
+}
+
+function compareBidderHistoryEntries(a, b, field, direction) {
+    const dir = direction === 'asc' ? 1 : -1;
+    let valueA = null;
+    let valueB = null;
+
+    switch (field) {
+        case 'bid_amount':
+            valueA = a.bid_amount != null ? Number(a.bid_amount) : null;
+            valueB = b.bid_amount != null ? Number(b.bid_amount) : null;
+            break;
+        case 'status':
+            valueA = a.was_selected ? 1 : 0;
+            valueB = b.was_selected ? 1 : 0;
+            break;
+        case 'project_date':
+        default:
+            valueA = a.project_date ? new Date(a.project_date).getTime() : null;
+            valueB = b.project_date ? new Date(b.project_date).getTime() : null;
+            break;
+    }
+
+    if (valueA == null && valueB == null) {
+        return 0;
+    }
+
+    if (valueA == null) {
+        return 1;
+    }
+
+    if (valueB == null) {
+        return -1;
+    }
+
+    if (valueA < valueB) {
+        return -1 * dir;
+    }
+
+    if (valueA > valueB) {
+        return 1 * dir;
+    }
+
+    return 0;
+}
+
+function setBidderHistorySort(field) {
+    if (!field) {
+        return;
+    }
+
+    if (bidderHistorySort.field === field) {
+        bidderHistorySort.direction = bidderHistorySort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        bidderHistorySort = {
+            field,
+            direction: field === 'project_date' ? 'desc' : 'asc'
+        };
+    }
+
+    renderBidderHistoryTable();
+    updateBidderSortIndicators();
+}
+
+function updateBidderSortIndicators() {
+    document.querySelectorAll('.sortable-header').forEach(button => {
+        const indicator = button.querySelector('.sort-indicator');
+        if (!indicator) {
+            return;
+        }
+
+        if (button.dataset.sortField === bidderHistorySort.field && currentBidderHistory.length > 0) {
+            indicator.textContent = bidderHistorySort.direction === 'asc' ? '▲' : '▼';
+        } else {
+            indicator.textContent = '';
+        }
+    });
+}
+
+function updateBidderMetrics() {
+    const metricsContainer = document.getElementById('bidderMetrics');
+    if (!metricsContainer) {
+        return;
+    }
+
+    const total = currentBidderHistory.length;
+    const wins = currentBidderHistory.filter(bid => bid.was_selected).length;
+    const winRate = total > 0 ? (wins / total) * 100 : null;
+    const rankValues = currentBidderHistory
+        .map(bid => Number(bid.placement_rank))
+        .filter(value => Number.isFinite(value));
+
+    const avgRank = rankValues.length > 0
+        ? rankValues.reduce((sum, value) => sum + value, 0) / rankValues.length
+        : null;
+
+    metricsContainer.style.display = 'grid';
+    document.getElementById('bidderMetricTotal').textContent = total;
+    document.getElementById('bidderMetricWins').textContent = wins;
+    document.getElementById('bidderMetricWinRate').textContent = winRate != null
+        ? `${winRate.toFixed(winRate >= 100 ? 0 : 1)}%`
+        : '—';
+    document.getElementById('bidderMetricAvgRank').textContent = avgRank != null
+        ? avgRank.toFixed(1)
+        : '—';
+}
+
 // Initialize page - attach event listeners AFTER DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Add package filter event listener
@@ -291,6 +422,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         updateMergeSection();
+    });
+
+    document.querySelectorAll('.sortable-header').forEach(button => {
+        button.addEventListener('click', () => setBidderHistorySort(button.dataset.sortField));
     });
 
     // Merge bidders button
