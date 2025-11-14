@@ -25,7 +25,8 @@ function roundToTwo(value) {
   if (num == null) {
     return null;
   }
-  return Number(num.toFixed(2));
+  const epsilon = Number.EPSILON * Math.max(1, Math.abs(num));
+  return Math.round((num + epsilon) * 100) / 100;
 }
 
 function normalizeDateValue(value) {
