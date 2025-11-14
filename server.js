@@ -28,6 +28,29 @@ function roundToTwo(value) {
   return Number(num.toFixed(2));
 }
 
+function normalizeDateValue(value) {
+  if (value == null) {
+    return null;
+  }
+
+  const trimmed = String(value).trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().split('T')[0];
+  }
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    return trimmed;
+  }
+
+  return trimmed;
+}
+
 function normalizeValidationMetrics(metrics) {
   if (!metrics) {
     return null;
@@ -35,7 +58,7 @@ function normalizeValidationMetrics(metrics) {
 
   return {
     building_sf: metrics.building_sf != null ? Number(metrics.building_sf) : null,
-    project_bid_date: metrics.project_bid_date || null,
+    project_bid_date: normalizeDateValue(metrics.project_bid_date),
     selected_total: roundToTwo(metrics.selected_total),
     selected_cost_per_sf: roundToTwo(metrics.selected_cost_per_sf),
     low_bid_total: roundToTwo(metrics.low_bid_total),
@@ -66,8 +89,19 @@ function metricsAreEqual(a, b) {
   ];
 
   return keys.every((key) => {
-    const valueA = key === 'project_bid_date' ? (a[key] || null) : toFiniteNumber(a[key]);
-    const valueB = key === 'project_bid_date' ? (b[key] || null) : toFiniteNumber(b[key]);
+    if (key === 'project_bid_date') {
+      const dateA = normalizeDateValue(a[key]);
+      const dateB = normalizeDateValue(b[key]);
+
+      if (!dateA && !dateB) {
+        return true;
+      }
+
+      return dateA === dateB;
+    }
+
+    const valueA = toFiniteNumber(a[key]);
+    const valueB = toFiniteNumber(b[key]);
 
     if (valueA == null && valueB == null) {
       return true;
@@ -77,11 +111,7 @@ function metricsAreEqual(a, b) {
       return false;
     }
 
-    if (key === 'project_bid_date') {
-      return valueA === valueB;
-    }
-
-    return Number(valueA.toFixed(2)) === Number(valueB.toFixed(2));
+    return Math.abs(valueA - valueB) <= 0.005;
   });
 }
 
