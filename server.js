@@ -949,6 +949,135 @@ app.get('/api/packages/:id/bids', (req, res) => {
   res.json(bids);
 });
 
+// Update bid amounts and selection for a package
+app.put('/api/packages/:id/bids', (req, res) => {
+  const db = getDatabase();
+  const packageId = Number(req.params.id);
+  const incomingBids = Array.isArray(req.body?.bids) ? req.body.bids : [];
+
+  if (!Number.isInteger(packageId)) {
+    return res.status(400).json({ error: 'Invalid package id.' });
+  }
+
+  if (incomingBids.length === 0) {
+    return res.status(400).json({ error: 'At least one bid update is required.' });
+  }
+
+  const packageQuery = db.exec('SELECT project_id FROM packages WHERE id = ?', [packageId]);
+  if (packageQuery.length === 0 || packageQuery[0].values.length === 0) {
+    return res.status(404).json({ error: 'Package not found.' });
+  }
+
+  const projectId = packageQuery[0].values[0][0];
+
+  const existingBidsQuery = db.exec('SELECT id, bidder_id FROM bids WHERE package_id = ?', [packageId]);
+  const existingRows = existingBidsQuery[0]?.values || [];
+
+  if (existingRows.length === 0) {
+    return res.status(400).json({ error: 'There are no bids recorded for this package yet.' });
+  }
+
+  const validBidIds = new Set(existingRows.map(row => row[0]));
+
+  const sanitizedUpdates = [];
+
+  for (const bid of incomingBids) {
+    const bidId = Number(bid.id);
+    const amount = toFiniteNumber(bid.bid_amount);
+
+    if (!Number.isInteger(bidId) || !validBidIds.has(bidId)) {
+      return res.status(400).json({ error: 'One or more bids do not belong to this package.' });
+    }
+
+    if (amount == null) {
+      return res.status(400).json({ error: 'Every bid must include a numeric amount.' });
+    }
+
+    sanitizedUpdates.push({
+      id: bidId,
+      bid_amount: roundToTwo(amount),
+      was_selected: bid.was_selected ? 1 : 0
+    });
+  }
+
+  const selectedCount = sanitizedUpdates.filter(bid => bid.was_selected).length;
+  if (selectedCount > 1) {
+    return res.status(400).json({ error: 'Only one bid can be marked as selected.' });
+  }
+
+  sanitizedUpdates.forEach(update => {
+    db.run(
+      'UPDATE bids SET bid_amount = ?, was_selected = ? WHERE id = ? AND package_id = ?',
+      [update.bid_amount, update.was_selected, update.id, packageId]
+    );
+  });
+
+  const refreshedQuery = db.exec('SELECT id, bidder_id, bid_amount, was_selected FROM bids WHERE package_id = ?', [packageId]);
+  const refreshedRows = refreshedQuery[0]?.values || [];
+
+  const amounts = refreshedRows
+    .map(row => toFiniteNumber(row[2]))
+    .filter(value => value != null)
+    .sort((a, b) => a - b);
+
+  const lowBid = amounts.length ? roundToTwo(amounts[0]) : null;
+  const highBid = amounts.length ? roundToTwo(amounts[amounts.length - 1]) : null;
+  let medianBid = null;
+
+  if (amounts.length) {
+    const mid = Math.floor(amounts.length / 2);
+    if (amounts.length % 2 === 0) {
+      medianBid = roundToTwo((amounts[mid - 1] + amounts[mid]) / 2);
+    } else {
+      medianBid = roundToTwo(amounts[mid]);
+    }
+  }
+
+  const averageBid = amounts.length
+    ? roundToTwo(amounts.reduce((sum, value) => sum + value, 0) / amounts.length)
+    : null;
+
+  const selectedRow = refreshedRows.find(row => row[3]);
+  const selectedBidderId = selectedRow ? selectedRow[1] : null;
+  const selectedAmount = selectedRow ? roundToTwo(selectedRow[2]) : null;
+
+  const projectQuery = db.exec('SELECT building_sf FROM projects WHERE id = ?', [projectId]);
+  const buildingSf = projectQuery[0]?.values?.[0]?.[0];
+  const numericBuildingSf = toFiniteNumber(buildingSf);
+  const costPerSf = numericBuildingSf && selectedAmount != null
+    ? roundToTwo(selectedAmount / numericBuildingSf)
+    : null;
+
+  db.run(
+    `UPDATE packages
+     SET selected_bidder_id = ?,
+         selected_amount = ?,
+         low_bid = ?,
+         median_bid = ?,
+         high_bid = ?,
+         average_bid = ?,
+         cost_per_sf = ?
+     WHERE id = ?`,
+    [selectedBidderId, selectedAmount, lowBid, medianBid, highBid, averageBid, costPerSf, packageId]
+  );
+
+  saveDatabase();
+
+  res.json({
+    success: true,
+    package: {
+      id: packageId,
+      selected_bidder_id: selectedBidderId,
+      selected_amount: selectedAmount,
+      low_bid: lowBid,
+      median_bid: medianBid,
+      high_bid: highBid,
+      average_bid: averageBid,
+      cost_per_sf: costPerSf
+    }
+  });
+});
+
 // ============ BID TAB UPLOAD ENDPOINT ============
 
 app.post('/api/upload-bid-tab', upload.single('file'), async (req, res) => {
