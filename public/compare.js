@@ -490,6 +490,142 @@ function getNumericValueFromContext(context) {
     return null;
 }
 
+function buildProjectMetricData(projects, metricConfig) {
+    return {
+        labels: projects.map((project) => project.name),
+        datasets: [
+            {
+                label: metricConfig.label,
+                data: projects.map((project) => metricConfig.getValue(project.metrics || {})),
+                borderRadius: 6,
+                backgroundColor: '#3498db'
+            }
+        ]
+    };
+}
+
+function buildPackageMetricData(projects, metricConfig) {
+    const packageEntries = collectPackageEntries(projects);
+    const labels = packageEntries.map((entry) => entry.label);
+
+    const datasets = projects.map((project, index) => {
+        const pkgMap = new Map();
+        (project.packages || []).forEach((pkg) => {
+            const key = buildPackageKey(pkg);
+            if (key) {
+                pkgMap.set(key, pkg);
+            }
+        });
+        const normalizedProject = {
+            ...project,
+            building_sf: toFiniteNumber(project.building_sf)
+        };
+        return {
+            label: project.name,
+            borderRadius: 4,
+            backgroundColor: getProjectColor(index),
+            data: packageEntries.map((entry) => {
+                const pkg = pkgMap.get(entry.key);
+                const rawValue = metricConfig.getValue(pkg, normalizedProject);
+                const numeric = toFiniteNumber(rawValue);
+                return numeric == null ? null : numeric;
+            })
+        };
+    });
+
+    return { labels, datasets };
+}
+
+function collectPackageEntries(projects) {
+    const entryMap = new Map();
+
+    projects.forEach((project) => {
+        (project.packages || []).forEach((pkg) => {
+            const key = buildPackageKey(pkg);
+            if (!key || entryMap.has(key)) {
+                return;
+            }
+            entryMap.set(key, {
+                key,
+                label: buildPackageLabel(pkg)
+            });
+        });
+    });
+
+    return Array.from(entryMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function buildPackageKey(pkg) {
+    if (!pkg) {
+        return null;
+    }
+    const code = (pkg.package_code || '').trim();
+    if (code) {
+        return code.toUpperCase();
+    }
+    const name = (pkg.package_name || '').trim();
+    if (name) {
+        return `NAME:${name.toUpperCase()}`;
+    }
+    return pkg.id ? `ID:${pkg.id}` : null;
+}
+
+function buildPackageLabel(pkg) {
+    if (!pkg) {
+        return 'Package';
+    }
+    const code = (pkg.package_code || '').trim();
+    const name = (pkg.package_name || '').trim();
+    if (code && name) {
+        return `${code} – ${name}`;
+    }
+    return code || name || `Package ${pkg.id}`;
+}
+
+function getProjectColor(index) {
+    if (!PROJECT_COLORS.length) {
+        return '#3498db';
+    }
+    return PROJECT_COLORS[index % PROJECT_COLORS.length];
+}
+
+function buildComparisonChartOptions(metricConfig) {
+    const scope = metricConfig.scope || METRIC_SCOPES.PROJECT;
+    const xAxisConfig =
+        scope === METRIC_SCOPES.PACKAGE
+            ? { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } }
+            : { ticks: { autoSkip: true } };
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: scope === METRIC_SCOPES.PACKAGE ? { intersect: false, mode: 'index' } : { intersect: true, mode: 'nearest' },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: (context) => {
+                        const value = typeof context.parsed?.y === 'number' ? context.parsed.y : context.parsed;
+                        const formatted = metricConfig.format(value);
+                        if (scope === METRIC_SCOPES.PACKAGE) {
+                            const datasetLabel = context.dataset?.label ? `${context.dataset.label}: ` : '';
+                            return `${datasetLabel}${formatted}`;
+                        }
+                        return formatted;
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                ticks: {
+                    callback: (value) => metricConfig.format(value)
+                },
+                beginAtZero: true
+            },
+            x: xAxisConfig
+        }
+    };
+}
+
 function renderProjectPieCharts(projects) {
     projectPieCharts.forEach((chart) => chart.destroy());
     projectPieCharts.clear();
