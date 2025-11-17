@@ -410,6 +410,191 @@ function buildComparisonChartOptions(metricConfig) {
         scope === METRIC_SCOPES.PACKAGE
             ? { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } }
             : { ticks: { autoSkip: true } };
+    const isPackageScope = scope === METRIC_SCOPES.PACKAGE;
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: scope === METRIC_SCOPES.PACKAGE ? { intersect: false, mode: 'index' } : { intersect: true, mode: 'nearest' },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: (context) => {
+                        const value = getNumericValueFromContext(context);
+                        const formatted = metricConfig.format(value);
+                        if (scope === METRIC_SCOPES.PACKAGE) {
+                            const datasetLabel = context.dataset?.label ? `${context.dataset.label}: ` : '';
+                            return `${datasetLabel}${formatted}`;
+                        }
+                        return formatted;
+                    }
+                }
+            },
+            datalabels: buildBarDatalabelOptions(metricConfig, isPackageScope)
+        },
+        scales: {
+            y: {
+                ticks: {
+                    callback: (value) => metricConfig.format(value)
+                },
+                beginAtZero: true
+            },
+            x: xAxisConfig
+        }
+    };
+}
+
+function buildBarDatalabelOptions(metricConfig, useVerticalLayout) {
+    return {
+        display: (context) => Number.isFinite(getNumericValueFromContext(context)),
+        formatter: (_, context) => {
+            const value = getNumericValueFromContext(context);
+            return Number.isFinite(value) ? metricConfig.format(value) : '';
+        },
+        anchor: (context) => {
+            const value = getNumericValueFromContext(context);
+            if (!Number.isFinite(value)) {
+                return 'end';
+            }
+            return value >= 0 ? 'end' : 'start';
+        },
+        align: (context) => {
+            const value = getNumericValueFromContext(context);
+            if (!Number.isFinite(value)) {
+                return 'end';
+            }
+            if (useVerticalLayout) {
+                return value >= 0 ? 'start' : 'end';
+            }
+            return value >= 0 ? 'end' : 'start';
+        },
+        rotation: useVerticalLayout ? -90 : 0,
+        offset: useVerticalLayout ? 6 : 4,
+        clamp: true,
+        clip: false,
+        color: '#2c3e50',
+        font: { size: useVerticalLayout ? 10 : 11, weight: useVerticalLayout ? 'bold' : 'normal' }
+    };
+}
+
+function getNumericValueFromContext(context) {
+    if (!context) {
+        return null;
+    }
+    const parsedValue = context.parsed;
+    if (typeof parsedValue === 'number') {
+        return Number.isFinite(parsedValue) ? parsedValue : null;
+    }
+    if (parsedValue && typeof parsedValue.y === 'number') {
+        return Number.isFinite(parsedValue.y) ? parsedValue.y : null;
+    }
+    return null;
+}
+
+function buildProjectMetricData(projects, metricConfig) {
+    return {
+        labels: projects.map((project) => project.name),
+        datasets: [
+            {
+                label: metricConfig.label,
+                data: projects.map((project) => metricConfig.getValue(project.metrics || {})),
+                borderRadius: 6,
+                backgroundColor: '#3498db'
+            }
+        ]
+    };
+}
+
+function buildPackageMetricData(projects, metricConfig) {
+    const packageEntries = collectPackageEntries(projects);
+    const labels = packageEntries.map((entry) => entry.label);
+
+    const datasets = projects.map((project, index) => {
+        const pkgMap = new Map();
+        (project.packages || []).forEach((pkg) => {
+            const key = buildPackageKey(pkg);
+            if (key) {
+                pkgMap.set(key, pkg);
+            }
+        });
+        const normalizedProject = {
+            ...project,
+            building_sf: toFiniteNumber(project.building_sf)
+        };
+        return {
+            label: project.name,
+            borderRadius: 4,
+            backgroundColor: getProjectColor(index),
+            data: packageEntries.map((entry) => {
+                const pkg = pkgMap.get(entry.key);
+                const rawValue = metricConfig.getValue(pkg, normalizedProject);
+                const numeric = toFiniteNumber(rawValue);
+                return numeric == null ? null : numeric;
+            })
+        };
+    });
+
+    return { labels, datasets };
+}
+
+function collectPackageEntries(projects) {
+    const entryMap = new Map();
+
+    projects.forEach((project) => {
+        (project.packages || []).forEach((pkg) => {
+            const key = buildPackageKey(pkg);
+            if (!key || entryMap.has(key)) {
+                return;
+            }
+            entryMap.set(key, {
+                key,
+                label: buildPackageLabel(pkg)
+            });
+        });
+    });
+
+    return Array.from(entryMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function buildPackageKey(pkg) {
+    if (!pkg) {
+        return null;
+    }
+    const code = (pkg.package_code || '').trim();
+    if (code) {
+        return code.toUpperCase();
+    }
+    const name = (pkg.package_name || '').trim();
+    if (name) {
+        return `NAME:${name.toUpperCase()}`;
+    }
+    return pkg.id ? `ID:${pkg.id}` : null;
+}
+
+function buildPackageLabel(pkg) {
+    if (!pkg) {
+        return 'Package';
+    }
+    const code = (pkg.package_code || '').trim();
+    const name = (pkg.package_name || '').trim();
+    if (code && name) {
+        return `${code} – ${name}`;
+    }
+    return code || name || `Package ${pkg.id}`;
+}
+
+function getProjectColor(index) {
+    if (!PROJECT_COLORS.length) {
+        return '#3498db';
+    }
+    return PROJECT_COLORS[index % PROJECT_COLORS.length];
+}
+
+function buildComparisonChartOptions(metricConfig) {
+    const scope = metricConfig.scope || METRIC_SCOPES.PROJECT;
+    const xAxisConfig =
+        scope === METRIC_SCOPES.PACKAGE
+            ? { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } }
+            : { ticks: { autoSkip: true } };
     return {
         responsive: true,
         maintainAspectRatio: false,
