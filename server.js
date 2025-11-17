@@ -303,9 +303,11 @@ app.get('/api/projects/compare', (req, res) => {
        status,
        selected_bidder_id,
        selected_amount,
+       gmp_amount,
        low_bid,
        median_bid,
-       high_bid
+       high_bid,
+       (SELECT COUNT(*) FROM bids b WHERE b.package_id = packages.id) AS bid_count
      FROM packages
      WHERE project_id IN (${placeholders})
      ORDER BY project_id, package_code`,
@@ -324,9 +326,11 @@ app.get('/api/projects/compare', (req, res) => {
         status: row[5],
         selected_bidder_id: row[6],
         selected_amount: row[7],
-        low_bid: row[8],
-        median_bid: row[9],
-        high_bid: row[10]
+        gmp_amount: row[8],
+        low_bid: row[9],
+        median_bid: row[10],
+        high_bid: row[11],
+        bid_count: row[12]
       };
 
       if (!packagesByProject.has(pkg.project_id)) {
