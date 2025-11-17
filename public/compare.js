@@ -218,6 +218,22 @@ const METRIC_OPTIONS = {
             }
             return selectedTotal / project.building_sf;
         }
+    },
+    category_median_cost_per_sf: {
+        label: 'Category Median $/SF',
+        description: 'Median bid totals per category divided by project square footage.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.CATEGORY,
+        getValue: (categoryEntry, project) => {
+            if (!categoryEntry || !project || !Number.isFinite(project.building_sf) || project.building_sf <= 0) {
+                return null;
+            }
+            const medianTotal = toFiniteNumber(categoryEntry.median_total);
+            if (medianTotal == null) {
+                return null;
+            }
+            return medianTotal / project.building_sf;
+        }
     }
 };
 
