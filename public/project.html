@@ -394,6 +394,25 @@
         </div>
     </div>
 
+    <!-- Edit Bids Modal -->
+    <div id="editBidsModal" class="modal">
+        <div class="modal-content modal-wide">
+            <span class="close" onclick="closeEditBidsModal()">&times;</span>
+            <h3 id="editBidsPackageName">Adjust Bids</h3>
+            <p class="modal-subtitle">Override bid amounts and choose the selected bidder for this package. These changes will immediately update the package totals and bidder rollups.</p>
+            <form id="editBidsForm">
+                <input type="hidden" id="editBidsPackageId">
+                <div id="editBidsList" class="edit-bids-list">
+                    <div class="empty-state">Select a package to edit its bids.</div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditBidsModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="saveEditedBidsBtn">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="edit-key.js"></script>
     <script src="project.js"></script>
 </body>
