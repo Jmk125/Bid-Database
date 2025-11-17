@@ -23,6 +23,7 @@ let validationHistory = [];
 let validationHistoryLoaded = false;
 let isSavingValidation = false;
 let isSavingPreconNotes = false;
+let isSavingBidOverrides = false;
 
 const PACKAGE_COLOR_PALETTE = [
     '#0b3d91',
@@ -1236,13 +1237,18 @@ function renderProjectBidsList(hasError = false) {
         const displayName = safeName ? `${safeCode} – ${safeName}` : safeCode;
         const bidCount = pkg.bids.length;
         const headerMeta = bidCount === 0 ? 'No bids yet' : `${bidCount} ${bidCount === 1 ? 'bid' : 'bids'}`;
+        const editButton = bidCount > 0
+            ? `<button class="btn btn-small btn-secondary" onclick="openEditBidsModal(${pkg.package_id})">Edit bids</button>`
+            : '';
 
         if (bidCount === 0) {
             return `
                 <article class="bid-package-card">
                     <div class="bid-package-header">
-                        <h4>${displayName}</h4>
-                        <span>${headerMeta}</span>
+                        <div class="bid-package-title">
+                            <h4>${displayName}</h4>
+                            <span>${headerMeta}</span>
+                        </div>
                     </div>
                     <div class="empty-state">No bids recorded for this package.</div>
                 </article>
@@ -1289,8 +1295,11 @@ function renderProjectBidsList(hasError = false) {
         return `
             <article class="bid-package-card">
                 <div class="bid-package-header">
-                    <h4>${displayName}</h4>
-                    <span>${headerMeta}</span>
+                    <div class="bid-package-title">
+                        <h4>${displayName}</h4>
+                        <span>${headerMeta}</span>
+                    </div>
+                    ${editButton}
                 </div>
                 <ul class="bid-entries">
                     ${entries}
@@ -1300,6 +1309,188 @@ function renderProjectBidsList(hasError = false) {
     }).join('');
 
     listEl.innerHTML = sections;
+}
+
+function openEditBidsModal(packageId) {
+    const modal = document.getElementById('editBidsModal');
+    const packageIdInput = document.getElementById('editBidsPackageId');
+    const listEl = document.getElementById('editBidsList');
+    const titleEl = document.getElementById('editBidsPackageName');
+    const saveBtn = document.getElementById('saveEditedBidsBtn');
+
+    if (!modal || !packageIdInput || !listEl || !titleEl || !saveBtn) {
+        return;
+    }
+
+    setEditBidsSavingState(false);
+
+    const pkg = projectBids.find(item => item.package_id === packageId);
+    if (!pkg) {
+        alert('Unable to find bids for that package. Please refresh and try again.');
+        return;
+    }
+
+    packageIdInput.value = packageId;
+    const safeCode = pkg.package_code ? escapeHtml(pkg.package_code) : 'Package';
+    const safeName = pkg.package_name ? escapeHtml(pkg.package_name) : '';
+    titleEl.textContent = safeName ? `${safeCode} – ${safeName}` : safeCode;
+
+    if (!pkg.bids || pkg.bids.length === 0) {
+        listEl.innerHTML = '<div class="empty-state">No bids recorded for this package yet.</div>';
+        saveBtn.disabled = true;
+    } else {
+        const rows = pkg.bids.map(bid => {
+            const bidderName = escapeHtml(bid.bidder_name || 'Unknown Bidder');
+            const numericAmount = toFiniteNumber(bid.bid_amount);
+            const amountValue = numericAmount != null ? numericAmount.toFixed(2) : '';
+            const isSelected = Boolean(bid.was_selected) || (pkg.selected_bidder_id && bid.bidder_id === pkg.selected_bidder_id);
+
+            return `
+                <tr>
+                    <td>${bidderName}</td>
+                    <td>
+                        <input type="number" step="0.01" min="0" inputmode="decimal" required data-bid-amount-input data-bid-id="${bid.id}" value="${amountValue}">
+                    </td>
+                    <td style="text-align: center;">
+                        <input type="radio" name="selectedBid" value="${bid.id}" ${isSelected ? 'checked' : ''} aria-label="Select ${bidderName}">
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        const hasSelectedBid = pkg.bids.some(bid => Boolean(bid.was_selected) || (pkg.selected_bidder_id && bid.bidder_id === pkg.selected_bidder_id));
+
+        listEl.innerHTML = `
+            <table class="edit-bids-table">
+                <thead>
+                    <tr>
+                        <th>Bidder</th>
+                        <th>Bid Amount</th>
+                        <th style="width: 120px; text-align: center;">Selected</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+            <label class="edit-bids-selection">
+                <input type="radio" name="selectedBid" value="none" ${hasSelectedBid ? '' : 'checked'}>
+                <span>No bidder selected</span>
+            </label>
+            <p class="edit-bids-hint">Saving changes updates the package totals, selected bidder, and bidder history immediately.</p>
+        `;
+
+        saveBtn.disabled = false;
+    }
+
+    modal.style.display = 'block';
+}
+
+function closeEditBidsModal() {
+    const modal = document.getElementById('editBidsModal');
+    const listEl = document.getElementById('editBidsList');
+    const packageIdInput = document.getElementById('editBidsPackageId');
+
+    if (modal) {
+        modal.style.display = 'none';
+    }
+
+    if (packageIdInput) {
+        packageIdInput.value = '';
+    }
+
+    if (listEl) {
+        listEl.innerHTML = '<div class="empty-state">Select a package to edit its bids.</div>';
+    }
+
+    const form = document.getElementById('editBidsForm');
+    if (form) {
+        form.reset();
+    }
+
+    setEditBidsSavingState(false);
+}
+
+function setEditBidsSavingState(isSaving) {
+    const saveBtn = document.getElementById('saveEditedBidsBtn');
+    isSavingBidOverrides = isSaving;
+    if (!saveBtn) return;
+    saveBtn.disabled = isSaving;
+    saveBtn.textContent = isSaving ? 'Saving…' : 'Save Changes';
+}
+
+async function handleEditBidsSubmit(event) {
+    event.preventDefault();
+
+    if (isSavingBidOverrides) {
+        return;
+    }
+
+    const packageId = Number(document.getElementById('editBidsPackageId')?.value);
+    const amountInputs = Array.from(document.querySelectorAll('[data-bid-amount-input]'));
+
+    if (!packageId || amountInputs.length === 0) {
+        alert('Select a package with bids to edit.');
+        return;
+    }
+
+    const updates = [];
+
+    for (const input of amountInputs) {
+        const bidId = Number(input.dataset.bidId);
+        const rawValue = input.value.trim();
+        if (!rawValue) {
+            input.focus();
+            alert('Please enter a bid amount for every bidder.');
+            return;
+        }
+
+        const numericValue = Number(rawValue);
+        if (!Number.isFinite(numericValue)) {
+            input.focus();
+            alert('Bid amounts must be numeric.');
+            return;
+        }
+
+        updates.push({
+            id: bidId,
+            bid_amount: numericValue,
+            was_selected: false
+        });
+    }
+
+    const selectedRadio = document.querySelector('input[name="selectedBid"]:checked');
+    const selectedId = selectedRadio && selectedRadio.value !== 'none'
+        ? Number(selectedRadio.value)
+        : null;
+
+    updates.forEach(update => {
+        update.was_selected = selectedId != null && update.id === selectedId;
+    });
+
+    setEditBidsSavingState(true);
+
+    try {
+        const response = await apiFetch(`${API_BASE}/packages/${packageId}/bids`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bids: updates })
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || 'Failed to update bids.');
+        }
+
+        await loadProject();
+        setActiveTab('bids');
+        closeEditBidsModal();
+    } catch (error) {
+        console.error('Error saving bids:', error);
+        alert(error.message || 'Error saving bids');
+    } finally {
+        setEditBidsSavingState(false);
+    }
 }
 
 function renderProjectBidsChart(hasError = false) {
@@ -2390,6 +2581,11 @@ if (preconNotesBtn) {
 const preconNotesForm = document.getElementById('preconNotesForm');
 if (preconNotesForm) {
     preconNotesForm.addEventListener('submit', handlePreconNotesSubmit);
+}
+
+const editBidsForm = document.getElementById('editBidsForm');
+if (editBidsForm) {
+    editBidsForm.addEventListener('submit', handleEditBidsSubmit);
 }
 
 const validateProjectForm = document.getElementById('validateProjectForm');
