@@ -32,30 +32,129 @@ const DIVISION_COLORS = {
     '31': '#7f8c8d', '32': '#7f8c8d', '33': '#7f8c8d'
 };
 
+const METRIC_SCOPES = {
+    PROJECT: 'project',
+    PACKAGE: 'package'
+};
+
+const PROJECT_COLORS = ['#3498db', '#e67e22', '#2ecc71', '#9b59b6', '#1abc9c', '#f1c40f', '#e74c3c', '#34495e'];
+
 const METRIC_OPTIONS = {
     selected_total: {
         label: 'Selected Total',
         description: 'Total value of the selected bidders.',
         format: formatCurrency,
-        getValue: (metrics) => metrics?.selected_total ?? 0
+        getValue: (metrics) => metrics?.selected_total ?? 0,
+        scope: METRIC_SCOPES.PROJECT
     },
     selected_cost_per_sf: {
         label: 'Selected Cost / SF',
         description: 'Cost per square foot for the selected bidders.',
         format: formatCurrency,
-        getValue: (metrics) => metrics?.selected_cost_per_sf ?? 0
+        getValue: (metrics) => metrics?.selected_cost_per_sf ?? 0,
+        scope: METRIC_SCOPES.PROJECT
     },
     median_cost_per_sf: {
         label: 'Median Cost / SF',
         description: 'Median bid cost per square foot.',
         format: formatCurrency,
-        getValue: (metrics) => metrics?.median_bid_cost_per_sf ?? metrics?.median_cost_per_sf ?? 0
+        getValue: (metrics) => metrics?.median_bid_cost_per_sf ?? metrics?.median_cost_per_sf ?? 0,
+        scope: METRIC_SCOPES.PROJECT
     },
     low_bid_cost_per_sf: {
         label: 'Low Bid Cost / SF',
         description: 'Lowest bid cost per square foot for each project.',
         format: formatCurrency,
-        getValue: (metrics) => metrics?.low_bid_cost_per_sf ?? 0
+        getValue: (metrics) => metrics?.low_bid_cost_per_sf ?? 0,
+        scope: METRIC_SCOPES.PROJECT
+    },
+    bid_spread_by_package: {
+        label: 'Bid spread by package',
+        description: 'Difference between the highest and lowest bid recorded for each package.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.PACKAGE,
+        getValue: (pkg) => {
+            if (!pkg) return null;
+            const high = toFiniteNumber(pkg.high_bid);
+            const low = toFiniteNumber(pkg.low_bid);
+            if (high == null || low == null) {
+                return null;
+            }
+            return high - low;
+        }
+    },
+    gmp_to_median_delta_by_package: {
+        label: 'GMP to Median delta (pkg)',
+        description: 'Median bid minus GMP estimate for each package.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.PACKAGE,
+        getValue: (pkg) => {
+            if (!pkg) return null;
+            const gmp = toFiniteNumber(pkg.gmp_amount);
+            const median = toFiniteNumber(pkg.median_bid);
+            if (gmp == null || median == null) {
+                return null;
+            }
+            return median - gmp;
+        }
+    },
+    low_to_median_delta_by_package: {
+        label: 'Low to Median delta (pkg)',
+        description: 'Median bid minus low bid for each package.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.PACKAGE,
+        getValue: (pkg) => {
+            if (!pkg) return null;
+            const median = toFiniteNumber(pkg.median_bid);
+            const low = toFiniteNumber(pkg.low_bid);
+            if (median == null || low == null) {
+                return null;
+            }
+            return median - low;
+        }
+    },
+    bid_count_by_package: {
+        label: 'Number of bids by package',
+        description: 'Count of bids received for each scope package.',
+        format: formatInteger,
+        scope: METRIC_SCOPES.PACKAGE,
+        getValue: (pkg) => {
+            if (!pkg) return null;
+            const count = toFiniteNumber(pkg.bid_count);
+            return Number.isFinite(count) ? count : null;
+        }
+    },
+    median_cost_per_sf_by_package: {
+        label: 'Median $/SF by package',
+        description: 'Median bid divided by the project square footage for each package.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.PACKAGE,
+        getValue: (pkg, project) => {
+            if (!pkg || !project || !Number.isFinite(project.building_sf) || project.building_sf <= 0) {
+                return null;
+            }
+            const median = toFiniteNumber(pkg.median_bid);
+            if (median == null) {
+                return null;
+            }
+            return median / project.building_sf;
+        }
+    },
+    low_cost_per_sf_by_package: {
+        label: 'Low $/SF by package',
+        description: 'Low bid divided by the project square footage for each package.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.PACKAGE,
+        getValue: (pkg, project) => {
+            if (!pkg || !project || !Number.isFinite(project.building_sf) || project.building_sf <= 0) {
+                return null;
+            }
+            const low = toFiniteNumber(pkg.low_bid);
+            if (low == null) {
+                return null;
+            }
+            return low / project.building_sf;
+        }
     }
 };
 
@@ -167,8 +266,10 @@ function renderComparison(projects) {
 
     const metricKey = compareMetricSelect.value;
     const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
-    const labels = projects.map((project) => project.name);
-    const values = projects.map((project) => metricConfig.getValue(project.metrics));
+    const chartData =
+        metricConfig.scope === METRIC_SCOPES.PACKAGE
+            ? buildPackageMetricData(projects, metricConfig)
+            : buildProjectMetricData(projects, metricConfig);
 
     chartTitleEl.textContent = metricConfig.label;
     chartSubtitleEl.textContent = metricConfig.description;
@@ -196,40 +297,197 @@ function renderComparison(projects) {
 
     comparisonChart = new Chart(ctx, {
         type: 'bar',
-        data: {
-            labels,
-            datasets: [
-                {
-                    label: metricConfig.label,
-                    data: values,
-                    borderRadius: 6,
-                    backgroundColor: '#3498db'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                tooltip: {
-                    callbacks: {
-                        label: (context) => metricConfig.format(context.parsed.y)
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    ticks: {
-                        callback: (value) => metricConfig.format(value)
-                    },
-                    beginAtZero: true
-                }
-            }
-        }
+        data: chartData,
+        options: buildComparisonChartOptions(metricConfig)
     });
 
     comparisonResults.innerHTML = projects.map(createProjectCard).join('');
     renderProjectPieCharts(projects);
+}
+
+function buildProjectMetricData(projects, metricConfig) {
+    return {
+        labels: projects.map((project) => project.name),
+        datasets: [
+            {
+                label: metricConfig.label,
+                data: projects.map((project) => metricConfig.getValue(project.metrics || {})),
+                borderRadius: 6,
+                backgroundColor: '#3498db'
+            }
+        ]
+    };
+}
+
+function buildPackageMetricData(projects, metricConfig) {
+    const packageEntries = collectPackageEntries(projects);
+    const labels = packageEntries.map((entry) => entry.label);
+
+    const datasets = projects.map((project, index) => {
+        const pkgMap = new Map();
+        (project.packages || []).forEach((pkg) => {
+            const key = buildPackageKey(pkg);
+            if (key) {
+                pkgMap.set(key, pkg);
+            }
+        });
+        const normalizedProject = {
+            ...project,
+            building_sf: toFiniteNumber(project.building_sf)
+        };
+        return {
+            label: project.name,
+            borderRadius: 4,
+            backgroundColor: getProjectColor(index),
+            data: packageEntries.map((entry) => {
+                const pkg = pkgMap.get(entry.key);
+                const rawValue = metricConfig.getValue(pkg, normalizedProject);
+                const numeric = toFiniteNumber(rawValue);
+                return numeric == null ? null : numeric;
+            })
+        };
+    });
+
+    return { labels, datasets };
+}
+
+function collectPackageEntries(projects) {
+    const entryMap = new Map();
+
+    projects.forEach((project) => {
+        (project.packages || []).forEach((pkg) => {
+            const key = buildPackageKey(pkg);
+            if (!key || entryMap.has(key)) {
+                return;
+            }
+            entryMap.set(key, {
+                key,
+                label: buildPackageLabel(pkg)
+            });
+        });
+    });
+
+    return Array.from(entryMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function buildPackageKey(pkg) {
+    if (!pkg) {
+        return null;
+    }
+    const code = (pkg.package_code || '').trim();
+    if (code) {
+        return code.toUpperCase();
+    }
+    const name = (pkg.package_name || '').trim();
+    if (name) {
+        return `NAME:${name.toUpperCase()}`;
+    }
+    return pkg.id ? `ID:${pkg.id}` : null;
+}
+
+function buildPackageLabel(pkg) {
+    if (!pkg) {
+        return 'Package';
+    }
+    const code = (pkg.package_code || '').trim();
+    const name = (pkg.package_name || '').trim();
+    if (code && name) {
+        return `${code} – ${name}`;
+    }
+    return code || name || `Package ${pkg.id}`;
+}
+
+function getProjectColor(index) {
+    if (!PROJECT_COLORS.length) {
+        return '#3498db';
+    }
+    return PROJECT_COLORS[index % PROJECT_COLORS.length];
+}
+
+function buildComparisonChartOptions(metricConfig) {
+    const scope = metricConfig.scope || METRIC_SCOPES.PROJECT;
+    const xAxisConfig =
+        scope === METRIC_SCOPES.PACKAGE
+            ? { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } }
+            : { ticks: { autoSkip: true } };
+    const isPackageScope = scope === METRIC_SCOPES.PACKAGE;
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: scope === METRIC_SCOPES.PACKAGE ? { intersect: false, mode: 'index' } : { intersect: true, mode: 'nearest' },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: (context) => {
+                        const value = getNumericValueFromContext(context);
+                        const formatted = metricConfig.format(value);
+                        if (scope === METRIC_SCOPES.PACKAGE) {
+                            const datasetLabel = context.dataset?.label ? `${context.dataset.label}: ` : '';
+                            return `${datasetLabel}${formatted}`;
+                        }
+                        return formatted;
+                    }
+                }
+            },
+            datalabels: buildBarDatalabelOptions(metricConfig, isPackageScope)
+        },
+        scales: {
+            y: {
+                ticks: {
+                    callback: (value) => metricConfig.format(value)
+                },
+                beginAtZero: true
+            },
+            x: xAxisConfig
+        }
+    };
+}
+
+function buildBarDatalabelOptions(metricConfig, useVerticalLayout) {
+    return {
+        display: (context) => Number.isFinite(getNumericValueFromContext(context)),
+        formatter: (_, context) => {
+            const value = getNumericValueFromContext(context);
+            return Number.isFinite(value) ? metricConfig.format(value) : '';
+        },
+        anchor: (context) => {
+            const value = getNumericValueFromContext(context);
+            if (!Number.isFinite(value)) {
+                return 'end';
+            }
+            return value >= 0 ? 'end' : 'start';
+        },
+        align: (context) => {
+            const value = getNumericValueFromContext(context);
+            if (!Number.isFinite(value)) {
+                return 'end';
+            }
+            if (useVerticalLayout) {
+                return value >= 0 ? 'start' : 'end';
+            }
+            return value >= 0 ? 'end' : 'start';
+        },
+        rotation: useVerticalLayout ? -90 : 0,
+        offset: useVerticalLayout ? 6 : 4,
+        clamp: true,
+        clip: false,
+        color: '#2c3e50',
+        font: { size: useVerticalLayout ? 10 : 11, weight: useVerticalLayout ? 'bold' : 'normal' }
+    };
+}
+
+function getNumericValueFromContext(context) {
+    if (!context) {
+        return null;
+    }
+    const parsedValue = context.parsed;
+    if (typeof parsedValue === 'number') {
+        return Number.isFinite(parsedValue) ? parsedValue : null;
+    }
+    if (parsedValue && typeof parsedValue.y === 'number') {
+        return Number.isFinite(parsedValue.y) ? parsedValue.y : null;
+    }
+    return null;
 }
 
 function renderProjectPieCharts(projects) {
@@ -492,6 +750,10 @@ function formatCurrency(value) {
         return '—';
     }
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
+}
+
+function formatInteger(value) {
+    return formatNumber(value);
 }
 
 function formatNumber(value) {
