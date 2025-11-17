@@ -953,14 +953,16 @@ app.get('/api/packages/:id/bids', (req, res) => {
 app.put('/api/packages/:id/bids', (req, res) => {
   const db = getDatabase();
   const packageId = Number(req.params.id);
-  const incomingBids = Array.isArray(req.body?.bids) ? req.body.bids : [];
+  const incomingUpdates = Array.isArray(req.body?.bids) ? req.body.bids : [];
+  const incomingAdditions = Array.isArray(req.body?.additions) ? req.body.additions : [];
+  const incomingDeletions = Array.isArray(req.body?.deletions) ? req.body.deletions : [];
 
   if (!Number.isInteger(packageId)) {
     return res.status(400).json({ error: 'Invalid package id.' });
   }
 
-  if (incomingBids.length === 0) {
-    return res.status(400).json({ error: 'At least one bid update is required.' });
+  if (!incomingUpdates.length && !incomingAdditions.length && !incomingDeletions.length) {
+    return res.status(400).json({ error: 'Provide at least one bid change.' });
   }
 
   const packageQuery = db.exec('SELECT project_id FROM packages WHERE id = ?', [packageId]);
@@ -972,16 +974,14 @@ app.put('/api/packages/:id/bids', (req, res) => {
 
   const existingBidsQuery = db.exec('SELECT id, bidder_id FROM bids WHERE package_id = ?', [packageId]);
   const existingRows = existingBidsQuery[0]?.values || [];
+  const validBidIds = new Set(existingRows.map(row => row[0]));
 
-  if (existingRows.length === 0) {
+  if (existingRows.length === 0 && (incomingUpdates.length > 0 || incomingDeletions.length > 0)) {
     return res.status(400).json({ error: 'There are no bids recorded for this package yet.' });
   }
 
-  const validBidIds = new Set(existingRows.map(row => row[0]));
-
   const sanitizedUpdates = [];
-
-  for (const bid of incomingBids) {
+  for (const bid of incomingUpdates) {
     const bidId = Number(bid.id);
     const amount = toFiniteNumber(bid.bid_amount);
 
@@ -1000,7 +1000,44 @@ app.put('/api/packages/:id/bids', (req, res) => {
     });
   }
 
-  const selectedCount = sanitizedUpdates.filter(bid => bid.was_selected).length;
+  const sanitizedDeletions = [];
+  const deletionSet = new Set();
+  for (const value of incomingDeletions) {
+    const bidId = Number(value);
+    if (!Number.isInteger(bidId) || !validBidIds.has(bidId)) {
+      return res.status(400).json({ error: 'One or more deleted bids were not found for this package.' });
+    }
+    if (!deletionSet.has(bidId)) {
+      deletionSet.add(bidId);
+      sanitizedDeletions.push(bidId);
+    }
+  }
+
+  if (sanitizedUpdates.some(update => deletionSet.has(update.id))) {
+    return res.status(400).json({ error: 'Cannot update and delete the same bid.' });
+  }
+
+  const sanitizedAdditions = [];
+  for (const addition of incomingAdditions) {
+    const bidderName = (addition.bidder_name || '').trim();
+    const amount = toFiniteNumber(addition.bid_amount);
+
+    if (!bidderName) {
+      return res.status(400).json({ error: 'Each new bid must include a bidder name.' });
+    }
+
+    if (amount == null) {
+      return res.status(400).json({ error: 'Each new bid must include a numeric amount.' });
+    }
+
+    sanitizedAdditions.push({
+      bidder_name: bidderName,
+      bid_amount: roundToTwo(amount),
+      was_selected: addition.was_selected ? 1 : 0
+    });
+  }
+
+  const selectedCount = [...sanitizedUpdates, ...sanitizedAdditions].filter(bid => bid.was_selected).length;
   if (selectedCount > 1) {
     return res.status(400).json({ error: 'Only one bid can be marked as selected.' });
   }
@@ -1009,6 +1046,18 @@ app.put('/api/packages/:id/bids', (req, res) => {
     db.run(
       'UPDATE bids SET bid_amount = ?, was_selected = ? WHERE id = ? AND package_id = ?',
       [update.bid_amount, update.was_selected, update.id, packageId]
+    );
+  });
+
+  sanitizedDeletions.forEach(bidId => {
+    db.run('DELETE FROM bids WHERE id = ? AND package_id = ?', [bidId, packageId]);
+  });
+
+  sanitizedAdditions.forEach(addition => {
+    const bidderId = getOrCreateBidder(db, addition.bidder_name);
+    db.run(
+      'INSERT INTO bids (package_id, bidder_id, bid_amount, was_selected) VALUES (?, ?, ?, ?)',
+      [packageId, bidderId, addition.bid_amount, addition.was_selected]
     );
   });
 

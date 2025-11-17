@@ -600,12 +600,39 @@ body {
     border-bottom: none;
 }
 
-.edit-bids-table input[type="number"] {
+.edit-bids-table input[type="number"],
+.edit-bids-table input[type="text"] {
     width: 100%;
     padding: 0.4rem 0.5rem;
     border: 1px solid #dfe6e9;
     border-radius: 4px;
     font-size: 0.95rem;
+}
+
+.edit-bids-table .existing-bidder-name {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.edit-bids-radio-cell {
+    text-align: center;
+}
+
+.edit-bids-remove-cell {
+    text-align: right;
+}
+
+.edit-bids-inline-actions {
+    display: flex;
+    justify-content: flex-start;
+    margin: 0.5rem 0 0;
+}
+
+.edit-bids-empty-cell {
+    text-align: center;
+    color: #95a5a6;
+    padding: 1.5rem 0.5rem;
+    font-style: italic;
 }
 
 .edit-bids-selection {
