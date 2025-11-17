@@ -34,7 +34,8 @@ const DIVISION_COLORS = {
 
 const METRIC_SCOPES = {
     PROJECT: 'project',
-    PACKAGE: 'package'
+    PACKAGE: 'package',
+    CATEGORY: 'category'
 };
 
 const PROJECT_COLORS = ['#3498db', '#e67e22', '#2ecc71', '#9b59b6', '#1abc9c', '#f1c40f', '#e74c3c', '#34495e'];
@@ -201,6 +202,38 @@ const METRIC_OPTIONS = {
             }
             return low / project.building_sf;
         }
+    },
+    category_selected_cost_per_sf: {
+        label: 'Category Selected $/SF',
+        description: 'Selected bid totals per category divided by project square footage.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.CATEGORY,
+        getValue: (categoryEntry, project) => {
+            if (!categoryEntry || !project || !Number.isFinite(project.building_sf) || project.building_sf <= 0) {
+                return null;
+            }
+            const selectedTotal = toFiniteNumber(categoryEntry.selected_total);
+            if (selectedTotal == null) {
+                return null;
+            }
+            return selectedTotal / project.building_sf;
+        }
+    },
+    category_median_cost_per_sf: {
+        label: 'Category Median $/SF',
+        description: 'Median bid totals per category divided by project square footage.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.CATEGORY,
+        getValue: (categoryEntry, project) => {
+            if (!categoryEntry || !project || !Number.isFinite(project.building_sf) || project.building_sf <= 0) {
+                return null;
+            }
+            const medianTotal = toFiniteNumber(categoryEntry.median_total);
+            if (medianTotal == null) {
+                return null;
+            }
+            return medianTotal / project.building_sf;
+        }
     }
 };
 
@@ -312,10 +345,19 @@ function renderComparison(projects) {
 
     const metricKey = compareMetricSelect.value;
     const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
-    const chartData =
-        metricConfig.scope === METRIC_SCOPES.PACKAGE
-            ? buildPackageMetricData(projects, metricConfig)
-            : buildProjectMetricData(projects, metricConfig);
+    let chartData;
+    switch (metricConfig.scope) {
+        case METRIC_SCOPES.PACKAGE:
+            chartData = buildPackageMetricData(projects, metricConfig);
+            break;
+        case METRIC_SCOPES.CATEGORY:
+            chartData = buildCategoryMetricData(projects, metricConfig);
+            break;
+        case METRIC_SCOPES.PROJECT:
+        default:
+            chartData = buildProjectMetricData(projects, metricConfig);
+            break;
+    }
 
     chartTitleEl.textContent = metricConfig.label;
     chartSubtitleEl.textContent = metricConfig.description;
@@ -397,6 +439,30 @@ function buildPackageMetricData(projects, metricConfig) {
     return { labels, datasets };
 }
 
+function buildCategoryMetricData(projects, metricConfig) {
+    const categories = CATEGORY_DEFINITIONS.map((category) => ({ key: category.key, label: category.name }));
+    const labels = categories.map((category) => category.label);
+
+    const datasets = projects.map((project, index) => {
+        const categoryMap = aggregateCategoriesByProject(project.packages || []);
+        const normalizedProject = { ...project, building_sf: toFiniteNumber(project.building_sf) };
+
+        return {
+            label: project.name,
+            borderRadius: 4,
+            backgroundColor: getProjectColor(index),
+            data: categories.map((category) => {
+                const entry = categoryMap.get(category.key) || null;
+                const rawValue = metricConfig.getValue(entry, normalizedProject);
+                const numeric = toFiniteNumber(rawValue);
+                return numeric == null ? null : numeric;
+            })
+        };
+    });
+
+    return { labels, datasets };
+}
+
 function collectPackageEntries(projects) {
     const entryMap = new Map();
 
@@ -414,6 +480,59 @@ function collectPackageEntries(projects) {
     });
 
     return Array.from(entryMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function aggregateCategoriesByProject(packages) {
+    const categoryMap = new Map(
+        CATEGORY_DEFINITIONS.map((category) => [
+            category.key,
+            {
+                key: category.key,
+                label: category.name,
+                color: category.color,
+                selected_total: 0,
+                median_total: 0,
+                low_total: 0,
+                high_total: 0
+            }
+        ])
+    );
+
+    (packages || []).forEach((pkg) => {
+        const divisionKey = formatDivisionKey(pkg?.csi_division);
+        if (!divisionKey) {
+            return;
+        }
+
+        const category = findCategoryByDivision(divisionKey);
+        if (!category) {
+            return;
+        }
+
+        const totals = categoryMap.get(category.key);
+        if (!totals) {
+            return;
+        }
+
+        const selectedAmount = toFiniteNumber(pkg.selected_amount) || 0;
+        const medianBid = toFiniteNumber(pkg.median_bid);
+        const lowBid = toFiniteNumber(pkg.low_bid);
+        const highBid = toFiniteNumber(pkg.high_bid);
+
+        totals.selected_total += selectedAmount;
+        totals.median_total += medianBid != null ? medianBid : selectedAmount;
+        totals.low_total += lowBid != null ? lowBid : selectedAmount;
+        totals.high_total += highBid != null ? highBid : selectedAmount;
+    });
+
+    return categoryMap;
+}
+
+function findCategoryByDivision(divisionKey) {
+    if (!divisionKey) {
+        return null;
+    }
+    return CATEGORY_DEFINITIONS.find((category) => category.divisions.includes(divisionKey)) || null;
 }
 
 function buildPackageKey(pkg) {
@@ -452,21 +571,21 @@ function getProjectColor(index) {
 
 function buildComparisonChartOptions(metricConfig) {
     const scope = metricConfig.scope || METRIC_SCOPES.PROJECT;
-    const xAxisConfig =
-        scope === METRIC_SCOPES.PACKAGE
-            ? { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } }
-            : { ticks: { autoSkip: true } };
+    const isMultiEntryScope = scope === METRIC_SCOPES.PACKAGE || scope === METRIC_SCOPES.CATEGORY;
+    const xAxisConfig = isMultiEntryScope
+        ? { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } }
+        : { ticks: { autoSkip: true } };
     return {
         responsive: true,
         maintainAspectRatio: false,
-        interaction: scope === METRIC_SCOPES.PACKAGE ? { intersect: false, mode: 'index' } : { intersect: true, mode: 'nearest' },
+        interaction: isMultiEntryScope ? { intersect: false, mode: 'index' } : { intersect: true, mode: 'nearest' },
         plugins: {
             tooltip: {
                 callbacks: {
                     label: (context) => {
                         const value = getNumericValueFromContext(context);
                         const formatted = metricConfig.format(value);
-                        if (scope === METRIC_SCOPES.PACKAGE) {
+                        if (isMultiEntryScope) {
                             const datasetLabel = context.dataset?.label ? `${context.dataset.label}: ` : '';
                             return `${datasetLabel}${formatted}`;
                         }
