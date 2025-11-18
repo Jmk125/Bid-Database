@@ -870,21 +870,59 @@ function getChoroplethColor(value, max) {
     return `rgb(${channels[0]}, ${channels[1]}, ${channels[2]})`;
 }
 
+const COUNTY_SUFFIXES = [
+    'city and borough',
+    'census area',
+    'municipality',
+    'borough',
+    'parish',
+    'county',
+    'city'
+];
+
 function normalizeCountyKey(countyName, stateCode) {
     if (!countyName || !stateCode) {
         return null;
     }
-    const cleanedName = countyName
+
+    let cleanedName = countyName
         .toString()
         .trim()
-        .toLowerCase()
-        .replace(/( county| parish| borough| census area| municipality| city and borough| city)$/i, '')
+        .toLowerCase();
+
+    cleanedName = cleanedName
+        .replace(/&/g, ' and ')
+        .replace(/\bco\.?(?=\s|$)/g, ' county')
+        .replace(/\bcnty(?=\s|$)/g, ' county')
+        .replace(/\bcty(?=\s|$)/g, ' county')
+        .replace(/\bst\.?(?=\s)/g, 'saint ');
+
+    cleanedName = cleanedName
         .replace(/[^a-z\s]/g, '')
-        .replace(/\s+/g, ' ');
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    for (const suffix of COUNTY_SUFFIXES) {
+        if (cleanedName.endsWith(` ${suffix}`)) {
+            cleanedName = cleanedName.slice(0, -suffix.length).trim();
+            break;
+        }
+        if (cleanedName === suffix) {
+            cleanedName = '';
+            break;
+        }
+    }
+
     if (!cleanedName) {
         return null;
     }
-    return `${cleanedName}|${stateCode.toUpperCase()}`;
+
+    const normalizedState = stateCode.toString().trim().toUpperCase();
+    if (!normalizedState) {
+        return null;
+    }
+
+    return `${cleanedName}|${normalizedState}`;
 }
 
 // Initialize page - attach event listeners AFTER DOM is loaded
