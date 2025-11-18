@@ -1152,6 +1152,161 @@ tr:hover {
     color: #7f8c8d;
 }
 
+.map-view {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    position: relative;
+}
+
+.map-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+}
+
+.map-bidder-summary {
+    flex: 1;
+    background: #f5f7fb;
+    border: 1px solid #e1e7f0;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    color: #34495e;
+    min-height: 68px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.bidder-map {
+    width: 100%;
+    min-height: 480px;
+    background: #f9fbfe;
+    border: 1px solid #dfe6ee;
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+}
+
+.bidder-map svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.map-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #5d6d7e;
+    font-weight: 600;
+    background: rgba(255,255,255,0.85);
+}
+
+.county-path {
+    stroke: #ffffff;
+    stroke-width: 0.5;
+    fill: #eef2f7;
+    transition: fill 0.2s ease, opacity 0.2s ease;
+}
+
+.county-path.has-data {
+    cursor: pointer;
+}
+
+.county-path:hover {
+    opacity: 0.85;
+}
+
+.state-borders {
+    fill: none;
+    stroke: #95a5a6;
+    stroke-width: 0.7;
+    pointer-events: none;
+}
+
+.map-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(44, 62, 80, 0.95);
+    color: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transform: translate(-50%, -120%);
+    transition: opacity 0.15s ease;
+}
+
+.map-empty-state {
+    text-align: center;
+    border: 1px dashed #d0d6de;
+    padding: 1.5rem;
+    border-radius: 8px;
+    color: #5d6d7e;
+    background: #fefefe;
+}
+
+.map-legend {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    font-size: 0.9rem;
+    color: #5d6d7e;
+}
+
+.map-legend .legend-scale {
+    flex: 1;
+    height: 12px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #eef2f7, #1f78b4);
+    border: 1px solid #d0d6de;
+}
+
+.map-legend .legend-labels {
+    display: flex;
+    justify-content: space-between;
+    width: 220px;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.map-county-list {
+    border: 1px solid #e1e7f0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.map-county-list table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.map-county-list thead {
+    background: #f5f7fb;
+    color: #5d6d7e;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+}
+
+.map-county-list th,
+.map-county-list td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #edf1f5;
+    text-align: left;
+}
+
+.map-county-list tbody tr:hover {
+    background: #f9fbfe;
+}
+
 .chart-container {
     position: relative;
     margin-bottom: 2rem;
