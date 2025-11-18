@@ -562,6 +562,7 @@ async function buildCountyMap() {
                     .data(renderedCountyFeatures)
                     .join('path')
                     .attr('class', 'county-path')
+                    .style('fill', '#eef2f7')
                     .attr('d', path)
                     .on('mousemove', (event, feature) => handleCountyHover(event, feature))
                     .on('mouseleave', hideMapTooltip);
@@ -699,7 +700,7 @@ function paintCountyData(data) {
     });
 
     countyPathSelection
-        .attr('fill', feature => {
+        .style('fill', feature => {
             const entry = activeCountyData.get(String(feature.id).padStart(5, '0'));
             if (!entry || !maxPackages) {
                 return '#eef2f7';
@@ -715,7 +716,7 @@ function paintCountyData(data) {
 function resetMapColors() {
     if (countyPathSelection) {
         countyPathSelection
-            .attr('fill', '#eef2f7')
+            .style('fill', '#eef2f7')
             .classed('has-data', false);
     }
     activeCountyData.clear();
