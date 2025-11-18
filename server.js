@@ -1856,7 +1856,7 @@ app.get('/api/bidders/:id/counties', (req, res) => {
   const query = db.exec(`
     SELECT
       proj.county_name,
-      proj.county_state,
+      UPPER(COALESCE(NULLIF(TRIM(proj.county_state), ''), 'OH')) AS county_state,
       COUNT(DISTINCT pkg.id) AS package_count,
       COUNT(DISTINCT proj.id) AS project_count,
       COUNT(b.id) AS bid_submissions,
@@ -1866,8 +1866,7 @@ app.get('/api/bidders/:id/counties', (req, res) => {
     JOIN projects proj ON proj.id = pkg.project_id
     WHERE b.bidder_id = ?
       AND proj.county_name IS NOT NULL
-      AND proj.county_state IS NOT NULL
-    GROUP BY proj.county_name, proj.county_state
+    GROUP BY proj.county_name, county_state
     ORDER BY package_count DESC, proj.county_name ASC
   `, [bidderId]);
 

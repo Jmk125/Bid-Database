@@ -535,23 +535,44 @@ async function buildCountyMap() {
                     .attr('viewBox', `0 0 ${width} ${height}`)
                     .attr('preserveAspectRatio', 'xMidYMid meet');
 
-                const projection = d3.geoAlbersUsa()
-                    .translate([width / 2, height / 2])
-                    .scale(width * 1.25);
+                const states = topojson.feature(data, data.objects.states).features;
+                const counties = topojson.feature(data, data.objects.counties).features;
+                const ohioFips = STATE_FIPS_BY_CODE.OH || '39';
+                const ohioCounties = counties.filter(feature => String(feature.id).padStart(5, '0').startsWith(ohioFips));
+
+                let projection;
+                let renderedCountyFeatures = counties;
+
+                if (ohioCounties.length) {
+                    projection = d3.geoAlbers()
+                        .scale(1)
+                        .translate([0, 0]);
+                    projection.fitSize([width, height], { type: 'FeatureCollection', features: ohioCounties });
+                    renderedCountyFeatures = ohioCounties;
+                } else {
+                    projection = d3.geoAlbersUsa()
+                        .translate([width / 2, height / 2])
+                        .scale(width * 1.25);
+                }
+
                 const path = d3.geoPath(projection);
 
-                const counties = topojson.feature(data, data.objects.counties).features;
                 countyPathSelection = svg.append('g')
                     .selectAll('path')
-                    .data(counties)
+                    .data(renderedCountyFeatures)
                     .join('path')
                     .attr('class', 'county-path')
                     .attr('d', path)
                     .on('mousemove', (event, feature) => handleCountyHover(event, feature))
                     .on('mouseleave', hideMapTooltip);
 
+                const ohioStateFeature = states.find(feature => String(feature.id).padStart(2, '0') === ohioFips);
+                const stateBorderData = ohioStateFeature
+                    ? ohioStateFeature
+                    : topojson.mesh(data, data.objects.states, (a, b) => a !== b);
+
                 stateBorderSelection = svg.append('path')
-                    .datum(topojson.mesh(data, data.objects.states, (a, b) => a !== b))
+                    .datum(stateBorderData)
                     .attr('class', 'state-borders')
                     .attr('d', path);
 

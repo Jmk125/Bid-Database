@@ -1,4 +1,5 @@
 const API_BASE = '/api';
+const DEFAULT_PROJECT_STATE = 'OH';
 
 // Get project ID from URL
 const urlParams = new URLSearchParams(window.location.search);
@@ -2755,7 +2756,7 @@ document.getElementById('editProjectBtn').onclick = () => {
     document.getElementById('editProjectName').value = currentProject.name;
     document.getElementById('editBuildingSF').value = currentProject.building_sf || '';
     document.getElementById('editProjectCounty').value = currentProject.county_name || '';
-    document.getElementById('editProjectState').value = currentProject.county_state || '';
+    document.getElementById('editProjectState').value = currentProject.county_state || DEFAULT_PROJECT_STATE;
     document.getElementById('editProjectDate').value = currentProject.project_date || '';
     document.getElementById('editProjectModal').style.display = 'block';
 };

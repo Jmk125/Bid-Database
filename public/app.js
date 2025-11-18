@@ -1,10 +1,16 @@
 const API_BASE = '/api';
+const DEFAULT_PROJECT_STATE = 'OH';
 
 // Modal handling
 const modal = document.getElementById('addProjectModal');
 const addBtn = document.getElementById('addProjectBtn');
 const closeBtn = document.querySelector('.close');
 const cancelBtn = document.getElementById('cancelAddProject');
+const projectStateSelect = document.getElementById('projectState');
+
+if (projectStateSelect) {
+    projectStateSelect.value = DEFAULT_PROJECT_STATE;
+}
 
 if (addBtn) {
     addBtn.onclick = () => modal.style.display = 'block';
@@ -146,7 +152,7 @@ if (addProjectForm) {
         const building_sf = document.getElementById('buildingSF').value;
         const project_date = document.getElementById('projectDate').value;
         const county_name = document.getElementById('projectCounty').value;
-        const county_state = document.getElementById('projectState').value;
+        const county_state = projectStateSelect ? projectStateSelect.value : '';
 
         try {
             const response = await apiFetch(`${API_BASE}/projects`, {
@@ -165,6 +171,9 @@ if (addProjectForm) {
             
             modal.style.display = 'none';
             addProjectForm.reset();
+            if (projectStateSelect) {
+                projectStateSelect.value = DEFAULT_PROJECT_STATE;
+            }
             
             // Redirect to project detail page
             window.location.href = `project.html?id=${project.id}`;
