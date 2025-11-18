@@ -159,6 +159,14 @@ function displayMetrics() {
                 ? `<span style="font-size: 1.5rem;">${formatDate(currentProject.project_date)}</span>`
                 : '<span style="font-size: 1.2rem; color: #7f8c8d;">Not set</span>',
             showValidation: true
+        },
+        {
+            key: 'project-location',
+            title: 'County',
+            valueHtml: currentProject.county_name
+                ? `<span style="font-size: 1.2rem;">${escapeHtml(currentProject.county_name)}${currentProject.county_state ? `, ${escapeHtml(currentProject.county_state)}` : ''}</span>`
+                : '<span style="font-size: 1.2rem; color: #7f8c8d;">Not set</span>',
+            showValidation: false
         }
     ];
 
@@ -2746,6 +2754,8 @@ if (validateProjectForm) {
 document.getElementById('editProjectBtn').onclick = () => {
     document.getElementById('editProjectName').value = currentProject.name;
     document.getElementById('editBuildingSF').value = currentProject.building_sf || '';
+    document.getElementById('editProjectCounty').value = currentProject.county_name || '';
+    document.getElementById('editProjectState').value = currentProject.county_state || '';
     document.getElementById('editProjectDate').value = currentProject.project_date || '';
     document.getElementById('editProjectModal').style.display = 'block';
 };
@@ -2760,7 +2770,9 @@ document.getElementById('editProjectForm').onsubmit = async (e) => {
     const name = document.getElementById('editProjectName').value;
     const building_sf = document.getElementById('editBuildingSF').value;
     const project_date = document.getElementById('editProjectDate').value;
-    
+    const county_name = document.getElementById('editProjectCounty').value;
+    const county_state = document.getElementById('editProjectState').value;
+
     try {
         await apiFetch(`${API_BASE}/projects/${projectId}`, {
             method: 'PUT',
@@ -2768,7 +2780,9 @@ document.getElementById('editProjectForm').onsubmit = async (e) => {
             body: JSON.stringify({
                 name,
                 building_sf: building_sf ? parseFloat(building_sf) : null,
-                project_date: project_date || null
+                project_date: project_date || null,
+                county_name: county_name ? county_name.trim() : null,
+                county_state: county_state || null
             })
         });
         

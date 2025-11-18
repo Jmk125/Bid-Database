@@ -5,6 +5,15 @@ const multer = require('multer');
 const path = require('path');
 const { initDatabase, getDatabase, saveDatabase } = require('./database');
 
+const STATE_ABBREVIATIONS = new Set([
+  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
+  'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
+  'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
+  'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
+  'DC','PR'
+]);
+
 const app = express();
 const PORT = 3020;
 const EDIT_KEY = (process.env.EDIT_KEY || process.env.DEFAULT_EDIT_KEY || 'letmein').trim();
@@ -67,6 +76,28 @@ function normalizeValidationMetrics(metrics) {
     median_bid_total: roundToTwo(metrics.median_bid_total),
     median_bid_cost_per_sf: roundToTwo(metrics.median_bid_cost_per_sf)
   };
+}
+
+function normalizeCountyName(value) {
+  if (value == null) {
+    return null;
+  }
+
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeStateCode(value) {
+  if (value == null) {
+    return null;
+  }
+
+  const normalized = String(value).trim().toUpperCase();
+  if (!normalized || !STATE_ABBREVIATIONS.has(normalized)) {
+    return null;
+  }
+
+  return normalized;
 }
 
 function metricsAreEqual(a, b) {
@@ -239,7 +270,7 @@ initDatabase().then(() => {
 app.get('/api/projects', (req, res) => {
   const db = getDatabase();
   const projects = db.exec(`
-    SELECT id, name, building_sf, project_date, precon_notes, created_at, modified_at
+    SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, created_at, modified_at
     FROM projects
     ORDER BY created_at DESC
   `);
@@ -254,8 +285,10 @@ app.get('/api/projects', (req, res) => {
     building_sf: row[2],
     project_date: row[3],
     precon_notes: row[4],
-    created_at: row[5],
-    modified_at: row[6]
+    county_name: row[5],
+    county_state: row[6],
+    created_at: row[7],
+    modified_at: row[8]
   }));
   
   res.json(result);
@@ -282,7 +315,7 @@ app.get('/api/projects/compare', (req, res) => {
   const placeholders = ids.map(() => '?').join(',');
 
   const projectQuery = db.exec(
-    `SELECT id, name, building_sf, project_date, precon_notes, created_at, modified_at
+    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, created_at, modified_at
      FROM projects
      WHERE id IN (${placeholders})
      ORDER BY project_date DESC, created_at DESC`,
@@ -348,8 +381,10 @@ app.get('/api/projects/compare', (req, res) => {
       building_sf: row[2],
       project_date: row[3],
       precon_notes: row[4],
-      created_at: row[5],
-      modified_at: row[6]
+      county_name: row[5],
+      county_state: row[6],
+      created_at: row[7],
+      modified_at: row[8]
     };
 
     const packages = packagesByProject.get(project.id) || [];
@@ -373,7 +408,7 @@ app.get('/api/projects/:id', (req, res) => {
   
   // Get project details
   const projectQuery = db.exec(
-    `SELECT id, name, building_sf, project_date, precon_notes, created_at, modified_at FROM projects WHERE id = ?`,
+    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, created_at, modified_at FROM projects WHERE id = ?`,
     [projectId]
   );
   
@@ -388,8 +423,10 @@ app.get('/api/projects/:id', (req, res) => {
     building_sf: projectRow[2],
     project_date: projectRow[3],
     precon_notes: projectRow[4],
-    created_at: projectRow[5],
-    modified_at: projectRow[6]
+    county_name: projectRow[5],
+    county_state: projectRow[6],
+    created_at: projectRow[7],
+    modified_at: projectRow[8]
   };
   
   // Get all packages for this project
@@ -659,15 +696,24 @@ app.delete('/api/projects/:projectId/validations/:validationId', (req, res) => {
 // Create new project
 app.post('/api/projects', (req, res) => {
   const db = getDatabase();
-  const { name, building_sf, project_date } = req.body;
-  
+  const { name, building_sf, project_date, county_name, county_state } = req.body;
+
   if (!name) {
     return res.status(400).json({ error: 'Project name is required' });
   }
-  
+
+  const normalizedCounty = normalizeCountyName(county_name);
+  const normalizedState = normalizeStateCode(county_state);
+
   db.run(
-    'INSERT INTO projects (name, building_sf, project_date) VALUES (?, ?, ?)',
-    [name, building_sf || null, project_date || null]
+    'INSERT INTO projects (name, building_sf, project_date, county_name, county_state) VALUES (?, ?, ?, ?, ?)',
+    [
+      name,
+      building_sf || null,
+      project_date || null,
+      normalizedCounty,
+      normalizedState
+    ]
   );
   
   const result = db.exec('SELECT last_insert_rowid()');
@@ -675,13 +721,21 @@ app.post('/api/projects', (req, res) => {
   
   saveDatabase();
   
-  res.json({ id: projectId, name, building_sf, project_date, precon_notes: null });
+  res.json({
+    id: projectId,
+    name,
+    building_sf,
+    project_date,
+    county_name: normalizedCounty,
+    county_state: normalizedState,
+    precon_notes: null
+  });
 });
 
 // Update project
 app.put('/api/projects/:id', (req, res) => {
   const db = getDatabase();
-  const { name, building_sf, project_date, precon_notes } = req.body;
+  const { name, building_sf, project_date, precon_notes, county_name, county_state } = req.body;
   const projectId = req.params.id;
 
   const updates = [];
@@ -707,6 +761,16 @@ app.put('/api/projects/:id', (req, res) => {
     values.push(precon_notes === null ? null : precon_notes);
   }
 
+  if (county_name !== undefined) {
+    updates.push('county_name = ?');
+    values.push(county_name === null ? null : normalizeCountyName(county_name));
+  }
+
+  if (county_state !== undefined) {
+    updates.push('county_state = ?');
+    values.push(county_state === null ? null : normalizeStateCode(county_state));
+  }
+
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No valid fields provided for update' });
   }
@@ -721,7 +785,7 @@ app.put('/api/projects/:id', (req, res) => {
   saveDatabase();
 
   const updatedProject = db.exec(
-    `SELECT id, name, building_sf, project_date, precon_notes, created_at, modified_at FROM projects WHERE id = ?`,
+    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, created_at, modified_at FROM projects WHERE id = ?`,
     [projectId]
   );
 
@@ -737,8 +801,10 @@ app.put('/api/projects/:id', (req, res) => {
     building_sf: row[2],
     project_date: row[3],
     precon_notes: row[4],
-    created_at: row[5],
-    modified_at: row[6]
+    county_name: row[5],
+    county_state: row[6],
+    created_at: row[7],
+    modified_at: row[8]
   });
 });
 
@@ -1781,6 +1847,44 @@ app.get('/api/bidders/:id/history', (req, res) => {
   });
 
   res.json(history);
+});
+
+app.get('/api/bidders/:id/counties', (req, res) => {
+  const db = getDatabase();
+  const bidderId = req.params.id;
+
+  const query = db.exec(`
+    SELECT
+      proj.county_name,
+      proj.county_state,
+      COUNT(DISTINCT pkg.id) AS package_count,
+      COUNT(DISTINCT proj.id) AS project_count,
+      COUNT(b.id) AS bid_submissions,
+      MAX(proj.project_date) AS latest_project_date
+    FROM bids b
+    JOIN packages pkg ON pkg.id = b.package_id
+    JOIN projects proj ON proj.id = pkg.project_id
+    WHERE b.bidder_id = ?
+      AND proj.county_name IS NOT NULL
+      AND proj.county_state IS NOT NULL
+    GROUP BY proj.county_name, proj.county_state
+    ORDER BY package_count DESC, proj.county_name ASC
+  `, [bidderId]);
+
+  if (query.length === 0) {
+    return res.json([]);
+  }
+
+  const rows = query[0].values.map(row => ({
+    county_name: row[0],
+    state_code: row[1],
+    package_count: row[2],
+    project_count: row[3],
+    bid_submissions: row[4],
+    latest_project_date: row[5]
+  }));
+
+  res.json(rows);
 });
 
 // Merge bidders

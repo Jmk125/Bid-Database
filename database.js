@@ -54,11 +54,25 @@ function ensureSchema() {
   const projectPragma = db.exec('PRAGMA table_info(projects)');
   const projectColumns = projectPragma[0]?.values || [];
   const hasPreconNotes = projectColumns.some(column => column[1] === 'precon_notes');
+  const hasCountyName = projectColumns.some(column => column[1] === 'county_name');
+  const hasCountyState = projectColumns.some(column => column[1] === 'county_state');
 
   if (!hasPreconNotes) {
     db.run('ALTER TABLE projects ADD COLUMN precon_notes TEXT');
     schemaUpdated = true;
     console.log('Added precon_notes column to projects table');
+  }
+
+  if (!hasCountyName) {
+    db.run('ALTER TABLE projects ADD COLUMN county_name TEXT');
+    schemaUpdated = true;
+    console.log('Added county_name column to projects table');
+  }
+
+  if (!hasCountyState) {
+    db.run('ALTER TABLE projects ADD COLUMN county_state TEXT');
+    schemaUpdated = true;
+    console.log('Added county_state column to projects table');
   }
 
   return schemaUpdated;
@@ -73,6 +87,8 @@ function createTables() {
       building_sf REAL,
       project_date TEXT,
       precon_notes TEXT,
+      county_name TEXT,
+      county_state TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       modified_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
