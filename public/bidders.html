@@ -26,110 +26,148 @@
             <p style="color: #7f8c8d; margin-top: 0.5rem;">Manage and merge duplicate bidder entries</p>
         </div>
 
-        <div class="table-container">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3>All Bidders</h3>
-                <div style="display: flex; gap: 1rem;">
-                    <input type="text" id="searchBidders" placeholder="Search bidders..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 250px;">
-                    <input type="text" id="filterPackages" placeholder="Filter by package..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 250px;">
+        <div class="view-tabs" role="tablist" aria-label="Bidder views">
+            <button id="listViewTab" class="tab-toggle is-active" role="tab" data-bidders-tab="list" aria-selected="true" aria-controls="biddersListContent">List</button>
+            <button id="mapViewTab" class="tab-toggle" role="tab" data-bidders-tab="map" aria-selected="false" aria-controls="biddersMapContent">Map</button>
+        </div>
+
+        <div id="biddersListContent" class="tab-content is-active" role="tabpanel" aria-labelledby="listViewTab" data-tab-panel="list">
+            <div class="table-container">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3>All Bidders</h3>
+                    <div style="display: flex; gap: 1rem;">
+                        <input type="text" id="searchBidders" placeholder="Search bidders..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 250px;">
+                        <input type="text" id="filterPackages" placeholder="Filter by package..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 250px;">
+                    </div>
+                </div>
+                <table id="biddersTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">
+                                <input type="checkbox" id="selectAll" title="Select All">
+                            </th>
+                            <th>Bidder Name</th>
+                            <th>Packages</th>
+                            <th>Aliases</th>
+                            <th>Total Bids</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="biddersBody">
+                        <tr><td colspan="6" class="loading">Loading bidders (this may take a moment)...</td></tr>
+                    </tbody>
+                </table>
+
+                <div id="mergeSection" style="margin-top: 1rem; padding: 1rem; background-color: #f8f9fa; border-radius: 4px; display: none;">
+                    <h4 style="margin-bottom: 0.5rem;">Merge Selected Bidders</h4>
+                    <p style="color: #7f8c8d; margin-bottom: 1rem; font-size: 0.875rem;">
+                        Select 2 or more bidders to merge. All bids and references will be consolidated under one name.
+                    </p>
+                    <div style="display: flex; gap: 1rem; align-items: center;">
+                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                            <label for="keepBidder">Keep this bidder:</label>
+                            <select id="keepBidder" class="form-control">
+                                <option value="">-- Select Primary Bidder --</option>
+                            </select>
+                        </div>
+                        <button id="mergeBtn" class="btn btn-primary" disabled>Merge Bidders</button>
+                    </div>
                 </div>
             </div>
-            <table id="biddersTable">
-                <thead>
-                    <tr>
-                        <th style="width: 50px;">
-                            <input type="checkbox" id="selectAll" title="Select All">
-                        </th>
-                        <th>Bidder Name</th>
-                        <th>Packages</th>
-                        <th>Aliases</th>
-                        <th>Total Bids</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="biddersBody">
-                    <tr><td colspan="6" class="loading">Loading bidders (this may take a moment)...</td></tr>
-                </tbody>
-            </table>
-            
-            <div id="mergeSection" style="margin-top: 1rem; padding: 1rem; background-color: #f8f9fa; border-radius: 4px; display: none;">
-                <h4 style="margin-bottom: 0.5rem;">Merge Selected Bidders</h4>
-                <p style="color: #7f8c8d; margin-bottom: 1rem; font-size: 0.875rem;">
-                    Select 2 or more bidders to merge. All bids and references will be consolidated under one name.
-                </p>
-                <div style="display: flex; gap: 1rem; align-items: center;">
-                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                        <label for="keepBidder">Keep this bidder:</label>
-                        <select id="keepBidder" class="form-control">
-                            <option value="">-- Select Primary Bidder --</option>
-                        </select>
+
+            <!-- Bidder Detail Section -->
+            <div id="bidderDetail" style="display: none; margin-top: 2rem;">
+                <div class="table-container">
+                    <h3 id="bidderDetailName" style="margin-bottom: 1rem;"></h3>
+                    <button onclick="closeBidderDetail()" class="btn btn-secondary btn-small" style="margin-bottom: 1rem;">← Back to List</button>
+
+                    <div id="bidderMetrics" class="bidder-metrics" style="display: none;">
+                        <div class="bidder-metric-card">
+                            <div class="metric-label">Total Bids</div>
+                            <div class="metric-value" id="bidderMetricTotal">—</div>
+                        </div>
+                        <div class="bidder-metric-card">
+                            <div class="metric-label">Selections</div>
+                            <div class="metric-value" id="bidderMetricWins">—</div>
+                        </div>
+                        <div class="bidder-metric-card">
+                            <div class="metric-label">Win Rate</div>
+                            <div class="metric-value" id="bidderMetricWinRate">—</div>
+                        </div>
+                        <div class="bidder-metric-card">
+                            <div class="metric-label">Avg. Placement</div>
+                            <div class="metric-value" id="bidderMetricAvgRank">—</div>
+                        </div>
                     </div>
-                    <button id="mergeBtn" class="btn btn-primary" disabled>Merge Bidders</button>
+
+                    <h4 style="margin-bottom: 0.5rem;">Bid History</h4>
+                    <table id="bidderBidsTable">
+                        <thead>
+                            <tr>
+                                <th>Project</th>
+                                <th>
+                                    <button type="button" class="sortable-header" data-sort-field="project_date">
+                                        Project Date
+                                        <span class="sort-indicator" aria-hidden="true"></span>
+                                    </button>
+                                </th>
+                                <th>Package</th>
+                                <th>
+                                    <button type="button" class="sortable-header" data-sort-field="bid_amount">
+                                        Bid Amount
+                                        <span class="sort-indicator" aria-hidden="true"></span>
+                                    </button>
+                                </th>
+                                <th>
+                                    <button type="button" class="sortable-header" data-sort-field="status">
+                                        Status
+                                        <span class="sort-indicator" aria-hidden="true"></span>
+                                    </button>
+                                </th>
+                                <th>Placement</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bidderBidsBody">
+                            <tr><td colspan="6" class="loading">Loading bid history...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
 
-        <!-- Bidder Detail Section -->
-        <div id="bidderDetail" style="display: none; margin-top: 2rem;">
-            <div class="table-container">
-                <h3 id="bidderDetailName" style="margin-bottom: 1rem;"></h3>
-                <button onclick="closeBidderDetail()" class="btn btn-secondary btn-small" style="margin-bottom: 1rem;">← Back to List</button>
-
-                <div id="bidderMetrics" class="bidder-metrics" style="display: none;">
-                    <div class="bidder-metric-card">
-                        <div class="metric-label">Total Bids</div>
-                        <div class="metric-value" id="bidderMetricTotal">—</div>
+        <div id="biddersMapContent" class="tab-content" role="tabpanel" aria-hidden="true" aria-labelledby="mapViewTab" data-tab-panel="map">
+            <div class="table-container map-view">
+                <div class="map-controls">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="mapBidderSelect">Select a bidder</label>
+                        <select id="mapBidderSelect">
+                            <option value="">-- Choose bidder --</option>
+                        </select>
                     </div>
-                    <div class="bidder-metric-card">
-                        <div class="metric-label">Selections</div>
-                        <div class="metric-value" id="bidderMetricWins">—</div>
-                    </div>
-                    <div class="bidder-metric-card">
-                        <div class="metric-label">Win Rate</div>
-                        <div class="metric-value" id="bidderMetricWinRate">—</div>
-                    </div>
-                    <div class="bidder-metric-card">
-                        <div class="metric-label">Avg. Placement</div>
-                        <div class="metric-value" id="bidderMetricAvgRank">—</div>
+                    <div class="map-bidder-summary" id="mapBidderSummary">
+                        <p>Select a bidder to see their coverage.</p>
                     </div>
                 </div>
-
-                <h4 style="margin-bottom: 0.5rem;">Bid History</h4>
-                <table id="bidderBidsTable">
-                    <thead>
-                        <tr>
-                            <th>Project</th>
-                            <th>
-                                <button type="button" class="sortable-header" data-sort-field="project_date">
-                                    Project Date
-                                    <span class="sort-indicator" aria-hidden="true"></span>
-                                </button>
-                            </th>
-                            <th>Package</th>
-                            <th>
-                                <button type="button" class="sortable-header" data-sort-field="bid_amount">
-                                    Bid Amount
-                                    <span class="sort-indicator" aria-hidden="true"></span>
-                                </button>
-                            </th>
-                            <th>
-                                <button type="button" class="sortable-header" data-sort-field="status">
-                                    Status
-                                    <span class="sort-indicator" aria-hidden="true"></span>
-                                </button>
-                            </th>
-                            <th>Placement</th>
-                        </tr>
-                    </thead>
-                    <tbody id="bidderBidsBody">
-                        <tr><td colspan="6" class="loading">Loading bid history...</td></tr>
-                    </tbody>
-                </table>
+                <div id="mapUnavailableMessage" class="map-empty-state" style="display: none;">
+                    <p>Mapping libraries failed to load. Refresh the page or check your connection.</p>
+                </div>
+                <div class="bidder-map" id="bidderMap">
+                    <div class="map-loading" id="mapLoading">Loading map…</div>
+                </div>
+                <div class="map-legend" id="mapLegend" aria-hidden="true"></div>
+                <div class="map-empty-state" id="mapEmptyState" style="display: none;">
+                    <h4>No county data yet</h4>
+                    <p>Set the county and state on each project to unlock bidder coverage.</p>
+                </div>
+                <div class="map-county-list" id="mapCountyList"></div>
+                <div id="mapTooltip" class="map-tooltip" aria-hidden="true"></div>
             </div>
         </div>
     </div>
 
     <script src="edit-key.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
     <script src="bidders.js"></script>
 </body>
 </html>

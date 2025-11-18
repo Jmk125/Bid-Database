@@ -1,10 +1,16 @@
 const API_BASE = '/api';
+const DEFAULT_PROJECT_STATE = 'OH';
 
 // Modal handling
 const modal = document.getElementById('addProjectModal');
 const addBtn = document.getElementById('addProjectBtn');
 const closeBtn = document.querySelector('.close');
 const cancelBtn = document.getElementById('cancelAddProject');
+const projectStateSelect = document.getElementById('projectState');
+
+if (projectStateSelect) {
+    projectStateSelect.value = DEFAULT_PROJECT_STATE;
+}
 
 if (addBtn) {
     addBtn.onclick = () => modal.style.display = 'block';
@@ -108,6 +114,7 @@ async function loadProjects(sortBy = 'date-desc') {
                 <div class="meta">
                     ${project.building_sf ? `<div>📐 ${formatNumber(project.building_sf)} SF</div>` : ''}
                     ${project.project_date ? `<div>📅 ${formatDate(project.project_date)}</div>` : ''}
+                    ${project.county_name ? `<div>📍 ${escapeHtml(project.county_name)}${project.county_state ? ', ' + escapeHtml(project.county_state) : ''}</div>` : ''}
                     <div>🕒 Created ${formatDate(project.created_at)}</div>
                     ${project.medianCostPerSF ? `<div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
                         <strong style="font-size: 1.1rem; color: #2c3e50;">${formatCurrency(project.medianCostPerSF)}/SF</strong>
@@ -144,7 +151,9 @@ if (addProjectForm) {
         const name = document.getElementById('projectName').value;
         const building_sf = document.getElementById('buildingSF').value;
         const project_date = document.getElementById('projectDate').value;
-        
+        const county_name = document.getElementById('projectCounty').value;
+        const county_state = projectStateSelect ? projectStateSelect.value : '';
+
         try {
             const response = await apiFetch(`${API_BASE}/projects`, {
                 method: 'POST',
@@ -152,7 +161,9 @@ if (addProjectForm) {
                 body: JSON.stringify({
                     name,
                     building_sf: building_sf ? parseFloat(building_sf) : null,
-                    project_date: project_date || null
+                    project_date: project_date || null,
+                    county_name: county_name ? county_name.trim() : null,
+                    county_state: county_state || null
                 })
             });
             
@@ -160,6 +171,9 @@ if (addProjectForm) {
             
             modal.style.display = 'none';
             addProjectForm.reset();
+            if (projectStateSelect) {
+                projectStateSelect.value = DEFAULT_PROJECT_STATE;
+            }
             
             // Redirect to project detail page
             window.location.href = `project.html?id=${project.id}`;
