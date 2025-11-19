@@ -30,6 +30,13 @@ const editBidsState = {
     deletedBidIds: new Set(),
     tempIdCounter: 0
 };
+let latestBidEventId = null;
+const bidderReviewState = {
+    data: null,
+    pendingDecisions: new Map(),
+    isSaving: false,
+    loading: false
+};
 
 const PACKAGE_COLOR_PALETTE = [
     '#0b3d91',
@@ -67,6 +74,18 @@ async function loadProject() {
         document.title = `${currentProject.name} - Bid Database`;
 
         updatePreconNotesButton();
+
+        const packages = currentProject.packages || [];
+        latestBidEventId = packages.reduce((latest, pkg) => {
+            if (!pkg.bid_event_id) {
+                return latest;
+            }
+            if (latest == null || Number(pkg.bid_event_id) > Number(latest)) {
+                return pkg.bid_event_id;
+            }
+            return latest;
+        }, null);
+        updateBidderReviewButtonState();
 
         // Display metrics
         displayMetrics();
@@ -1890,20 +1909,55 @@ document.getElementById('uploadForm').onsubmit = async (e) => {
         
         if (result.success) {
             document.getElementById('uploadProgress').style.display = 'none';
+            const summary = result.review_summary || { total_bids: 0, flagged_bids: 0, new_bidders: 0 };
+            latestBidEventId = result.bid_event_id || latestBidEventId;
+            updateBidderReviewButtonState();
+
+            const needsReview = summary.flagged_bids > 0;
+            const reviewMessage = summary.total_bids
+                ? needsReview
+                    ? `<div class="upload-review-warning">${summary.flagged_bids} of ${summary.total_bids} bids need confirmation.</div>`
+                    : `<div class="upload-review-success">All ${summary.total_bids} bids were matched automatically.</div>`
+                : '';
+
             document.getElementById('uploadResult').innerHTML = `
-                <div style="color: #155724; background-color: #d4edda; padding: 1rem; border-radius: 4px;">
+                <div class="upload-success-card">
                     <strong>Success!</strong> Processed ${result.packages_added} package(s).
                     ${result.building_sf ? `<br>Building SF: ${formatNumber(result.building_sf)}` : ''}
                     ${result.project_date ? `<br>Project Bid Date: ${formatDate(result.project_date)}` : ''}
                 </div>
+                ${summary.total_bids ? `
+                    <div class="upload-review-summary">
+                        <div><strong>Total bids:</strong> ${summary.total_bids}</div>
+                        <div><strong>Needs review:</strong> ${summary.flagged_bids}</div>
+                        <div><strong>New bidders:</strong> ${summary.new_bidders}</div>
+                    </div>` : ''}
+                ${reviewMessage}
+                <div class="upload-review-actions">
+                    <button type="button" class="btn btn-secondary" id="uploadReviewLaterBtn">Done</button>
+                    <button type="button" class="btn btn-primary" id="uploadReviewNowBtn">Review Bidders${needsReview ? ` (${summary.flagged_bids})` : ''}</button>
+                </div>
             `;
             document.getElementById('uploadResult').style.display = 'block';
-            
-            // Reload project data
-            setTimeout(() => {
-                closeUploadModal();
-                loadProject();
-            }, 2000);
+
+            const closeBtn = document.getElementById('uploadReviewLaterBtn');
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    closeUploadModal();
+                };
+            }
+
+            const reviewBtn = document.getElementById('uploadReviewNowBtn');
+            if (reviewBtn) {
+                reviewBtn.onclick = () => {
+                    closeUploadModal();
+                    if (result.bid_event_id) {
+                        openBidderReviewModal(result.bid_event_id);
+                    }
+                };
+            }
+
+            loadProject();
         } else {
             throw new Error('Upload failed');
         }
@@ -2716,6 +2770,444 @@ function displayPackageComparisonChart() {
     });
 }
 
+// Bidder review helpers
+function removeStandaloneReviewBiddersButtons() {
+    const allowedContainers = ['editProjectModal', 'uploadModal']
+        .map((id) => document.getElementById(id))
+        .filter(Boolean);
+
+    document.querySelectorAll('button').forEach((button) => {
+        const label = button.textContent ? button.textContent.trim() : '';
+        if (!label.includes('Review Bidders')) {
+            return;
+        }
+
+        const isInsideAllowedContainer = allowedContainers.some((container) => container.contains(button));
+        if (!isInsideAllowedContainer) {
+            button.remove();
+        }
+    });
+}
+
+function updateBidderReviewButtonState() {
+    const buttons = document.querySelectorAll('[data-review-bidders-btn]');
+    if (!buttons.length) {
+        return;
+    }
+    buttons.forEach((button) => {
+        if (latestBidEventId) {
+            button.disabled = false;
+            button.title = 'Review bidder matches from the latest upload.';
+        } else {
+            button.disabled = true;
+            button.title = 'Upload a bid tab to review bidder matches.';
+        }
+    });
+}
+
+async function fetchBidderReviewData(bidEventId) {
+    const response = await apiFetch(`${API_BASE}/bid-events/${bidEventId}/bidder-review`);
+    const payload = await response.json();
+    if (!response.ok) {
+        throw new Error(payload.error || 'Unable to load bidder review data.');
+    }
+    return payload;
+}
+
+async function openBidderReviewModal(bidEventId) {
+    const modal = document.getElementById('bidderReviewModal');
+    if (!modal) return;
+
+    if (bidEventId) {
+        latestBidEventId = bidEventId;
+        updateBidderReviewButtonState();
+    }
+
+    modal.style.display = 'block';
+    bidderReviewState.loading = true;
+    bidderReviewState.data = null;
+    bidderReviewState.pendingDecisions.clear();
+    renderBidderReviewModal();
+    const statusEl = document.getElementById('bidderReviewStatus');
+    if (statusEl) {
+        statusEl.textContent = 'Loading bidder matches...';
+    }
+
+    try {
+        const payload = await fetchBidderReviewData(bidEventId);
+        bidderReviewState.data = payload;
+        bidderReviewState.loading = false;
+        bidderReviewState.pendingDecisions.clear();
+        renderBidderReviewModal();
+        if (statusEl) {
+            statusEl.textContent = payload.summary.flagged_bids
+                ? `${payload.summary.flagged_bids} bids still need confirmation.`
+                : 'All bidders are assigned. Review or close when ready.';
+        }
+    } catch (error) {
+        bidderReviewState.loading = false;
+        renderBidderReviewModal();
+        if (statusEl) {
+            statusEl.textContent = `Error: ${error.message}`;
+        }
+        console.error('Failed to load bidder review data', error);
+    }
+}
+
+async function refreshBidderReviewData() {
+    if (!bidderReviewState.data) {
+        return;
+    }
+    bidderReviewState.loading = true;
+    renderBidderReviewModal();
+    try {
+        const payload = await fetchBidderReviewData(bidderReviewState.data.bid_event_id);
+        bidderReviewState.data = payload;
+        bidderReviewState.loading = false;
+        bidderReviewState.pendingDecisions.clear();
+        renderBidderReviewModal();
+    } catch (error) {
+        bidderReviewState.loading = false;
+        renderBidderReviewModal();
+        const statusEl = document.getElementById('bidderReviewStatus');
+        if (statusEl) {
+            statusEl.textContent = `Error: ${error.message}`;
+        }
+    }
+}
+
+function closeBidderReviewModal() {
+    const modal = document.getElementById('bidderReviewModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    bidderReviewState.loading = false;
+    bidderReviewState.isSaving = false;
+    bidderReviewState.pendingDecisions.clear();
+    updateBidderReviewActionState();
+}
+
+function renderBidderReviewModal() {
+    const summaryEl = document.getElementById('bidderReviewSummary');
+    const packagesEl = document.getElementById('bidderReviewPackages');
+    const subtitleEl = document.getElementById('bidderReviewSubtitle');
+    if (!summaryEl || !packagesEl || !subtitleEl) {
+        return;
+    }
+
+    if (bidderReviewState.loading) {
+        summaryEl.innerHTML = '';
+        packagesEl.innerHTML = '<div class="loading">Loading bidder matches...</div>';
+        subtitleEl.textContent = 'Loading bidder matches...';
+        updateBidderReviewActionState();
+        return;
+    }
+
+    if (!bidderReviewState.data) {
+        summaryEl.innerHTML = '';
+        packagesEl.innerHTML = '<div class="empty-state">Upload a bid tab to start reviewing bidders.</div>';
+        subtitleEl.textContent = 'Select a recent upload to review the bidder assignments.';
+        updateBidderReviewActionState();
+        return;
+    }
+
+    const data = bidderReviewState.data;
+    const uploadLabel = [];
+    if (data.source_filename) {
+        uploadLabel.push(data.source_filename);
+    }
+    if (data.upload_date) {
+        uploadLabel.push(formatDateTime(data.upload_date));
+    }
+    subtitleEl.textContent = uploadLabel.length ? uploadLabel.join(' · ') : 'Review bidder matches for this upload.';
+
+    summaryEl.innerHTML = `
+        <div><strong>Total bids:</strong> ${data.summary.total_bids}</div>
+        <div><strong>Needs review:</strong> ${data.summary.flagged_bids}</div>
+        <div><strong>New bidders:</strong> ${data.summary.new_bidders}</div>
+    `;
+
+    if (!data.packages.length) {
+        packagesEl.innerHTML = '<div class="empty-state">No packages were added in this upload.</div>';
+    } else {
+        packagesEl.innerHTML = data.packages.map(renderBidderReviewPackage).join('');
+    }
+
+    updateBidderReviewActionState();
+}
+
+function renderBidderReviewPackage(pkg) {
+    const needsReviewTag = pkg.needs_review_count
+        ? `<span class="bidder-review-tag tag-warning">${pkg.needs_review_count} need review</span>`
+        : '<span class="bidder-review-tag">All matched</span>';
+    const rows = pkg.bids && pkg.bids.length
+        ? pkg.bids.map((bid) => renderBidderReviewRow(pkg, bid)).join('')
+        : '<tr><td colspan="2" class="empty-state">No bids captured for this package.</td></tr>';
+
+    return `
+        <details class="bidder-review-package" ${pkg.needs_review_count ? 'open' : ''}>
+            <summary>
+                <div>
+                    <div><strong>${escapeHtml(pkg.package_code || 'Package')}</strong></div>
+                    <div class="bidder-review-meta">${escapeHtml(pkg.package_name || '')}</div>
+                </div>
+                <div class="bidder-review-tags">${needsReviewTag}</div>
+            </summary>
+            <table class="bidder-review-table">
+                <thead>
+                    <tr>
+                        <th>Bidder</th>
+                        <th>Suggested Match</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </details>
+    `;
+}
+
+function renderBidderReviewRow(pkg, bid) {
+    const pending = bidderReviewState.pendingDecisions.get(bid.bid_id);
+    let selectValue = '__keep__';
+    if (pending) {
+        if (pending.new_bidder_name) {
+            selectValue = '__create__';
+        } else if (pending.bidder_id) {
+            selectValue = String(pending.bidder_id);
+        }
+    }
+    const encodedRaw = encodeURIComponent(bid.raw_bidder_name || '');
+    const originalId = bid.bidder_id != null ? String(bid.bidder_id) : '';
+    const showNewInput = selectValue === '__create__';
+    const newInputValue = pending?.new_bidder_name || bid.raw_bidder_name || '';
+
+    const uniqueSuggestions = [];
+    const seen = new Set();
+    (bid.suggestions || []).forEach((suggestion) => {
+        if (suggestion && !seen.has(suggestion.bidder_id)) {
+            seen.add(suggestion.bidder_id);
+            uniqueSuggestions.push(suggestion);
+        }
+    });
+
+    const allDirectoryBidders = Array.isArray(bidderReviewState.data?.all_bidders)
+        ? bidderReviewState.data.all_bidders
+        : [];
+    const suggestionIds = new Set(uniqueSuggestions.map((s) => s.bidder_id));
+    const directoryOptions = allDirectoryBidders.filter((entry) => !suggestionIds.has(entry.bidder_id));
+
+    const options = [];
+    const keepLabel = bid.bidder_name ? `Keep ${escapeHtml(bid.bidder_name)}` : 'Leave unassigned';
+    options.push(`<option value="__keep__"${selectValue === '__keep__' ? ' selected' : ''}>${keepLabel}</option>`);
+
+    if (uniqueSuggestions.length) {
+        const suggestionOptions = uniqueSuggestions.map((suggestion) => {
+            const isSelected = selectValue === String(suggestion.bidder_id);
+            return `<option value="${suggestion.bidder_id}"${isSelected ? ' selected' : ''}>${escapeHtml(suggestion.name)} (${formatConfidence(suggestion.confidence)})</option>`;
+        });
+        options.push(`<optgroup label="Suggested Matches">${suggestionOptions.join('')}</optgroup>`);
+    }
+
+    if (directoryOptions.length) {
+        const otherOptions = directoryOptions.map((entry) => {
+            const isSelected = selectValue === String(entry.bidder_id);
+            return `<option value="${entry.bidder_id}"${isSelected ? ' selected' : ''}>${escapeHtml(entry.name)}</option>`;
+        });
+        options.push(`<optgroup label="All Bidders">${otherOptions.join('')}</optgroup>`);
+    }
+
+    options.push(`<option value="__create__"${showNewInput ? ' selected' : ''}>➕ Create new bidder...</option>`);
+
+    const amountTag = bid.bid_amount != null
+        ? `<span class="bidder-review-tag tag-amount">${formatCurrency(bid.bid_amount)}</span>`
+        : '';
+    const selectedTag = bid.was_selected
+        ? '<span class="bidder-review-tag tag-selected">Selected Bid</span>'
+        : '';
+    const reviewTag = bid.needs_review ? '<span class="bidder-review-tag tag-warning">Needs review</span>' : '';
+
+    return `
+        <tr class="${bid.needs_review ? 'needs-review' : ''}">
+            <td>
+                <div><strong>${escapeHtml(bid.raw_bidder_name || bid.bidder_name || 'Unknown Bidder')}</strong></div>
+                <div class="bidder-review-tags">${selectedTag}${amountTag}${reviewTag}</div>
+                <div class="bidder-review-meta">Assigned: ${escapeHtml(bid.bidder_name || 'New Bidder')}</div>
+            </td>
+            <td>
+                <select class="bidder-review-select" data-bid-id="${bid.bid_id}" data-raw-name="${encodedRaw}" data-original-bidder-id="${originalId}">
+                    ${options.join('')}
+                </select>
+                <input type="text" class="bidder-review-new-input ${showNewInput ? 'is-visible' : ''}" data-bid-id="${bid.bid_id}" value="${escapeHtml(newInputValue)}" placeholder="Enter new bidder name">
+                <div class="confidence-label">Confidence: ${formatConfidence(bid.match_confidence)}</div>
+            </td>
+        </tr>
+    `;
+}
+
+function handleBidderReviewChange(event) {
+    const select = event.target.closest('.bidder-review-select');
+    if (select) {
+        handleBidderSelectChange(select);
+    }
+}
+
+function handleBidderReviewInput(event) {
+    const input = event.target.closest('.bidder-review-new-input');
+    if (!input) {
+        return;
+    }
+    const bidId = Number(input.dataset.bidId);
+    if (!Number.isFinite(bidId)) {
+        return;
+    }
+    const pending = bidderReviewState.pendingDecisions.get(bidId);
+    if (!pending || pending.bidder_id) {
+        return;
+    }
+    pending.new_bidder_name = input.value.trim();
+    bidderReviewState.pendingDecisions.set(bidId, pending);
+    updateBidderReviewActionState();
+}
+
+function handleBidderSelectChange(select) {
+    const bidId = Number(select.dataset.bidId);
+    if (!Number.isFinite(bidId)) {
+        return;
+    }
+    const value = select.value;
+    const rawName = decodeRawNameAttribute(select.dataset.rawName || '');
+    const originalId = select.dataset.originalBidderId ? Number(select.dataset.originalBidderId) : null;
+    const newInput = document.querySelector(`.bidder-review-new-input[data-bid-id="${bidId}"]`);
+
+    if (value === '__create__') {
+        if (newInput) {
+            newInput.classList.add('is-visible');
+            if (!newInput.value) {
+                newInput.value = rawName;
+            }
+            newInput.focus();
+        }
+        bidderReviewState.pendingDecisions.set(bidId, {
+            bid_id: bidId,
+            new_bidder_name: newInput ? newInput.value.trim() || rawName : rawName,
+            raw_bidder_name: rawName
+        });
+    } else if (value === '__keep__') {
+        if (newInput) {
+            newInput.classList.remove('is-visible');
+        }
+        bidderReviewState.pendingDecisions.delete(bidId);
+    } else {
+        if (newInput) {
+            newInput.classList.remove('is-visible');
+        }
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) {
+            bidderReviewState.pendingDecisions.delete(bidId);
+        } else if (originalId != null && numericValue === originalId) {
+            bidderReviewState.pendingDecisions.delete(bidId);
+        } else {
+            bidderReviewState.pendingDecisions.set(bidId, {
+                bid_id: bidId,
+                bidder_id: numericValue,
+                raw_bidder_name: rawName
+            });
+        }
+    }
+
+    updateBidderReviewActionState();
+}
+
+function decodeRawNameAttribute(value) {
+    if (!value) {
+        return '';
+    }
+    try {
+        return decodeURIComponent(value);
+    } catch (error) {
+        return value;
+    }
+}
+
+async function applyBidderReviewDecisions() {
+    if (bidderReviewState.isSaving || !bidderReviewState.data) {
+        return;
+    }
+
+    const decisions = Array.from(bidderReviewState.pendingDecisions.values()).map((decision) => {
+        const payload = {
+            bid_id: decision.bid_id,
+            raw_bidder_name: decision.raw_bidder_name || ''
+        };
+        if (decision.new_bidder_name) {
+            payload.new_bidder_name = decision.new_bidder_name.trim();
+        } else if (decision.bidder_id) {
+            payload.bidder_id = decision.bidder_id;
+        }
+        return payload;
+    }).filter((payload) => payload.bidder_id || (payload.new_bidder_name && payload.new_bidder_name.length));
+
+    if (!decisions.length) {
+        return;
+    }
+
+    bidderReviewState.isSaving = true;
+    updateBidderReviewActionState();
+    const statusEl = document.getElementById('bidderReviewStatus');
+    if (statusEl) {
+        statusEl.textContent = 'Saving bidder updates...';
+    }
+
+    try {
+        const response = await apiFetch(`${API_BASE}/bid-events/${bidderReviewState.data.bid_event_id}/bidder-review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ decisions })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.error || 'Failed to save bidder updates.');
+        }
+        bidderReviewState.data = payload.bid_event;
+        bidderReviewState.pendingDecisions.clear();
+        bidderReviewState.isSaving = false;
+        renderBidderReviewModal();
+        if (statusEl) {
+            statusEl.textContent = 'Bidder assignments updated.';
+        }
+        await loadProject();
+    } catch (error) {
+        bidderReviewState.isSaving = false;
+        if (statusEl) {
+            statusEl.textContent = `Error: ${error.message}`;
+        }
+        console.error('Failed to save bidder review decisions', error);
+    }
+
+    updateBidderReviewActionState();
+}
+
+function updateBidderReviewActionState() {
+    const saveBtn = document.getElementById('applyBidderReviewBtn');
+    if (!saveBtn) {
+        return;
+    }
+    const pendingCount = bidderReviewState.pendingDecisions.size;
+    if (bidderReviewState.isSaving) {
+        saveBtn.textContent = 'Saving...';
+    } else {
+        saveBtn.textContent = pendingCount > 0 ? `Save Changes (${pendingCount})` : 'Save Changes';
+    }
+    saveBtn.disabled = bidderReviewState.isSaving || pendingCount === 0;
+}
+
+function formatConfidence(value) {
+    if (value == null || Number.isNaN(value)) {
+        return '—';
+    }
+    return `${Math.round(Number(value) * 100)}%`;
+}
+
 const validateBtn = document.getElementById('validateProjectBtn');
 if (validateBtn) {
     validateBtn.addEventListener('click', openValidateModal);
@@ -2750,6 +3242,35 @@ const validateProjectForm = document.getElementById('validateProjectForm');
 if (validateProjectForm) {
     validateProjectForm.addEventListener('submit', handleValidationSubmit);
 }
+
+const reviewBidderButtons = document.querySelectorAll('[data-review-bidders-btn]');
+if (reviewBidderButtons.length) {
+    reviewBidderButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!latestBidEventId) {
+                alert('Upload a bid tab to review bidder matches.');
+                return;
+            }
+            if (button.dataset.closeEditModal === 'true') {
+                closeEditProjectModal();
+            }
+            openBidderReviewModal(latestBidEventId);
+        });
+    });
+}
+
+const bidderReviewPackagesEl = document.getElementById('bidderReviewPackages');
+if (bidderReviewPackagesEl) {
+    bidderReviewPackagesEl.addEventListener('change', handleBidderReviewChange);
+    bidderReviewPackagesEl.addEventListener('input', handleBidderReviewInput);
+}
+
+const applyBidderReviewBtn = document.getElementById('applyBidderReviewBtn');
+if (applyBidderReviewBtn) {
+    applyBidderReviewBtn.addEventListener('click', applyBidderReviewDecisions);
+}
+
+removeStandaloneReviewBiddersButtons();
 
 // Edit project
 document.getElementById('editProjectBtn').onclick = () => {
@@ -2795,7 +3316,16 @@ document.getElementById('editProjectForm').onsubmit = async (e) => {
     }
 };
 
+const editModalUploadBidTabBtn = document.getElementById('editModalUploadBidTabBtn');
+if (editModalUploadBidTabBtn) {
+    editModalUploadBidTabBtn.addEventListener('click', () => {
+        closeEditProjectModal();
+        document.getElementById('uploadModal').style.display = 'block';
+    });
+}
+
 // Load project on page load
+updateBidderReviewButtonState();
 setupGmpChartControls();
 setupViewTabs();
 loadProject();
