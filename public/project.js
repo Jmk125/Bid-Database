@@ -2771,6 +2771,24 @@ function displayPackageComparisonChart() {
 }
 
 // Bidder review helpers
+function removeStandaloneReviewBiddersButtons() {
+    const allowedContainers = ['editProjectModal', 'uploadModal']
+        .map((id) => document.getElementById(id))
+        .filter(Boolean);
+
+    document.querySelectorAll('button').forEach((button) => {
+        const label = button.textContent ? button.textContent.trim() : '';
+        if (!label.includes('Review Bidders')) {
+            return;
+        }
+
+        const isInsideAllowedContainer = allowedContainers.some((container) => container.contains(button));
+        if (!isInsideAllowedContainer) {
+            button.remove();
+        }
+    });
+}
+
 function updateBidderReviewButtonState() {
     const buttons = document.querySelectorAll('[data-review-bidders-btn]');
     if (!buttons.length) {
@@ -3251,6 +3269,8 @@ const applyBidderReviewBtn = document.getElementById('applyBidderReviewBtn');
 if (applyBidderReviewBtn) {
     applyBidderReviewBtn.addEventListener('click', applyBidderReviewDecisions);
 }
+
+removeStandaloneReviewBiddersButtons();
 
 // Edit project
 document.getElementById('editProjectBtn').onclick = () => {
