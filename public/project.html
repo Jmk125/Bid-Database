@@ -40,6 +40,7 @@
                     <button id="preconNotesBtn" class="btn btn-secondary btn-small btn-notes" type="button" aria-haspopup="dialog" title="View or edit estimator notes">🗒️ Pre-con Notes</button>
                     <button id="editProjectBtn" class="btn btn-secondary">✏️ Edit Project</button>
                     <button id="addPackageBtn" class="btn btn-secondary">+ Add Package</button>
+                    <button id="reviewBidderMatchesBtn" class="btn btn-secondary btn-small" type="button" title="Review bidder matches from the latest upload">👀 Review Bidders</button>
                     <button id="uploadBidTabBtn" class="btn btn-primary">📤 Upload Bid Tab</button>
                 </div>
             </div>
@@ -371,6 +372,26 @@
             </div>
             <div id="uploadResult" style="display: none; margin-top: 1rem;">
                 <!-- Upload result will show here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Bidder Review Modal -->
+    <div id="bidderReviewModal" class="modal">
+        <div class="modal-content modal-wide bidder-review-modal">
+            <span class="close" onclick="closeBidderReviewModal()">&times;</span>
+            <h3>Review Bidder Matches</h3>
+            <p id="bidderReviewSubtitle" class="modal-subtitle">Select a recent upload to review the bidder assignments.</p>
+            <div id="bidderReviewSummary" class="bidder-review-summary"></div>
+            <div id="bidderReviewPackages" class="bidder-review-packages">
+                <div class="empty-state">Upload a bid tab to start reviewing bidders.</div>
+            </div>
+            <div class="form-actions bidder-review-actions">
+                <div id="bidderReviewStatus" class="bidder-review-status"></div>
+                <div class="bidder-review-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="closeBidderReviewModal()">Close</button>
+                    <button type="button" class="btn btn-primary" id="applyBidderReviewBtn" disabled>Save Changes</button>
+                </div>
             </div>
         </div>
     </div>
