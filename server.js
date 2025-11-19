@@ -19,6 +19,8 @@ const PORT = 3020;
 const EDIT_KEY = (process.env.EDIT_KEY || process.env.DEFAULT_EDIT_KEY || 'letmein').trim();
 const EDIT_KEY_HEADER = 'x-edit-key';
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const BIDDER_AUTO_MATCH_THRESHOLD = 0.9;
+const BIDDER_SUGGESTION_LIMIT = 6;
 
 function toFiniteNumber(value) {
   if (value == null) {
@@ -1224,41 +1226,413 @@ app.post('/api/upload-bid-tab', upload.single('file'), async (req, res) => {
   }
 });
 
+// Bidder review for uploaded bid tabs
+app.get('/api/bid-events/:bidEventId/bidder-review', (req, res) => {
+  const db = getDatabase();
+  const bidEventId = Number(req.params.bidEventId);
+
+  if (!Number.isFinite(bidEventId)) {
+    return res.status(400).json({ error: 'Invalid bid event ID.' });
+  }
+
+  const payload = getBidderReviewPayload(db, bidEventId);
+  if (!payload) {
+    return res.status(404).json({ error: 'Bid event not found.' });
+  }
+
+  res.json(payload);
+});
+
+app.post('/api/bid-events/:bidEventId/bidder-review', (req, res) => {
+  const db = getDatabase();
+  const bidEventId = Number(req.params.bidEventId);
+
+  if (!Number.isFinite(bidEventId)) {
+    return res.status(400).json({ error: 'Invalid bid event ID.' });
+  }
+
+  const payloadPreview = getBidderReviewPayload(db, bidEventId);
+  if (!payloadPreview) {
+    return res.status(404).json({ error: 'Bid event not found.' });
+  }
+
+  const decisions = Array.isArray(req.body.decisions) ? req.body.decisions : [];
+  if (decisions.length === 0) {
+    return res.status(400).json({ error: 'No bidder updates were provided.' });
+  }
+
+  let applied = 0;
+
+  decisions.forEach((decision) => {
+    const bidId = Number(decision.bid_id);
+    if (!Number.isFinite(bidId)) {
+      return;
+    }
+
+    let bidderId = decision.bidder_id != null ? Number(decision.bidder_id) : null;
+    const newName = typeof decision.new_bidder_name === 'string' ? decision.new_bidder_name.trim() : '';
+
+    if (!bidderId && !newName) {
+      return;
+    }
+
+    const bidQuery = db.exec(
+      `SELECT b.id, b.package_id, b.was_selected, pkg.bid_event_id
+       FROM bids b
+       JOIN packages pkg ON pkg.id = b.package_id
+       WHERE b.id = ?
+       LIMIT 1`,
+      [bidId]
+    );
+
+    if (bidQuery.length === 0 || bidQuery[0].values.length === 0) {
+      return;
+    }
+
+    const bidRow = bidQuery[0].values[0];
+    const packageId = bidRow[1];
+    const wasSelected = bidRow[2] ? true : false;
+    const bidEventForBid = bidRow[3];
+
+    if (bidEventForBid !== bidEventId) {
+      return;
+    }
+
+    if (!bidderId && newName) {
+      bidderId = getOrCreateBidder(db, newName);
+    }
+
+    if (!bidderId) {
+      return;
+    }
+
+    db.run('UPDATE bids SET bidder_id = ? WHERE id = ?', [bidderId, bidId]);
+
+    const stagingQuery = db.exec(
+      'SELECT id, raw_bidder_name FROM bid_event_bidders WHERE bid_id = ? LIMIT 1',
+      [bidId]
+    );
+
+    const rawName = (stagingQuery.length > 0 && stagingQuery[0].values.length > 0)
+      ? stagingQuery[0].values[0][1]
+      : (typeof decision.raw_bidder_name === 'string' ? decision.raw_bidder_name : '') || newName;
+
+    const canonicalRow = db.exec('SELECT canonical_name FROM bidders WHERE id = ? LIMIT 1', [bidderId]);
+    const canonicalName = canonicalRow.length > 0 && canonicalRow[0].values.length > 0
+      ? canonicalRow[0].values[0][0]
+      : '';
+
+    const normalizedRaw = normalizeBidderName(rawName || newName || canonicalName);
+    const normalizedCanonical = normalizeBidderName(canonicalName);
+    const manualConfidence = normalizedRaw && normalizedCanonical
+      ? computeNameSimilarity(normalizedRaw, normalizedCanonical)
+      : 1;
+    const matchType = newName ? 'manual-new' : 'manual-existing';
+
+    if (stagingQuery.length > 0 && stagingQuery[0].values.length > 0) {
+      const stagingId = stagingQuery[0].values[0][0];
+      db.run(
+        `UPDATE bid_event_bidders
+         SET assigned_bidder_id = ?, match_confidence = ?, match_type = ?, was_auto_created = 0,
+             normalized_bidder_name = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [bidderId, manualConfidence, matchType, normalizedRaw || '', stagingId]
+      );
+    } else {
+      db.run(
+        `INSERT INTO bid_event_bidders
+           (bid_event_id, package_id, bid_id, raw_bidder_name, normalized_bidder_name,
+            assigned_bidder_id, match_confidence, match_type, was_auto_created)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        [bidEventId, packageId, bidId, rawName || '', normalizedRaw || '', bidderId, manualConfidence, matchType]
+      );
+    }
+
+    if (rawName && canonicalName && rawName.trim() !== canonicalName.trim()) {
+      addBidderAliasIfMissing(db, bidderId, rawName);
+    }
+
+    if (wasSelected) {
+      db.run('UPDATE packages SET selected_bidder_id = ? WHERE id = ?', [bidderId, packageId]);
+    }
+
+    applied += 1;
+  });
+
+  if (applied === 0) {
+    return res.status(400).json({ error: 'No bidder updates were applied.' });
+  }
+
+  saveDatabase();
+  const refreshed = getBidderReviewPayload(db, bidEventId);
+  res.json({ success: true, bid_event: refreshed });
+});
+
 // ============ HELPER FUNCTIONS ============
 
 function getOrCreateBidder(db, bidderName) {
-  const normalized = normalizeBidderName(bidderName);
-  
+  const fallback = bidderName ? String(bidderName).trim() : '';
+  const normalized = normalizeBidderName(bidderName) || fallback || 'Unknown Bidder';
+
   // Check if bidder exists
   const existingQuery = db.exec(
     'SELECT id FROM bidders WHERE canonical_name = ?',
     [normalized]
   );
-  
+
   if (existingQuery.length > 0) {
     return existingQuery[0].values[0][0];
   }
-  
+
   // Create new bidder
   db.run('INSERT INTO bidders (canonical_name) VALUES (?)', [normalized]);
   const result = db.exec('SELECT last_insert_rowid()');
   const bidderId = result[0].values[0][0];
-  
+
   // Add alias if different from canonical name
-  if (normalized !== bidderName) {
-    db.run('INSERT INTO bidder_aliases (bidder_id, alias_name) VALUES (?, ?)', [bidderId, bidderName]);
+  const trimmedInput = bidderName ? String(bidderName).trim() : '';
+  if (trimmedInput && trimmedInput !== normalized) {
+    addBidderAliasIfMissing(db, bidderId, trimmedInput);
   }
-  
+
   return bidderId;
 }
 
 function normalizeBidderName(name) {
+  if (name == null) {
+    return '';
+  }
+
+  const raw = String(name).trim();
+  if (!raw) {
+    return '';
+  }
+
   // Remove common suffixes and normalize
-  return name
+  return raw
     .replace(/\*/g, '') // Remove asterisks
     .replace(/,?\s*(Inc\.?|LLC\.?|Co\.?|Corporation|Corp\.?|Company|Ltd\.?)$/i, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function loadBidderDirectory(db) {
+  const directory = {
+    entries: [],
+    byId: new Map(),
+    normalizedToId: new Map()
+  };
+
+  const bidderQuery = db.exec('SELECT id, canonical_name FROM bidders ORDER BY canonical_name ASC');
+  if (bidderQuery.length > 0) {
+    bidderQuery[0].values.forEach((row) => {
+      const id = row[0];
+      const canonical = row[1];
+      const entry = ensureBidderDirectoryEntry(directory, id, canonical);
+      registerBidderName(directory, id, canonical);
+      if (!entry.display_name) {
+        entry.display_name = canonical;
+      }
+    });
+  }
+
+  const aliasQuery = db.exec('SELECT bidder_id, alias_name FROM bidder_aliases');
+  if (aliasQuery.length > 0) {
+    aliasQuery[0].values.forEach((row) => {
+      registerBidderName(directory, row[0], row[1]);
+    });
+  }
+
+  return directory;
+}
+
+function ensureBidderDirectoryEntry(directory, bidderId, displayName) {
+  let entry = directory.byId.get(bidderId);
+  if (!entry) {
+    entry = { id: bidderId, display_name: displayName || '', names: new Set() };
+    directory.byId.set(bidderId, entry);
+    directory.entries.push(entry);
+  } else if (displayName && !entry.display_name) {
+    entry.display_name = displayName;
+  }
+
+  return entry;
+}
+
+function registerBidderName(directory, bidderId, rawName) {
+  if (!rawName) {
+    return;
+  }
+
+  const normalized = normalizeBidderName(rawName);
+  if (!normalized) {
+    return;
+  }
+
+  const entry = ensureBidderDirectoryEntry(directory, bidderId, rawName);
+  entry.names.add(normalized);
+  directory.normalizedToId.set(normalized.toLowerCase(), bidderId);
+}
+
+function levenshteinDistance(a, b) {
+  if (a === b) {
+    return 0;
+  }
+
+  const strA = a || '';
+  const strB = b || '';
+  const lenA = strA.length;
+  const lenB = strB.length;
+
+  if (lenA === 0) return lenB;
+  if (lenB === 0) return lenA;
+
+  const matrix = Array.from({ length: lenA + 1 }, () => new Array(lenB + 1).fill(0));
+
+  for (let i = 0; i <= lenA; i++) {
+    matrix[i][0] = i;
+  }
+  for (let j = 0; j <= lenB; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= lenA; i++) {
+    for (let j = 1; j <= lenB; j++) {
+      const cost = strA[i - 1] === strB[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return matrix[lenA][lenB];
+}
+
+function computeNameSimilarity(a, b) {
+  if (!a && !b) {
+    return 1;
+  }
+
+  if (!a || !b) {
+    return 0;
+  }
+
+  if (a === b) {
+    return 1;
+  }
+
+  const distance = levenshteinDistance(a.toLowerCase(), b.toLowerCase());
+  const maxLength = Math.max(a.length, b.length) || 1;
+  return 1 - distance / maxLength;
+}
+
+function findBestBidderMatch(directory, normalizedName) {
+  if (!normalizedName) {
+    return null;
+  }
+
+  const lower = normalizedName.toLowerCase();
+  if (directory.normalizedToId.has(lower)) {
+    const bidderId = directory.normalizedToId.get(lower);
+    return { bidderId, score: 1, matchedName: normalizedName };
+  }
+
+  let best = null;
+  for (const entry of directory.entries) {
+    for (const candidate of entry.names) {
+      const score = computeNameSimilarity(normalizedName, candidate);
+      if (!best || score > best.score) {
+        best = { bidderId: entry.id, score, matchedName: candidate };
+      }
+    }
+  }
+
+  return best;
+}
+
+function addBidderAliasIfMissing(db, bidderId, alias) {
+  if (!alias) {
+    return;
+  }
+
+  const trimmed = String(alias).trim();
+  if (!trimmed) {
+    return;
+  }
+
+  const existing = db.exec('SELECT 1 FROM bidder_aliases WHERE bidder_id = ? AND alias_name = ? LIMIT 1', [bidderId, trimmed]);
+  if (existing.length > 0 && existing[0].values.length > 0) {
+    return;
+  }
+
+  db.run('INSERT INTO bidder_aliases (bidder_id, alias_name) VALUES (?, ?)', [bidderId, trimmed]);
+}
+
+function createBidderRecord(db, canonicalName) {
+  const name = canonicalName || 'Unknown Bidder';
+  db.run('INSERT INTO bidders (canonical_name) VALUES (?)', [name]);
+  const result = db.exec('SELECT last_insert_rowid()');
+  return result[0].values[0][0];
+}
+
+function resolveBidderMatch(db, directory, rawName) {
+  const normalizedName = normalizeBidderName(rawName);
+  const candidate = normalizedName ? findBestBidderMatch(directory, normalizedName) : null;
+
+  if (candidate && candidate.score >= BIDDER_AUTO_MATCH_THRESHOLD) {
+    const matchType = candidate.score === 1 ? 'exact' : 'fuzzy';
+    return {
+      bidderId: candidate.bidderId,
+      matchConfidence: candidate.score,
+      matchType,
+      normalizedName,
+      wasCreated: false
+    };
+  }
+
+  const canonical = normalizedName || (rawName ? String(rawName).trim() : '');
+  const bidderId = createBidderRecord(db, canonical || 'Unknown Bidder');
+  registerBidderName(directory, bidderId, canonical || rawName || '');
+  if (rawName && canonical !== rawName.trim()) {
+    addBidderAliasIfMissing(db, bidderId, rawName);
+    registerBidderName(directory, bidderId, rawName);
+  }
+
+  return {
+    bidderId,
+    matchConfidence: 0,
+    matchType: 'new',
+    normalizedName,
+    wasCreated: true
+  };
+}
+
+function buildBidderSuggestions(directory, rawName, limit = BIDDER_SUGGESTION_LIMIT) {
+  const normalized = normalizeBidderName(rawName);
+  const results = [];
+
+  for (const entry of directory.entries) {
+    let bestScore = 0;
+    for (const candidate of entry.names) {
+      const score = normalized ? computeNameSimilarity(normalized, candidate) : 0;
+      if (score > bestScore) {
+        bestScore = score;
+      }
+    }
+
+    if (bestScore > 0 || entry.display_name) {
+      results.push({
+        bidder_id: entry.id,
+        name: entry.display_name || Array.from(entry.names)[0] || 'Unknown Bidder',
+        confidence: Number(bestScore.toFixed(3))
+      });
+    }
+  }
+
+  results.sort((a, b) => b.confidence - a.confidence || a.name.localeCompare(b.name));
+  return results.slice(0, limit);
 }
 
 async function parseBidTab(workbook, projectId, filename) {
@@ -1266,6 +1640,8 @@ async function parseBidTab(workbook, projectId, filename) {
   const XLSX = require('xlsx');
 
   const gmpEstimates = extractGmpEstimates(workbook, XLSX);
+  const bidderDirectory = loadBidderDirectory(db);
+  const reviewStats = { total_bids: 0, flagged_bids: 0, new_bidders: 0 };
 
   // Create bid event
   db.run(
@@ -1350,11 +1726,24 @@ async function parseBidTab(workbook, projectId, filename) {
       const high_bid = Math.max(...bidAmounts);
       const median_bid = calculateMedian(bidAmounts);
       const average_bid = bidAmounts.reduce((a, b) => a + b, 0) / bidAmounts.length;
-      
+
+      // Resolve bidders for each bid to capture matches and review stats
+      const resolvedBids = packageData.bids.map((bid) => {
+        const match = resolveBidderMatch(db, bidderDirectory, bid.bidder);
+        reviewStats.total_bids += 1;
+        if (match.matchType === 'new') {
+          reviewStats.new_bidders += 1;
+        }
+        if (match.matchType === 'new' || match.matchConfidence < BIDDER_AUTO_MATCH_THRESHOLD) {
+          reviewStats.flagged_bids += 1;
+        }
+        return { ...bid, match };
+      });
+
       // Get selected bid and bidder
-      const selectedBid = packageData.bids.find(b => b.selected);
+      const selectedBid = resolvedBids.find(b => b.selected);
       const selected_amount = selectedBid ? selectedBid.amount : low_bid;
-      const selected_bidder_id = selectedBid ? getOrCreateBidder(db, selectedBid.bidder) : null;
+      const selected_bidder_id = selectedBid ? selectedBid.match.bidderId : null;
       
       // Check if selected bid is not the actual low bid
       const override_flag = selectedBid && selectedBid.amount !== low_bid ? 1 : 0;
@@ -1385,14 +1774,34 @@ async function parseBidTab(workbook, projectId, filename) {
       const packageId = packageResult[0].values[0][0];
       
       // Insert all bids
-      for (const bid of packageData.bids) {
-        const bidder_id = getOrCreateBidder(db, bid.bidder);
+      for (const bid of resolvedBids) {
+        const bidder_id = bid.match.bidderId;
         const was_selected = bid.selected ? 1 : 0;
-        
+
         db.run(
           'INSERT INTO bids (package_id, bidder_id, bid_amount, was_selected) VALUES (?, ?, ?, ?)',
           [packageId, bidder_id, bid.amount, was_selected]
         );
+
+        const bidResult = db.exec('SELECT last_insert_rowid()');
+        const bidId = bidResult[0].values[0][0];
+
+        db.run(`
+          INSERT INTO bid_event_bidders
+          (bid_event_id, package_id, bid_id, raw_bidder_name, normalized_bidder_name,
+           assigned_bidder_id, match_confidence, match_type, was_auto_created)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          bidEventId,
+          packageId,
+          bidId,
+          bid.bidder || '',
+          bid.match.normalizedName || '',
+          bidder_id,
+          bid.match.matchConfidence,
+          bid.match.matchType,
+          bid.match.matchType === 'new' ? 1 : 0
+        ]);
       }
       
       packagesAdded.push({
@@ -1412,7 +1821,138 @@ async function parseBidTab(workbook, projectId, filename) {
     packages_added: packagesAdded.length,
     packages: packagesAdded,
     project_date,
-    building_sf
+    building_sf,
+    review_summary: {
+      total_bids: reviewStats.total_bids,
+      flagged_bids: reviewStats.flagged_bids,
+      new_bidders: reviewStats.new_bidders
+    }
+  };
+}
+
+function getBidderReviewPayload(db, bidEventId) {
+  const eventQuery = db.exec(
+    'SELECT id, project_id, source_filename, upload_date FROM bid_events WHERE id = ? LIMIT 1',
+    [bidEventId]
+  );
+
+  if (eventQuery.length === 0 || eventQuery[0].values.length === 0) {
+    return null;
+  }
+
+  const eventRow = eventQuery[0].values[0];
+  const packagesQuery = db.exec(
+    'SELECT id, package_code, package_name FROM packages WHERE bid_event_id = ? ORDER BY package_code',
+    [bidEventId]
+  );
+
+  const packages = packagesQuery.length > 0
+    ? packagesQuery[0].values.map((row) => ({
+        id: row[0],
+        package_code: row[1],
+        package_name: row[2],
+        bids: [],
+        needs_review_count: 0
+      }))
+    : [];
+
+  const packagesById = new Map(packages.map(pkg => [pkg.id, pkg]));
+  const packageIds = packages.map(pkg => pkg.id);
+  const summary = { total_bids: 0, flagged_bids: 0, new_bidders: 0 };
+  const directory = loadBidderDirectory(db);
+  const allBidders = directory.entries
+    .map((entry) => ({
+      bidder_id: entry.id,
+      name: entry.display_name || Array.from(entry.names)[0] || 'Unknown Bidder'
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (packageIds.length > 0) {
+    const placeholders = packageIds.map(() => '?').join(',');
+    const bidsQuery = db.exec(
+      `SELECT
+         b.id,
+         b.package_id,
+         b.bid_amount,
+         b.was_selected,
+         b.bidder_id,
+         bidder.canonical_name,
+         beb.raw_bidder_name,
+         beb.normalized_bidder_name,
+         beb.match_confidence,
+         beb.match_type,
+         beb.was_auto_created
+       FROM bids b
+       LEFT JOIN bidders bidder ON bidder.id = b.bidder_id
+       LEFT JOIN bid_event_bidders beb ON beb.bid_id = b.id
+       WHERE b.package_id IN (${placeholders})
+       ORDER BY b.package_id, b.bid_amount ASC, b.id ASC`,
+      packageIds
+    );
+
+    if (bidsQuery.length > 0) {
+      bidsQuery[0].values.forEach((row) => {
+        const bidId = row[0];
+        const packageId = row[1];
+        const pkg = packagesById.get(packageId);
+        if (!pkg) {
+          return;
+        }
+
+        const bidAmount = row[2];
+        const wasSelected = row[3] ? true : false;
+        const bidderId = row[4];
+        const bidderName = row[5];
+        const rawName = row[6] || bidderName || '';
+        const matchType = row[9] || 'legacy';
+        const matchConfidence = row[8] != null ? Number(row[8]) : (matchType === 'legacy' ? 1 : 0);
+        const wasAutoCreated = row[10] ? true : false;
+        const suggestions = buildBidderSuggestions(directory, rawName);
+
+        if (bidderId && !suggestions.some(s => s.bidder_id === bidderId)) {
+          suggestions.unshift({ bidder_id: bidderId, name: bidderName || rawName || 'Assigned Bidder', confidence: 1 });
+        }
+
+        const needsReview = Boolean(
+          matchType === 'new' ||
+          wasAutoCreated ||
+          (matchType !== 'legacy' && matchConfidence < BIDDER_AUTO_MATCH_THRESHOLD)
+        );
+
+        summary.total_bids += 1;
+        if (matchType === 'new' || wasAutoCreated) {
+          summary.new_bidders += 1;
+        }
+        if (needsReview) {
+          summary.flagged_bids += 1;
+          pkg.needs_review_count += 1;
+        }
+
+        pkg.bids.push({
+          bid_id: bidId,
+          bid_amount: bidAmount,
+          was_selected: wasSelected,
+          bidder_id: bidderId,
+          bidder_name: bidderName,
+          raw_bidder_name: rawName,
+          match_confidence: matchConfidence,
+          match_type: matchType,
+          was_auto_created: wasAutoCreated,
+          needs_review: needsReview,
+          suggestions
+        });
+      });
+    }
+  }
+
+  return {
+    bid_event_id: bidEventId,
+    project_id: eventRow[1],
+    source_filename: eventRow[2],
+    upload_date: eventRow[3],
+    summary,
+    packages,
+    all_bidders: allBidders
   };
 }
 
@@ -1889,25 +2429,46 @@ app.get('/api/bidders/:id/counties', (req, res) => {
 // Merge bidders
 app.post('/api/bidders/merge', (req, res) => {
   const db = getDatabase();
-  const { keep_id, merge_id } = req.body;
-  
-  if (!keep_id || !merge_id) {
-    return res.status(400).json({ error: 'Both bidder IDs required' });
+  const keepId = Number(req.body.keep_id);
+  const mergeCandidates = [];
+
+  if (Array.isArray(req.body.merge_ids)) {
+    mergeCandidates.push(...req.body.merge_ids);
   }
-  
-  // Update all references to point to the kept bidder
-  db.run('UPDATE bids SET bidder_id = ? WHERE bidder_id = ?', [keep_id, merge_id]);
-  db.run('UPDATE packages SET selected_bidder_id = ? WHERE selected_bidder_id = ?', [keep_id, merge_id]);
-  
-  // Move aliases
-  db.run('UPDATE bidder_aliases SET bidder_id = ? WHERE bidder_id = ?', [keep_id, merge_id]);
-  
-  // Delete the merged bidder
-  db.run('DELETE FROM bidders WHERE id = ?', [merge_id]);
-  
+
+  if (req.body.merge_id != null) {
+    mergeCandidates.push(req.body.merge_id);
+  }
+
+  const mergeIds = mergeCandidates
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value !== keepId);
+
+  if (!Number.isFinite(keepId) || mergeIds.length === 0) {
+    return res.status(400).json({ error: 'Provide a keep_id and at least one merge_id.' });
+  }
+
+  mergeIds.forEach((mergeId) => {
+    db.run('UPDATE bids SET bidder_id = ? WHERE bidder_id = ?', [keepId, mergeId]);
+    db.run('UPDATE packages SET selected_bidder_id = ? WHERE selected_bidder_id = ?', [keepId, mergeId]);
+    db.run('UPDATE bidder_aliases SET bidder_id = ? WHERE bidder_id = ?', [keepId, mergeId]);
+    db.run('UPDATE bid_event_bidders SET assigned_bidder_id = ? WHERE assigned_bidder_id = ?', [keepId, mergeId]);
+
+    const canonicalRow = db.exec('SELECT canonical_name FROM bidders WHERE id = ? LIMIT 1', [mergeId]);
+    const canonicalName = canonicalRow.length > 0 && canonicalRow[0].values.length > 0
+      ? canonicalRow[0].values[0][0]
+      : '';
+
+    if (canonicalName) {
+      addBidderAliasIfMissing(db, keepId, canonicalName);
+    }
+
+    db.run('DELETE FROM bidders WHERE id = ?', [mergeId]);
+  });
+
   saveDatabase();
-  
-  res.json({ success: true });
+
+  res.json({ success: true, merged: mergeIds.length });
 });
 
 // Start server

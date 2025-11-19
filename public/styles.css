@@ -325,6 +325,47 @@ body {
     font-size: 0.875rem;
 }
 
+.upload-success-card {
+    color: #155724;
+    background-color: #d4edda;
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid #c3e6cb;
+}
+
+.upload-review-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1rem;
+    font-size: 0.95rem;
+}
+
+.upload-review-warning {
+    background: #fff9e6;
+    border: 1px solid #ffe08a;
+    color: #6d4c03;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-top: 1rem;
+}
+
+.upload-review-success {
+    background: #eef9f0;
+    border: 1px solid #b7e1c0;
+    color: #166534;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    margin-top: 1rem;
+}
+
+.upload-review-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
 .btn-tiny {
     padding: 0.35rem 0.75rem;
     font-size: 0.75rem;
@@ -980,6 +1021,22 @@ body {
     justify-content: flex-end;
 }
 
+.edit-project-quick-actions label {
+    font-weight: 600;
+}
+
+.edit-project-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.edit-project-quick-actions .form-help-text {
+    margin-top: 0.5rem;
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
 .table-container {
     background: white;
     border-radius: 8px;
@@ -1359,4 +1416,171 @@ tr:hover {
 
 .placement-indicator .placement-diff.is-even {
     color: #7f8c8d;
+}
+
+.bidder-review-modal {
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.bidder-review-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+    background: #f8f9fb;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid #e1e4ea;
+}
+
+.bidder-review-summary div {
+    font-size: 0.95rem;
+    color: #2c3e50;
+}
+
+.bidder-review-packages {
+    overflow-y: auto;
+    padding-right: 0.5rem;
+    max-height: 60vh;
+}
+
+.bidder-review-package {
+    border: 1px solid #e1e4ea;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    background: #fff;
+}
+
+.bidder-review-package > summary {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    font-weight: 600;
+}
+
+.bidder-review-package summary::-webkit-details-marker {
+    display: none;
+}
+
+.bidder-review-package summary::after {
+    content: '▾';
+    font-size: 0.9rem;
+    color: #7f8c8d;
+}
+
+.bidder-review-package[open] summary::after {
+    transform: rotate(180deg);
+}
+
+.bidder-review-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.bidder-review-table th,
+.bidder-review-table td {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #f0f2f5;
+    vertical-align: top;
+}
+
+.bidder-review-table tbody tr:nth-child(even) {
+    background: #fbfcfe;
+}
+
+.bidder-review-table tbody tr.needs-review {
+    background: #fff8e6;
+}
+
+.bidder-review-table tbody tr.needs-review:nth-child(even) {
+    background: #fff3d4;
+}
+
+.bidder-review-select {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid #ccd1d9;
+}
+
+.bidder-review-new-input {
+    width: 100%;
+    margin-top: 0.4rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid #ccd1d9;
+    display: none;
+}
+
+.bidder-review-new-input.is-visible {
+    display: block;
+}
+
+.bidder-review-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.35rem;
+}
+
+.bidder-review-tag {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    background: #ecf0f1;
+    color: #34495e;
+}
+
+.bidder-review-tag.tag-selected {
+    background: #3498db;
+    color: #fff;
+}
+
+.bidder-review-tag.tag-warning {
+    background: #f1c40f;
+    color: #7f4c00;
+}
+
+.bidder-review-tag.tag-amount {
+    background: #2ecc71;
+    color: #0f5132;
+}
+
+.bidder-review-meta {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    margin-top: 0.25rem;
+}
+
+.bidder-review-actions {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.bidder-review-buttons {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.bidder-review-status {
+    font-size: 0.9rem;
+    color: #34495e;
+    min-height: 1.5rem;
+}
+
+.bidder-review-table .confidence-label {
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    margin-top: 0.25rem;
 }

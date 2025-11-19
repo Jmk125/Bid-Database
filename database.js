@@ -177,6 +177,28 @@ function createTables() {
     )
   `);
 
+  // Bid event bidder staging table (tracks raw names + auto matches per upload)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS bid_event_bidders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bid_event_id INTEGER NOT NULL,
+      package_id INTEGER NOT NULL,
+      bid_id INTEGER NOT NULL,
+      raw_bidder_name TEXT NOT NULL,
+      normalized_bidder_name TEXT,
+      assigned_bidder_id INTEGER,
+      match_confidence REAL,
+      match_type TEXT,
+      was_auto_created INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (bid_event_id) REFERENCES bid_events(id) ON DELETE CASCADE,
+      FOREIGN KEY (package_id) REFERENCES packages(id) ON DELETE CASCADE,
+      FOREIGN KEY (bid_id) REFERENCES bids(id) ON DELETE CASCADE,
+      FOREIGN KEY (assigned_bidder_id) REFERENCES bidders(id)
+    )
+  `);
+
   console.log('Database tables ensured');
 }
 
@@ -204,6 +226,17 @@ function cleanupOrphanedRecords() {
       FROM projects proj
       WHERE proj.id = packages.project_id
     )
+  `);
+
+  // Remove staging rows whose bids or packages were removed
+  db.run(`
+    DELETE FROM bid_event_bidders
+    WHERE NOT EXISTS (
+      SELECT 1 FROM bids b WHERE b.id = bid_event_bidders.bid_id
+    )
+      OR NOT EXISTS (
+        SELECT 1 FROM packages p WHERE p.id = bid_event_bidders.package_id
+      )
   `);
 }
 
