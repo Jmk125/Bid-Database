@@ -344,6 +344,14 @@
                     <label for="editProjectDate">Project Bid Date</label>
                     <input type="date" id="editProjectDate">
                 </div>
+                <div class="form-group edit-project-quick-actions">
+                    <label>Bid Tab Actions</label>
+                    <div class="edit-project-action-row">
+                        <button type="button" class="btn btn-secondary" id="editModalUploadBidTabBtn">📤 Upload Bid Tab</button>
+                        <button type="button" class="btn btn-secondary" id="editModalReviewBiddersBtn" data-review-bidders-btn data-close-edit-modal="true">👀 Review Bidders</button>
+                    </div>
+                    <p class="form-help-text">Upload new bid tabs or review matches without leaving this window.</p>
+                </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeEditProjectModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Changes</button>

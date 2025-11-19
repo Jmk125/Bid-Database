@@ -1021,6 +1021,22 @@ body {
     justify-content: flex-end;
 }
 
+.edit-project-quick-actions label {
+    font-weight: 600;
+}
+
+.edit-project-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.edit-project-quick-actions .form-help-text {
+    margin-top: 0.5rem;
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
 .table-container {
     background: white;
     border-radius: 8px;
@@ -1487,8 +1503,7 @@ tr:hover {
     background: #fff3d4;
 }
 
-.bidder-review-select,
-.bidder-merge-select {
+.bidder-review-select {
     width: 100%;
     padding: 0.4rem 0.5rem;
     border-radius: 4px;

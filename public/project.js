@@ -2772,17 +2772,19 @@ function displayPackageComparisonChart() {
 
 // Bidder review helpers
 function updateBidderReviewButtonState() {
-    const button = document.getElementById('reviewBidderMatchesBtn');
-    if (!button) {
+    const buttons = document.querySelectorAll('[data-review-bidders-btn]');
+    if (!buttons.length) {
         return;
     }
-    if (latestBidEventId) {
-        button.disabled = false;
-        button.title = 'Review bidder matches from the latest upload.';
-    } else {
-        button.disabled = true;
-        button.title = 'Upload a bid tab to review bidder matches.';
-    }
+    buttons.forEach((button) => {
+        if (latestBidEventId) {
+            button.disabled = false;
+            button.title = 'Review bidder matches from the latest upload.';
+        } else {
+            button.disabled = true;
+            button.title = 'Upload a bid tab to review bidder matches.';
+        }
+    });
 }
 
 async function fetchBidderReviewData(bidEventId) {
@@ -2922,7 +2924,7 @@ function renderBidderReviewPackage(pkg) {
         : '<span class="bidder-review-tag">All matched</span>';
     const rows = pkg.bids && pkg.bids.length
         ? pkg.bids.map((bid) => renderBidderReviewRow(pkg, bid)).join('')
-        : '<tr><td colspan="3" class="empty-state">No bids captured for this package.</td></tr>';
+        : '<tr><td colspan="2" class="empty-state">No bids captured for this package.</td></tr>';
 
     return `
         <details class="bidder-review-package" ${pkg.needs_review_count ? 'open' : ''}>
@@ -2938,7 +2940,6 @@ function renderBidderReviewPackage(pkg) {
                     <tr>
                         <th>Bidder</th>
                         <th>Suggested Match</th>
-                        <th>Merge</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -2971,14 +2972,31 @@ function renderBidderReviewRow(pkg, bid) {
         }
     });
 
+    const allDirectoryBidders = Array.isArray(bidderReviewState.data?.all_bidders)
+        ? bidderReviewState.data.all_bidders
+        : [];
+    const suggestionIds = new Set(uniqueSuggestions.map((s) => s.bidder_id));
+    const directoryOptions = allDirectoryBidders.filter((entry) => !suggestionIds.has(entry.bidder_id));
+
     const options = [];
     const keepLabel = bid.bidder_name ? `Keep ${escapeHtml(bid.bidder_name)}` : 'Leave unassigned';
     options.push(`<option value="__keep__"${selectValue === '__keep__' ? ' selected' : ''}>${keepLabel}</option>`);
 
-    uniqueSuggestions.forEach((suggestion) => {
-        const isSelected = selectValue === String(suggestion.bidder_id);
-        options.push(`<option value="${suggestion.bidder_id}"${isSelected ? ' selected' : ''}>${escapeHtml(suggestion.name)} (${formatConfidence(suggestion.confidence)})</option>`);
-    });
+    if (uniqueSuggestions.length) {
+        const suggestionOptions = uniqueSuggestions.map((suggestion) => {
+            const isSelected = selectValue === String(suggestion.bidder_id);
+            return `<option value="${suggestion.bidder_id}"${isSelected ? ' selected' : ''}>${escapeHtml(suggestion.name)} (${formatConfidence(suggestion.confidence)})</option>`;
+        });
+        options.push(`<optgroup label="Suggested Matches">${suggestionOptions.join('')}</optgroup>`);
+    }
+
+    if (directoryOptions.length) {
+        const otherOptions = directoryOptions.map((entry) => {
+            const isSelected = selectValue === String(entry.bidder_id);
+            return `<option value="${entry.bidder_id}"${isSelected ? ' selected' : ''}>${escapeHtml(entry.name)}</option>`;
+        });
+        options.push(`<optgroup label="All Bidders">${otherOptions.join('')}</optgroup>`);
+    }
 
     options.push(`<option value="__create__"${showNewInput ? ' selected' : ''}>➕ Create new bidder...</option>`);
 
@@ -2989,8 +3007,6 @@ function renderBidderReviewRow(pkg, bid) {
         ? '<span class="bidder-review-tag tag-selected">Selected Bid</span>'
         : '';
     const reviewTag = bid.needs_review ? '<span class="bidder-review-tag tag-warning">Needs review</span>' : '';
-
-    const mergeControl = renderBidderMergeControl(bid, uniqueSuggestions);
 
     return `
         <tr class="${bid.needs_review ? 'needs-review' : ''}">
@@ -3006,32 +3022,7 @@ function renderBidderReviewRow(pkg, bid) {
                 <input type="text" class="bidder-review-new-input ${showNewInput ? 'is-visible' : ''}" data-bid-id="${bid.bid_id}" value="${escapeHtml(newInputValue)}" placeholder="Enter new bidder name">
                 <div class="confidence-label">Confidence: ${formatConfidence(bid.match_confidence)}</div>
             </td>
-            <td>${mergeControl}</td>
         </tr>
-    `;
-}
-
-function renderBidderMergeControl(bid, suggestions) {
-    const mainOptions = [];
-    if (!suggestions || !suggestions.length) {
-        return '<div class="bidder-review-meta">No other matches found.</div>';
-    }
-
-    const available = suggestions.filter((s) => bid.bidder_id == null || s.bidder_id !== bid.bidder_id);
-    if (!available.length) {
-        return '<div class="bidder-review-meta">No duplicates detected.</div>';
-    }
-
-    mainOptions.push('<option value="">Merge duplicates...</option>');
-    available.forEach((option) => {
-        mainOptions.push(`<option value="${option.bidder_id}">${escapeHtml(option.name)}</option>`);
-    });
-
-    return `
-        <select class="bidder-merge-select" data-bid-id="${bid.bid_id}">
-            ${mainOptions.join('')}
-        </select>
-        <div class="confidence-label">Combine duplicate bidder records instantly.</div>
     `;
 }
 
@@ -3039,11 +3030,6 @@ function handleBidderReviewChange(event) {
     const select = event.target.closest('.bidder-review-select');
     if (select) {
         handleBidderSelectChange(select);
-        return;
-    }
-    const mergeSelect = event.target.closest('.bidder-merge-select');
-    if (mergeSelect) {
-        handleBidderMergeChange(mergeSelect);
     }
 }
 
@@ -3122,65 +3108,6 @@ function decodeRawNameAttribute(value) {
         return decodeURIComponent(value);
     } catch (error) {
         return value;
-    }
-}
-
-async function handleBidderMergeChange(select) {
-    const mergeId = Number(select.value);
-    if (!Number.isFinite(mergeId)) {
-        return;
-    }
-
-    const row = select.closest('tr');
-    const mainSelect = row ? row.querySelector('.bidder-review-select') : null;
-    let keepId = null;
-    if (mainSelect) {
-        if (mainSelect.value && mainSelect.value !== '__keep__' && mainSelect.value !== '__create__') {
-            keepId = Number(mainSelect.value);
-        } else if (mainSelect.value === '__keep__') {
-            keepId = mainSelect.dataset.originalBidderId ? Number(mainSelect.dataset.originalBidderId) : null;
-        }
-    }
-
-    if (!keepId) {
-        alert('Select a bidder assignment before merging duplicates.');
-        select.value = '';
-        return;
-    }
-
-    if (keepId === mergeId) {
-        select.value = '';
-        return;
-    }
-
-    if (!confirm('Merge the selected bidder into the current bidder? This cannot be undone.')) {
-        select.value = '';
-        return;
-    }
-
-    const statusEl = document.getElementById('bidderReviewStatus');
-    if (statusEl) {
-        statusEl.textContent = 'Merging bidders...';
-    }
-
-    try {
-        await apiFetch(`${API_BASE}/bidders/merge`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keep_id: keepId, merge_id: mergeId })
-        });
-        select.value = '';
-        await refreshBidderReviewData();
-        await loadProject();
-        if (statusEl) {
-            statusEl.textContent = 'Bidders merged successfully.';
-        }
-    } catch (error) {
-        console.error('Failed to merge bidders', error);
-        if (statusEl) {
-            statusEl.textContent = `Error merging bidders: ${error.message}`;
-        }
-        select.value = '';
     }
 }
 
@@ -3298,14 +3225,19 @@ if (validateProjectForm) {
     validateProjectForm.addEventListener('submit', handleValidationSubmit);
 }
 
-const reviewBidderMatchesBtn = document.getElementById('reviewBidderMatchesBtn');
-if (reviewBidderMatchesBtn) {
-    reviewBidderMatchesBtn.addEventListener('click', () => {
-        if (!latestBidEventId) {
-            alert('Upload a bid tab to review bidder matches.');
-            return;
-        }
-        openBidderReviewModal(latestBidEventId);
+const reviewBidderButtons = document.querySelectorAll('[data-review-bidders-btn]');
+if (reviewBidderButtons.length) {
+    reviewBidderButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!latestBidEventId) {
+                alert('Upload a bid tab to review bidder matches.');
+                return;
+            }
+            if (button.dataset.closeEditModal === 'true') {
+                closeEditProjectModal();
+            }
+            openBidderReviewModal(latestBidEventId);
+        });
     });
 }
 
@@ -3363,6 +3295,14 @@ document.getElementById('editProjectForm').onsubmit = async (e) => {
         alert('Error updating project');
     }
 };
+
+const editModalUploadBidTabBtn = document.getElementById('editModalUploadBidTabBtn');
+if (editModalUploadBidTabBtn) {
+    editModalUploadBidTabBtn.addEventListener('click', () => {
+        closeEditProjectModal();
+        document.getElementById('uploadModal').style.display = 'block';
+    });
+}
 
 // Load project on page load
 updateBidderReviewButtonState();

@@ -1859,6 +1859,13 @@ function getBidderReviewPayload(db, bidEventId) {
   const packagesById = new Map(packages.map(pkg => [pkg.id, pkg]));
   const packageIds = packages.map(pkg => pkg.id);
   const summary = { total_bids: 0, flagged_bids: 0, new_bidders: 0 };
+  const directory = loadBidderDirectory(db);
+  const allBidders = directory.entries
+    .map((entry) => ({
+      bidder_id: entry.id,
+      name: entry.display_name || Array.from(entry.names)[0] || 'Unknown Bidder'
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   if (packageIds.length > 0) {
     const placeholders = packageIds.map(() => '?').join(',');
@@ -1882,8 +1889,6 @@ function getBidderReviewPayload(db, bidEventId) {
        ORDER BY b.package_id, b.bid_amount ASC, b.id ASC`,
       packageIds
     );
-
-    const directory = loadBidderDirectory(db);
 
     if (bidsQuery.length > 0) {
       bidsQuery[0].values.forEach((row) => {
@@ -1946,7 +1951,8 @@ function getBidderReviewPayload(db, bidEventId) {
     source_filename: eventRow[2],
     upload_date: eventRow[3],
     summary,
-    packages
+    packages,
+    all_bidders: allBidders
   };
 }
 
