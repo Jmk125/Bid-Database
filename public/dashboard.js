@@ -1,7 +1,98 @@
 const API_BASE = '/api';
+let currentStartDate = '';
+let currentEndDate = '';
+
+function appendDateParams(url) {
+    const params = new URLSearchParams();
+
+    if (currentStartDate) {
+        params.set('startDate', currentStartDate);
+    }
+
+    if (currentEndDate) {
+        params.set('endDate', currentEndDate);
+    }
+
+    const query = params.toString();
+    if (!query) {
+        return url;
+    }
+
+    return `${url}${url.includes('?') ? '&' : '?'}${query}`;
+}
+
+function setLoadingStates() {
+    document.getElementById('totalProjects').textContent = '…';
+    document.getElementById('totalPackages').textContent = '…';
+    document.getElementById('totalBidders').textContent = '…';
+    document.getElementById('totalBids').textContent = '…';
+
+    document.getElementById('divisionsBody').innerHTML = '<tr><td colspan="6" class="loading">Loading division data...</td></tr>';
+    document.getElementById('biddersBody').innerHTML = '<tr><td colspan="5" class="loading">Loading bidder data...</td></tr>';
+    document.getElementById('projectsBody').innerHTML = '<tr><td colspan="6" class="loading">Loading projects...</td></tr>';
+}
+
+function updateDateFilterStatus() {
+    const statusEl = document.getElementById('dateFilterStatus');
+    if (!statusEl) return;
+
+    if (!currentStartDate && !currentEndDate) {
+        statusEl.textContent = 'Showing all project history.';
+        return;
+    }
+
+    const parts = [];
+    if (currentStartDate) {
+        parts.push(`from ${formatDate(currentStartDate)}`);
+    }
+
+    if (currentEndDate) {
+        parts.push(`through ${formatDate(currentEndDate)}`);
+    }
+
+    statusEl.textContent = `Filtering projects ${parts.join(' ')}`;
+}
+
+function initializeDateFilters() {
+    const startInput = document.getElementById('startDate');
+    const endInput = document.getElementById('endDate');
+    const applyBtn = document.getElementById('applyDateFilter');
+    const clearBtn = document.getElementById('clearDateFilter');
+
+    function applyFilters() {
+        const nextStart = startInput.value;
+        const nextEnd = endInput.value;
+
+        if (nextStart && nextEnd && new Date(nextStart) > new Date(nextEnd)) {
+            alert('The start date must be before the end date.');
+            return;
+        }
+
+        currentStartDate = nextStart;
+        currentEndDate = nextEnd;
+        updateDateFilterStatus();
+        loadDashboard();
+    }
+
+    function clearFilters() {
+        startInput.value = '';
+        endInput.value = '';
+        currentStartDate = '';
+        currentEndDate = '';
+        updateDateFilterStatus();
+        loadDashboard();
+    }
+
+    applyBtn?.addEventListener('click', applyFilters);
+    startInput?.addEventListener('change', applyFilters);
+    endInput?.addEventListener('change', applyFilters);
+    clearBtn?.addEventListener('click', clearFilters);
+}
 
 // Load all dashboard data
 async function loadDashboard() {
+    setLoadingStates();
+    updateDateFilterStatus();
     await Promise.all([
         loadSummaryMetrics(),
         loadDivisionMetrics(),
@@ -14,17 +105,14 @@ async function loadDashboard() {
 async function loadSummaryMetrics() {
     try {
         // Get all projects
-        const projectsResponse = await apiFetch(`${API_BASE}/projects`);
+        const projectsResponse = await apiFetch(appendDateParams(`${API_BASE}/projects`));
         const projects = await projectsResponse.json();
-        
-        // Get all bidders
-        const biddersResponse = await apiFetch(`${API_BASE}/bidders`);
-        const bidders = await biddersResponse.json();
-        
+
         // Calculate totals
         let totalPackages = 0;
         let totalBids = 0;
-        
+        const bidderIds = new Set();
+
         for (const project of projects) {
             const projectResponse = await apiFetch(`${API_BASE}/projects/${project.id}`);
             const projectData = await projectResponse.json();
@@ -36,13 +124,14 @@ async function loadSummaryMetrics() {
                     const bidsResponse = await apiFetch(`${API_BASE}/packages/${pkg.id}/bids`);
                     const bids = await bidsResponse.json();
                     totalBids += bids.length;
+                    bids.forEach(bid => bidderIds.add(bid.bidder_id));
                 }
             }
         }
-        
+
         document.getElementById('totalProjects').textContent = projects.length;
         document.getElementById('totalPackages').textContent = totalPackages;
-        document.getElementById('totalBidders').textContent = bidders.length;
+        document.getElementById('totalBidders').textContent = bidderIds.size;
         document.getElementById('totalBids').textContent = totalBids;
     } catch (error) {
         console.error('Error loading summary metrics:', error);
@@ -52,9 +141,9 @@ async function loadSummaryMetrics() {
 // Load division metrics
 async function loadDivisionMetrics() {
     const tbody = document.getElementById('divisionsBody');
-    
+
     try {
-        const response = await apiFetch(`${API_BASE}/aggregate/divisions`);
+        const response = await apiFetch(appendDateParams(`${API_BASE}/aggregate/divisions`));
         const divisions = await response.json();
         
         if (divisions.length === 0) {
@@ -88,9 +177,9 @@ async function loadDivisionMetrics() {
 // Load bidder metrics
 async function loadBidderMetrics() {
     const tbody = document.getElementById('biddersBody');
-    
+
     try {
-        const response = await apiFetch(`${API_BASE}/aggregate/bidders`);
+        const response = await apiFetch(appendDateParams(`${API_BASE}/aggregate/bidders`));
         let bidders = await response.json();
         
         if (bidders.length === 0) {
@@ -122,9 +211,9 @@ async function loadBidderMetrics() {
 // Load projects overview
 async function loadProjectsOverview() {
     const tbody = document.getElementById('projectsBody');
-    
+
     try {
-        const response = await apiFetch(`${API_BASE}/projects`);
+        const response = await apiFetch(appendDateParams(`${API_BASE}/projects`));
         const projects = await response.json();
         
         if (projects.length === 0) {
@@ -196,4 +285,5 @@ function escapeHtml(text) {
 }
 
 // Load dashboard on page load
+initializeDateFilters();
 loadDashboard();

@@ -25,6 +25,24 @@
             <h2>Cross-Project Dashboard</h2>
         </div>
 
+        <div class="filter-bar" aria-label="Project date range filters">
+            <div class="filter-group">
+                <label for="startDate">From</label>
+                <input type="date" id="startDate" name="startDate">
+            </div>
+            <div class="filter-group">
+                <label for="endDate">To</label>
+                <input type="date" id="endDate" name="endDate">
+            </div>
+            <div class="filter-actions">
+                <button type="button" class="btn btn-primary btn-small" id="applyDateFilter">Apply</button>
+                <button type="button" class="btn btn-secondary btn-small" id="clearDateFilter">Clear</button>
+            </div>
+            <div class="filter-status" id="dateFilterStatus" role="status" aria-live="polite">
+                Showing all project history.
+            </div>
+        </div>
+
         <!-- Summary Metrics -->
         <div class="metrics-grid" id="summaryMetrics">
             <div class="metric-card">

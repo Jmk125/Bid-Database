@@ -63,6 +63,44 @@ function normalizeDateValue(value) {
   return trimmed;
 }
 
+function parseDateFilterValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = normalizeDateValue(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function buildProjectDateFilters(req, columnName = 'project_date') {
+  const startDate = parseDateFilterValue(req.query.startDate || req.query.start_date);
+  const endDate = parseDateFilterValue(req.query.endDate || req.query.end_date);
+
+  const clauses = [];
+  const params = [];
+
+  if (startDate) {
+    clauses.push(`date(${columnName}) >= date(?)`);
+    params.push(startDate);
+  }
+
+  if (endDate) {
+    clauses.push(`date(${columnName}) <= date(?)`);
+    params.push(endDate);
+  }
+
+  return { clauses, params };
+}
+
 function normalizeValidationMetrics(metrics) {
   if (!metrics) {
     return null;
@@ -271,11 +309,17 @@ initDatabase().then(() => {
 // Get all projects
 app.get('/api/projects', (req, res) => {
   const db = getDatabase();
-  const projects = db.exec(`
-    SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, created_at, modified_at
-    FROM projects
-    ORDER BY created_at DESC
-  `);
+  const { clauses, params } = buildProjectDateFilters(req);
+
+  const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  const projects = db.exec(
+    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, created_at, modified_at
+     FROM projects
+     ${whereClause}
+     ORDER BY project_date DESC, created_at DESC`,
+    params
+  );
   
   if (projects.length === 0) {
     return res.json([]);
@@ -2180,19 +2224,23 @@ function calculateMedian(arr) {
 // Get aggregated metrics across all projects by CSI division
 app.get('/api/aggregate/divisions', (req, res) => {
   const db = getDatabase();
-  
-  const query = db.exec(`
-    SELECT 
-      csi_division,
+  const { clauses, params } = buildProjectDateFilters(req, 'proj.project_date');
+  const dateFilter = clauses.length ? ` AND ${clauses.join(' AND ')}` : '';
+
+  const query = db.exec(
+    `SELECT
+      pkg.csi_division,
       COUNT(*) as package_count,
-      AVG(cost_per_sf) as avg_cost_per_sf,
-      MIN(cost_per_sf) as min_cost_per_sf,
-      MAX(cost_per_sf) as max_cost_per_sf
-    FROM packages
-    WHERE csi_division IS NOT NULL AND cost_per_sf IS NOT NULL
-    GROUP BY csi_division
-    ORDER BY csi_division
-  `);
+      AVG(pkg.cost_per_sf) as avg_cost_per_sf,
+      MIN(pkg.cost_per_sf) as min_cost_per_sf,
+      MAX(pkg.cost_per_sf) as max_cost_per_sf
+    FROM packages pkg
+    JOIN projects proj ON proj.id = pkg.project_id
+    WHERE pkg.csi_division IS NOT NULL AND pkg.cost_per_sf IS NOT NULL${dateFilter}
+    GROUP BY pkg.csi_division
+    ORDER BY pkg.csi_division`,
+    params
+  );
   
   if (query.length === 0) {
     return res.json([]);
@@ -2205,12 +2253,15 @@ app.get('/api/aggregate/divisions', (req, res) => {
     min_cost_per_sf: row[3],
     max_cost_per_sf: row[4]
   }));
-  
+
   // Calculate median for each division
   const divisionsWithMedian = divisions.map(div => {
     const costsQuery = db.exec(
-      'SELECT cost_per_sf FROM packages WHERE csi_division = ? AND cost_per_sf IS NOT NULL',
-      [div.csi_division]
+      `SELECT pkg.cost_per_sf
+       FROM packages pkg
+       JOIN projects proj ON proj.id = pkg.project_id
+       WHERE pkg.csi_division = ? AND pkg.cost_per_sf IS NOT NULL${dateFilter}`,
+      [div.csi_division, ...params]
     );
     
     if (costsQuery.length > 0) {
@@ -2227,18 +2278,24 @@ app.get('/api/aggregate/divisions', (req, res) => {
 // Get bidder performance across all projects
 app.get('/api/aggregate/bidders', (req, res) => {
   const db = getDatabase();
-  
-  const query = db.exec(`
-    SELECT 
+  const { clauses, params } = buildProjectDateFilters(req, 'proj.project_date');
+  const dateFilter = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  const query = db.exec(
+    `SELECT
       bid.canonical_name as bidder_name,
       COUNT(*) as bid_count,
       COUNT(CASE WHEN b.was_selected = 1 THEN 1 END) as wins,
       AVG(b.bid_amount) as avg_bid_amount
     FROM bids b
     JOIN bidders bid ON b.bidder_id = bid.id
+    JOIN packages pkg ON pkg.id = b.package_id
+    JOIN projects proj ON proj.id = pkg.project_id
+    ${dateFilter}
     GROUP BY bid.id
-    ORDER BY bid_count DESC
-  `);
+    ORDER BY bid_count DESC`,
+    params
+  );
   
   if (query.length === 0) {
     return res.json([]);
