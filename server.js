@@ -81,12 +81,25 @@ function parseDateFilterValue(value) {
   return normalized;
 }
 
+function parseNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function buildProjectDateFilters(req, columnName = 'project_date') {
   const startDate = parseDateFilterValue(req.query.startDate || req.query.start_date);
   const endDate = parseDateFilterValue(req.query.endDate || req.query.end_date);
+  const county = (req.query.county || '').trim();
+  const minSize = parseNumber(req.query.minSize || req.query.min_size);
+  const maxSize = parseNumber(req.query.maxSize || req.query.max_size);
 
   const clauses = [];
   const params = [];
+
+  const tablePrefix = columnName.includes('.') ? columnName.split('.')[0] : 'projects';
+  const countyColumn = `${tablePrefix}.county_name`;
+  const stateColumn = `${tablePrefix}.county_state`;
+  const sizeColumn = `${tablePrefix}.building_sf`;
 
   if (startDate) {
     clauses.push(`date(${columnName}) >= date(?)`);
@@ -96,6 +109,27 @@ function buildProjectDateFilters(req, columnName = 'project_date') {
   if (endDate) {
     clauses.push(`date(${columnName}) <= date(?)`);
     params.push(endDate);
+  }
+
+  if (county) {
+    const [countyName, countyState] = county.split(',').map(part => part.trim());
+    clauses.push(`lower(${countyColumn}) = lower(?)`);
+    params.push(countyName);
+
+    if (countyState) {
+      clauses.push(`lower(${stateColumn}) = lower(?)`);
+      params.push(countyState);
+    }
+  }
+
+  if (minSize !== null) {
+    clauses.push(`${sizeColumn} >= ?`);
+    params.push(minSize);
+  }
+
+  if (maxSize !== null) {
+    clauses.push(`${sizeColumn} <= ?`);
+    params.push(maxSize);
   }
 
   return { clauses, params };
@@ -2286,13 +2320,14 @@ app.get('/api/aggregate/bidders', (req, res) => {
       bid.canonical_name as bidder_name,
       COUNT(*) as bid_count,
       COUNT(CASE WHEN b.was_selected = 1 THEN 1 END) as wins,
-      AVG(b.bid_amount) as avg_bid_amount
+      AVG(b.bid_amount) as avg_bid_amount,
+      SUM(CASE WHEN b.was_selected = 1 THEN b.bid_amount ELSE 0 END) as awarded_amount
     FROM bids b
     JOIN bidders bid ON b.bidder_id = bid.id
     JOIN packages pkg ON pkg.id = b.package_id
     JOIN projects proj ON proj.id = pkg.project_id
     ${dateFilter}
-    GROUP BY bid.id
+    GROUP BY bid.canonical_name
     ORDER BY bid_count DESC`,
     params
   );
@@ -2306,6 +2341,7 @@ app.get('/api/aggregate/bidders', (req, res) => {
     bid_count: row[1],
     wins: row[2],
     avg_bid_amount: row[3],
+    awarded_amount: row[4],
     win_rate: row[1] > 0 ? (row[2] / row[1] * 100).toFixed(1) : 0
   }));
   

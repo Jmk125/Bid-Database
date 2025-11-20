@@ -34,6 +34,18 @@
                 <label for="endDate">To</label>
                 <input type="date" id="endDate" name="endDate">
             </div>
+            <div class="filter-group">
+                <label for="countyFilter">County</label>
+                <select id="countyFilter" name="countyFilter">
+                    <option value="">All counties</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="sizeRange">Project Size</label>
+                <select id="sizeRange" name="sizeRange">
+                    <option value="">All project sizes</option>
+                </select>
+            </div>
             <div class="filter-actions">
                 <button type="button" class="btn btn-primary btn-small" id="applyDateFilter">Apply</button>
                 <button type="button" class="btn btn-secondary btn-small" id="clearDateFilter">Clear</button>
@@ -70,12 +82,12 @@
             <table id="divisionsTable">
                 <thead>
                     <tr>
-                        <th>CSI Division</th>
-                        <th>Package Count</th>
-                        <th>Median Cost/SF</th>
-                        <th>Average Cost/SF</th>
-                        <th>Min Cost/SF</th>
-                        <th>Max Cost/SF</th>
+                        <th><button type="button" class="sortable-header" data-sort-table="divisions" data-sort-key="csi_division">CSI Division <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="divisions" data-sort-key="package_count">Package Count <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="divisions" data-sort-key="median_cost_per_sf">Median Cost/SF <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="divisions" data-sort-key="avg_cost_per_sf">Average Cost/SF <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="divisions" data-sort-key="min_cost_per_sf">Min Cost/SF <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="divisions" data-sort-key="max_cost_per_sf">Max Cost/SF <span class="sort-indicator">↕</span></button></th>
                     </tr>
                 </thead>
                 <tbody id="divisionsBody">
@@ -90,15 +102,16 @@
             <table id="biddersTable">
                 <thead>
                     <tr>
-                        <th>Bidder</th>
-                        <th>Total Bids</th>
-                        <th>Wins</th>
-                        <th>Win Rate</th>
-                        <th>Avg Bid Amount</th>
+                        <th><button type="button" class="sortable-header" data-sort-table="bidders" data-sort-key="bidder_name">Bidder <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="bidders" data-sort-key="bid_count">Total Bids <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="bidders" data-sort-key="wins">Wins <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="bidders" data-sort-key="win_rate">Win Rate <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="bidders" data-sort-key="avg_bid_amount">Avg Bid Amount <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="bidders" data-sort-key="awarded_amount">Awarded Amount <span class="sort-indicator">↕</span></button></th>
                     </tr>
                 </thead>
                 <tbody id="biddersBody">
-                    <tr><td colspan="5" class="loading">Loading bidder data...</td></tr>
+                    <tr><td colspan="6" class="loading">Loading bidder data...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -109,12 +122,12 @@
             <table id="projectsTable">
                 <thead>
                     <tr>
-                        <th>Project Name</th>
-                        <th>Building SF</th>
-                        <th>Total Cost</th>
-                        <th>Cost/SF</th>
-                        <th>Packages</th>
-                        <th>Date</th>
+                        <th><button type="button" class="sortable-header" data-sort-table="projects" data-sort-key="name">Project Name <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="projects" data-sort-key="building_sf">Building SF <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="projects" data-sort-key="total_cost">Total Cost <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="projects" data-sort-key="cost_per_sf">Cost/SF <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="projects" data-sort-key="package_count">Packages <span class="sort-indicator">↕</span></button></th>
+                        <th><button type="button" class="sortable-header" data-sort-table="projects" data-sort-key="project_date">Date <span class="sort-indicator">↕</span></button></th>
                     </tr>
                 </thead>
                 <tbody id="projectsBody">
