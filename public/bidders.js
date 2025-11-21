@@ -22,6 +22,7 @@ let bidderActivityLoaded = false;
 let bidderActivitySort = { key: 'awarded_amount', direction: 'desc' };
 let activityStartDate = '';
 let activityEndDate = '';
+let bidderActivityPackageFilter = '';
 let countyMapInitialized = false;
 let countyMapPromise = null;
 let countyPathSelection = null;
@@ -515,6 +516,62 @@ function formatWinRate(value) {
     return `${numeric.toFixed(precision)}%`;
 }
 
+function normalizeActivityPackages(packages) {
+    if (!packages) {
+        return [];
+    }
+
+    if (Array.isArray(packages)) {
+        return packages
+            .map(pkg => ({
+                code: pkg.code || pkg.package_code || '',
+                name: pkg.name || pkg.package_name || ''
+            }))
+            .filter(pkg => pkg.code || pkg.name);
+    }
+
+    const raw = String(packages);
+    const separator = raw.includes('||') ? '||' : ',';
+    const seen = new Set();
+
+    return raw
+        .split(separator)
+        .map(part => {
+            const [code = '', name = ''] = part.split('|');
+            return { code, name };
+        })
+        .filter(pkg => {
+            if (!(pkg.code || pkg.name)) {
+                return false;
+            }
+
+            const key = `${pkg.code}|${pkg.name}`;
+            if (seen.has(key)) {
+                return false;
+            }
+
+            seen.add(key);
+            return true;
+        });
+}
+
+function formatActivityPackages(packages) {
+    if (!packages || !packages.length) {
+        return '—';
+    }
+
+    return packages.map(pkg => {
+        const code = escapeHtml(pkg.code || '');
+        const name = escapeHtml(pkg.name || '');
+
+        if (code && name) {
+            return `<span class="activity-package-pill"><strong>${code}</strong> — ${name}</span>`;
+        }
+
+        return `<span class="activity-package-pill">${code || name}</span>`;
+    }).join(' ');
+}
+
 function getActivitySortValue(row, key) {
     const value = row?.[key];
     if (value == null) {
@@ -569,16 +626,22 @@ function renderBidderActivityTable() {
         return;
     }
 
-    if (!bidderActivityData.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No bidder activity available</td></tr>';
+    const packageFilter = bidderActivityPackageFilter.trim().toLowerCase();
+    const filtered = packageFilter
+        ? bidderActivityData.filter(bidder => bidder.package_search_text.includes(packageFilter))
+        : bidderActivityData;
+
+    if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No bidder activity available</td></tr>';
         updateActivitySortIndicators();
         return;
     }
 
-    const sorted = sortBidderActivity(bidderActivityData);
+    const sorted = sortBidderActivity(filtered);
     tbody.innerHTML = sorted.map(bidder => `
         <tr>
             <td><strong>${escapeHtml(bidder.bidder_name || '')}</strong></td>
+            <td>${formatActivityPackages(bidder.packages)}</td>
             <td>${bidder.bid_count ?? 0}</td>
             <td>${bidder.wins ?? 0}</td>
             <td>${formatWinRate(bidder.win_rate)}</td>
@@ -605,6 +668,11 @@ function setBidderActivityMetric(metric) {
         metricSelect.value = metric;
     }
 
+    renderBidderActivityTable();
+}
+
+function setBidderActivityPackageFilter(value) {
+    bidderActivityPackageFilter = value || '';
     renderBidderActivityTable();
 }
 
@@ -710,7 +778,7 @@ function clearActivityDateFilters() {
 async function loadBidderActivity() {
     const tbody = document.getElementById('bidderActivityBody');
     if (tbody) {
-        tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading bidder activity…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Loading bidder activity…</td></tr>';
     }
 
     try {
@@ -722,6 +790,10 @@ async function loadBidderActivity() {
                 const bidCount = Number(entry.bid_count) || 0;
                 const wins = Number(entry.wins) || 0;
                 const winRateFromPayload = entry.win_rate != null ? Number(entry.win_rate) : null;
+                const packages = normalizeActivityPackages(entry.packages);
+                const packageSearchText = packages
+                    .map(pkg => `${pkg.code} ${pkg.name}`.trim().toLowerCase())
+                    .join(' ');
 
                 return {
                     ...entry,
@@ -732,7 +804,9 @@ async function loadBidderActivity() {
                         ? winRateFromPayload
                         : (bidCount > 0 ? (wins / bidCount) * 100 : null),
                     avg_bid_amount: entry.avg_bid_amount != null ? Number(entry.avg_bid_amount) : null,
-                    awarded_amount: entry.awarded_amount != null ? Number(entry.awarded_amount) : null
+                    awarded_amount: entry.awarded_amount != null ? Number(entry.awarded_amount) : null,
+                    packages,
+                    package_search_text: packageSearchText
                 };
             })
             : [];
@@ -1330,6 +1404,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (activityMetric) {
         activityMetric.addEventListener('change', event => setBidderActivityMetric(event.target.value));
         activityMetric.value = bidderActivitySort.key;
+    }
+
+    const activityPackageFilter = document.getElementById('activityPackageFilter');
+    if (activityPackageFilter) {
+        activityPackageFilter.addEventListener('input', event => setBidderActivityPackageFilter(event.target.value));
     }
 
     document.querySelectorAll('[data-activity-sort]').forEach(button => {
