@@ -521,38 +521,46 @@ function normalizeActivityPackages(packages) {
         return [];
     }
 
-    if (Array.isArray(packages)) {
-        return packages
-            .map(pkg => ({
-                code: pkg.code || pkg.package_code || '',
-                name: pkg.name || pkg.package_name || ''
-            }))
-            .filter(pkg => pkg.code || pkg.name);
-    }
+    const uniquePackages = pkgList => {
+        const seen = new Set();
 
-    const raw = String(packages);
-    const separator = raw.includes('||') ? '||' : ',';
-    const seen = new Set();
+        return pkgList.filter(pkg => {
+            const code = (pkg.code || '').trim();
+            const name = (pkg.name || '').trim();
 
-    return raw
-        .split(separator)
-        .map(part => {
-            const [code = '', name = ''] = part.split('|');
-            return { code, name };
-        })
-        .filter(pkg => {
-            if (!(pkg.code || pkg.name)) {
+            if (!(code || name)) {
                 return false;
             }
 
-            const key = `${pkg.code}|${pkg.name}`;
+            const key = (code || name).toLowerCase();
             if (seen.has(key)) {
                 return false;
             }
 
             seen.add(key);
+            pkg.code = code;
+            pkg.name = name;
             return true;
         });
+    };
+
+    if (Array.isArray(packages)) {
+        return uniquePackages(packages
+            .map(pkg => ({
+                code: pkg.code || pkg.package_code || '',
+                name: pkg.name || pkg.package_name || ''
+            })));
+    }
+
+    const raw = String(packages);
+    const separator = raw.includes('||') ? '||' : ',';
+
+    return uniquePackages(raw
+        .split(separator)
+        .map(part => {
+            const [code = '', name = ''] = part.split('|');
+            return { code, name };
+        }));
 }
 
 function formatActivityPackages(packages) {
