@@ -2515,9 +2515,11 @@ app.get('/api/aggregate/bidders', (req, res) => {
 
   const query = db.exec(
     `SELECT
+      bid.id as bidder_id,
       bid.canonical_name as bidder_name,
       COUNT(*) as bid_count,
       COUNT(CASE WHEN b.was_selected = 1 THEN 1 END) as wins,
+      CASE WHEN COUNT(*) = 0 THEN 0 ELSE (COUNT(CASE WHEN b.was_selected = 1 THEN 1 END) * 100.0 / COUNT(*)) END as win_rate,
       AVG(b.bid_amount) as avg_bid_amount,
       SUM(CASE WHEN b.was_selected = 1 THEN b.bid_amount ELSE 0 END) as awarded_amount
     FROM bids b
@@ -2525,8 +2527,8 @@ app.get('/api/aggregate/bidders', (req, res) => {
     JOIN packages pkg ON pkg.id = b.package_id
     JOIN projects proj ON proj.id = pkg.project_id
     ${dateFilter}
-    GROUP BY bid.canonical_name
-    ORDER BY bid_count DESC`,
+    GROUP BY bid.id, bid.canonical_name
+    ORDER BY bid.canonical_name ASC`,
     params
   );
   
@@ -2534,14 +2536,25 @@ app.get('/api/aggregate/bidders', (req, res) => {
     return res.json([]);
   }
   
-  const bidders = query[0].values.map(row => ({
-    bidder_name: row[0],
-    bid_count: row[1],
-    wins: row[2],
-    avg_bid_amount: row[3],
-    awarded_amount: row[4],
-    win_rate: row[1] > 0 ? (row[2] / row[1] * 100).toFixed(1) : 0
-  }));
+  const bidders = query[0].values.map(row => {
+    const bidderId = row[0];
+    const bidderName = row[1];
+    const bidCount = row[2];
+    const wins = row[3];
+    const winRate = row[4];
+    const avgBidAmount = row[5];
+    const awardedAmount = row[6];
+
+    return {
+      bidder_id: bidderId,
+      bidder_name: bidderName,
+      bid_count: bidCount,
+      wins,
+      win_rate: Number.isFinite(winRate) ? winRate : (bidCount > 0 ? (wins / bidCount) * 100 : null),
+      avg_bid_amount: avgBidAmount,
+      awarded_amount: awardedAmount
+    };
+  });
   
   res.json(bidders);
 });

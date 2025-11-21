@@ -10,12 +10,10 @@ let divisionTotals = null;
 
 const sortState = {
     divisions: { key: 'csi_division', direction: 'asc' },
-    bidders: { key: 'bid_count', direction: 'desc' },
     projects: { key: 'project_date', direction: 'desc' }
 };
 
 let divisionData = [];
-let bidderData = [];
 let projectOverviewData = [];
 let divisionTimeSeries = { basis: divisionBasis, series: [], overall: [] };
 const chartState = new Map();
@@ -72,7 +70,6 @@ function setLoadingStates() {
     document.getElementById('totalBids').textContent = '…';
 
     document.getElementById('divisionsBody').innerHTML = "<tr><td colspan='6' class='loading'>Loading division data...</td></tr>";
-    document.getElementById('biddersBody').innerHTML = "<tr><td colspan='6' class='loading'>Loading bidder data...</td></tr>";
     document.getElementById('projectsBody').innerHTML = "<tr><td colspan='6' class='loading'>Loading projects...</td></tr>";
 
     const divisionTrendChart = document.getElementById('divisionTrendChart');
@@ -312,11 +309,9 @@ function renderEmptyDashboardState(message = 'No projects match the current filt
 
     const emptyRow = `<tr><td colspan="6" class="empty-state">${escapeHtml(message)}</td></tr>`;
     const divisionBody = document.getElementById('divisionsBody');
-    const biddersBody = document.getElementById('biddersBody');
     const projectsBody = document.getElementById('projectsBody');
 
     if (divisionBody) divisionBody.innerHTML = emptyRow;
-    if (biddersBody) biddersBody.innerHTML = emptyRow;
     if (projectsBody) projectsBody.innerHTML = emptyRow;
 
     const divisionTrendChart = document.getElementById('divisionTrendChart');
@@ -325,7 +320,6 @@ function renderEmptyDashboardState(message = 'No projects match the current filt
     if (medianTrendChart) medianTrendChart.innerHTML = '<div class="chart-empty-state">No data available</div>';
 
     updateSortIndicators('divisions');
-    updateSortIndicators('bidders');
     updateSortIndicators('projects');
 }
 
@@ -355,7 +349,6 @@ async function loadDashboard() {
         loadSummaryMetrics(),
         loadDivisionMetrics(),
         loadDivisionTimeSeries(),
-        loadBidderMetrics(),
         loadProjectsOverview(projects.filter(project => selectedProjectIds.includes(project.id)))
     ]);
 }
@@ -435,25 +428,6 @@ async function loadDivisionTimeSeries() {
         const medianChart = document.getElementById('medianTrendChart');
         if (divisionChart) divisionChart.innerHTML = '<div class="chart-empty-state">Unable to load trends</div>';
         if (medianChart) medianChart.innerHTML = '<div class="chart-empty-state">Unable to load medians</div>';
-    }
-}
-
-// Load bidder metrics
-async function loadBidderMetrics() {
-    try {
-        const response = await apiFetch(appendFilterParams(`${API_BASE}/aggregate/bidders`));
-        bidderData = (await response.json()).map(bidder => ({
-            ...bidder,
-            win_rate: Number(bidder.win_rate)
-        })).slice(0, 20);
-
-        renderBidderTable();
-    } catch (error) {
-        console.error('Error loading bidder metrics:', error);
-        const tbody = document.getElementById('biddersBody');
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Error loading bidder data</td></tr>';
-        }
     }
 }
 
@@ -619,31 +593,6 @@ function renderMedianTrendChart() {
     }
 
     renderLineChart(container, [{ label: 'Median Cost/SF', color: getSeriesColor(0), points }], { yLabel: 'Median Cost/SF' });
-}
-
-function renderBidderTable() {
-    const tbody = document.getElementById('biddersBody');
-    if (!tbody) return;
-
-    if (!bidderData || bidderData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No bidder data available</td></tr>';
-        updateSortIndicators('bidders');
-        return;
-    }
-
-    const sorted = sortData(bidderData, 'bidders');
-    tbody.innerHTML = sorted.map(bidder => `
-        <tr>
-            <td><strong>${escapeHtml(bidder.bidder_name)}</strong></td>
-            <td>${bidder.bid_count}</td>
-            <td>${bidder.wins}</td>
-            <td>${bidder.win_rate}%</td>
-            <td>${bidder.avg_bid_amount ? formatCurrency(bidder.avg_bid_amount) : '—'}</td>
-            <td>${bidder.awarded_amount ? formatCurrency(bidder.awarded_amount) : '—'}</td>
-        </tr>
-    `).join('');
-
-    updateSortIndicators('bidders');
 }
 
 function renderProjectsTable() {
@@ -909,9 +858,6 @@ function renderTableFor(table) {
     switch (table) {
         case 'divisions':
             renderDivisionTable();
-            break;
-        case 'bidders':
-            renderBidderTable();
             break;
         case 'projects':
             renderProjectsTable();
