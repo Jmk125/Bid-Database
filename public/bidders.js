@@ -20,6 +20,8 @@ let bidderListSort = { field: 'name', direction: 'asc' };
 let bidderActivityData = [];
 let bidderActivityLoaded = false;
 let bidderActivitySort = { key: 'awarded_amount', direction: 'desc' };
+let activityStartDate = '';
+let activityEndDate = '';
 let countyMapInitialized = false;
 let countyMapPromise = null;
 let countyPathSelection = null;
@@ -628,6 +630,83 @@ function setBidderActivitySort(key) {
     renderBidderActivityTable();
 }
 
+function appendActivityFilterParams(url) {
+    const params = new URLSearchParams();
+
+    if (activityStartDate) {
+        params.set('startDate', activityStartDate);
+    }
+
+    if (activityEndDate) {
+        params.set('endDate', activityEndDate);
+    }
+
+    const query = params.toString();
+    if (!query) {
+        return url;
+    }
+
+    return `${url}?${query}`;
+}
+
+function updateActivityFilterStatus() {
+    const statusEl = document.getElementById('activityDateStatus');
+    if (!statusEl) {
+        return;
+    }
+
+    const parts = [];
+
+    if (activityStartDate) {
+        parts.push(`from ${formatDate(activityStartDate)}`);
+    }
+
+    if (activityEndDate) {
+        parts.push(`through ${formatDate(activityEndDate)}`);
+    }
+
+    statusEl.textContent = parts.length === 0
+        ? 'Showing all project history.'
+        : `Filtering projects ${parts.join(' ')}`;
+}
+
+function applyActivityDateFilters() {
+    const startInput = document.getElementById('activityStartDate');
+    const endInput = document.getElementById('activityEndDate');
+
+    if (!startInput || !endInput) {
+        return;
+    }
+
+    const nextStart = startInput.value;
+    const nextEnd = endInput.value;
+
+    if (nextStart && nextEnd && new Date(nextStart) > new Date(nextEnd)) {
+        alert('The start date must be before the end date.');
+        return;
+    }
+
+    activityStartDate = nextStart;
+    activityEndDate = nextEnd;
+    bidderActivityLoaded = false;
+    updateActivityFilterStatus();
+    loadBidderActivity();
+}
+
+function clearActivityDateFilters() {
+    const startInput = document.getElementById('activityStartDate');
+    const endInput = document.getElementById('activityEndDate');
+
+    if (startInput) startInput.value = '';
+    if (endInput) endInput.value = '';
+
+    activityStartDate = '';
+    activityEndDate = '';
+    bidderActivityLoaded = false;
+    updateActivityFilterStatus();
+    loadBidderActivity();
+}
+
 async function loadBidderActivity() {
     const tbody = document.getElementById('bidderActivityBody');
     if (tbody) {
@@ -635,7 +714,7 @@ async function loadBidderActivity() {
     }
 
     try {
-        const response = await apiFetch(`${API_BASE}/aggregate/bidders`);
+        const response = await apiFetch(appendActivityFilterParams(`${API_BASE}/aggregate/bidders`));
         const payload = await response.json();
 
         bidderActivityData = Array.isArray(payload)
@@ -1238,6 +1317,14 @@ document.addEventListener('DOMContentLoaded', function() {
             renderBidderCountyActivity(event.target.value);
         });
     }
+
+    const activityStartInput = document.getElementById('activityStartDate');
+    const activityEndInput = document.getElementById('activityEndDate');
+    const clearActivityDateBtn = document.getElementById('clearActivityDateFilter');
+    activityStartInput?.addEventListener('change', applyActivityDateFilters);
+    activityEndInput?.addEventListener('change', applyActivityDateFilters);
+    clearActivityDateBtn?.addEventListener('click', clearActivityDateFilters);
+    updateActivityFilterStatus();
 
     const activityMetric = document.getElementById('activityMetric');
     if (activityMetric) {

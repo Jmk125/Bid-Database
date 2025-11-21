@@ -150,6 +150,22 @@
 
         <div id="biddersActivityContent" class="tab-content" role="tabpanel" aria-hidden="true" aria-labelledby="activityViewTab" data-tab-panel="activity">
             <div class="table-container">
+                <div class="filter-bar" aria-label="Bidder activity date range filters" style="margin-bottom: 1rem;">
+                    <div class="filter-group">
+                        <label for="activityStartDate">From</label>
+                        <input type="date" id="activityStartDate" name="activityStartDate">
+                    </div>
+                    <div class="filter-group">
+                        <label for="activityEndDate">To</label>
+                        <input type="date" id="activityEndDate" name="activityEndDate">
+                    </div>
+                    <div class="filter-actions">
+                        <button type="button" class="btn btn-secondary btn-small" id="clearActivityDateFilter">Clear</button>
+                    </div>
+                    <div class="filter-status" id="activityDateStatus" role="status" aria-live="polite">
+                        Showing all project history.
+                    </div>
+                </div>
                 <div class="table-header">
                     <div>
                         <h3 style="margin-bottom: 0.25rem;">Bidder Activity</h3>
