@@ -77,8 +77,20 @@
 
         <!-- CSI Division Analysis -->
         <div class="table-container" style="margin-top: 2rem;">
-            <h3 style="margin-bottom: 1rem;">Cost/SF by CSI Division</h3>
-            <p style="color: #7f8c8d; margin-bottom: 1rem;">Aggregate metrics across all projects</p>
+            <div class="table-header">
+                <div>
+                    <h3 style="margin-bottom: 0.25rem;">Cost/SF by CSI Division</h3>
+                    <p style="color: #7f8c8d; margin: 0;">Aggregate metrics across all projects</p>
+                </div>
+                <div class="table-controls">
+                    <label for="divisionBasis" class="control-label">Cost basis</label>
+                    <select id="divisionBasis" aria-label="Division cost basis">
+                        <option value="selected">Selected amounts</option>
+                        <option value="median">Median bids</option>
+                        <option value="low">Low bids</option>
+                    </select>
+                </div>
+            </div>
             <table id="divisionsTable">
                 <thead>
                     <tr>
@@ -94,6 +106,24 @@
                     <tr><td colspan="6" class="loading">Loading division data...</td></tr>
                 </tbody>
             </table>
+        </div>
+
+        <div class="chart-grid" style="margin-top: 2rem;">
+            <div class="chart-card" id="divisionTrendCard">
+                <div class="chart-header">
+                    <h3>Division Cost/SF Over Time</h3>
+                    <p class="chart-subtitle">Trends for each CSI division within the active filters.</p>
+                </div>
+                <div id="divisionTrendChart" class="chart-canvas" aria-live="polite">Loading trends…</div>
+            </div>
+
+            <div class="chart-card" id="medianTrendCard">
+                <div class="chart-header">
+                    <h3>Median Cost/SF Over Time</h3>
+                    <p class="chart-subtitle">Overall median cost/SF derived from the division data.</p>
+                </div>
+                <div id="medianTrendChart" class="chart-canvas" aria-live="polite">Loading medians…</div>
+            </div>
         </div>
 
         <!-- Top Bidders by Activity -->

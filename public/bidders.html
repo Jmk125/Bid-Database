@@ -38,6 +38,7 @@
                     <div style="display: flex; gap: 1rem;">
                         <input type="text" id="searchBidders" placeholder="Search bidders..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 250px;">
                         <input type="text" id="filterPackages" placeholder="Filter by package..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 250px;">
+                        <input type="text" id="filterCounties" placeholder="Filter by project county..." style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; width: 250px;">
                     </div>
                 </div>
                 <table id="biddersTable">
@@ -46,16 +47,27 @@
                             <th style="width: 50px;">
                                 <input type="checkbox" id="selectAll" title="Select All">
                             </th>
-                            <th>Bidder Name</th>
+                            <th>
+                                <button type="button" class="sortable-header bidder-list-sort" data-list-sort="name">
+                                    Bidder Name
+                                    <span class="sort-indicator" aria-hidden="true"></span>
+                                </button>
+                            </th>
                             <th>Packages</th>
                             <th>Aliases</th>
+                            <th>
+                                <button type="button" class="sortable-header bidder-list-sort" data-list-sort="county">
+                                    Project County
+                                    <span class="sort-indicator" aria-hidden="true"></span>
+                                </button>
+                            </th>
                             <th>Total Bids</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="biddersBody">
-                        <tr><td colspan="6" class="loading">Loading bidders (this may take a moment)...</td></tr>
-                    </tbody>
+                        <tbody id="biddersBody">
+                            <tr><td colspan="7" class="loading">Loading bidders (this may take a moment)...</td></tr>
+                        </tbody>
                 </table>
 
                 <div id="mergeSection" style="margin-top: 1rem; padding: 1rem; background-color: #f8f9fa; border-radius: 4px; display: none;">
