@@ -28,6 +28,7 @@
 
         <div class="view-tabs" role="tablist" aria-label="Bidder views">
             <button id="listViewTab" class="tab-toggle is-active" role="tab" data-bidders-tab="list" aria-selected="true" aria-controls="biddersListContent">List</button>
+            <button id="activityViewTab" class="tab-toggle" role="tab" data-bidders-tab="activity" aria-selected="false" aria-controls="biddersActivityContent">Activity</button>
             <button id="mapViewTab" class="tab-toggle" role="tab" data-bidders-tab="map" aria-selected="false" aria-controls="biddersMapContent">Map</button>
         </div>
 
@@ -144,6 +145,58 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+
+        <div id="biddersActivityContent" class="tab-content" role="tabpanel" aria-hidden="true" aria-labelledby="activityViewTab" data-tab-panel="activity">
+            <div class="table-container">
+                <div class="filter-bar" aria-label="Bidder activity date range filters" style="margin-bottom: 1rem;">
+                    <div class="filter-group">
+                        <label for="activityStartDate">From</label>
+                        <input type="date" id="activityStartDate" name="activityStartDate">
+                    </div>
+                    <div class="filter-group">
+                        <label for="activityEndDate">To</label>
+                        <input type="date" id="activityEndDate" name="activityEndDate">
+                    </div>
+                    <div class="filter-actions">
+                        <button type="button" class="btn btn-secondary btn-small" id="clearActivityDateFilter">Clear</button>
+                    </div>
+                    <div class="filter-status" id="activityDateStatus" role="status" aria-live="polite">
+                        Showing all project history.
+                    </div>
+                </div>
+                <div class="table-header">
+                    <div>
+                        <h3 style="margin-bottom: 0.25rem;">Bidder Activity</h3>
+                        <p style="color: #7f8c8d; margin: 0;">Rank bidders by bids, awards, or win performance</p>
+                    </div>
+                    <div class="table-controls" style="gap: 0.5rem;">
+                        <label for="activityMetric" class="control-label">Rank by</label>
+                        <select id="activityMetric" aria-label="Bidder activity metric">
+                            <option value="awarded_amount">Awarded amount</option>
+                            <option value="bid_count">Quantity of bids</option>
+                            <option value="wins">Wins</option>
+                            <option value="win_rate">Win rate</option>
+                            <option value="avg_bid_amount">Average bid amount</option>
+                        </select>
+                    </div>
+                </div>
+                <table id="bidderActivityTable">
+                    <thead>
+                        <tr>
+                            <th><button type="button" class="sortable-header" data-activity-sort="bidder_name">Bidder <span class="sort-indicator">↕</span></button></th>
+                            <th><button type="button" class="sortable-header" data-activity-sort="bid_count">Quantity of bids <span class="sort-indicator">↕</span></button></th>
+                            <th><button type="button" class="sortable-header" data-activity-sort="wins">Wins <span class="sort-indicator">↕</span></button></th>
+                            <th><button type="button" class="sortable-header" data-activity-sort="win_rate">Win rate <span class="sort-indicator">↕</span></button></th>
+                            <th><button type="button" class="sortable-header" data-activity-sort="avg_bid_amount">Average bid amount <span class="sort-indicator">↕</span></button></th>
+                            <th><button type="button" class="sortable-header" data-activity-sort="awarded_amount">Awarded amount <span class="sort-indicator">↕</span></button></th>
+                        </tr>
+                    </thead>
+                    <tbody id="bidderActivityBody">
+                        <tr><td colspan="6" class="loading">Loading bidder activity…</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 

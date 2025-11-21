@@ -17,6 +17,11 @@ let currentBidderHistory = [];
 let bidderHistorySort = { field: 'project_date', direction: 'desc' };
 let activeBiddersTab = 'list';
 let bidderListSort = { field: 'name', direction: 'asc' };
+let bidderActivityData = [];
+let bidderActivityLoaded = false;
+let bidderActivitySort = { key: 'awarded_amount', direction: 'desc' };
+let activityStartDate = '';
+let activityEndDate = '';
 let countyMapInitialized = false;
 let countyMapPromise = null;
 let countyPathSelection = null;
@@ -458,7 +463,7 @@ function setBidderHistorySort(field) {
 }
 
 function updateBidderSortIndicators() {
-    document.querySelectorAll('.sortable-header').forEach(button => {
+    document.querySelectorAll('#bidderBidsTable .sortable-header').forEach(button => {
         const indicator = button.querySelector('.sort-indicator');
         if (!indicator) {
             return;
@@ -500,6 +505,257 @@ function updateBidderMetrics() {
         : '—';
 }
 
+function formatWinRate(value) {
+    if (value == null || Number.isNaN(Number(value))) {
+        return '—';
+    }
+
+    const numeric = Number(value);
+    const precision = numeric >= 100 ? 0 : 1;
+    return `${numeric.toFixed(precision)}%`;
+}
+
+function getActivitySortValue(row, key) {
+    const value = row?.[key];
+    if (value == null) {
+        return null;
+    }
+
+    if (typeof value === 'string') {
+        return value.toLowerCase();
+    }
+
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? value : numeric;
+}
+
+function sortBidderActivity(data) {
+    const direction = bidderActivitySort.direction === 'asc' ? 1 : -1;
+
+    return data.slice().sort((a, b) => {
+        const aVal = getActivitySortValue(a, bidderActivitySort.key);
+        const bVal = getActivitySortValue(b, bidderActivitySort.key);
+
+        if (aVal === null && bVal === null) return 0;
+        if (aVal === null) return 1;
+        if (bVal === null) return -1;
+
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+            return aVal.localeCompare(bVal) * direction;
+        }
+
+        if (aVal < bVal) return -1 * direction;
+        if (aVal > bVal) return 1 * direction;
+        return 0;
+    });
+}
+
+function updateActivitySortIndicators() {
+    document.querySelectorAll('[data-activity-sort]').forEach(button => {
+        const indicator = button.querySelector('.sort-indicator');
+        if (!indicator) return;
+
+        if (button.dataset.activitySort === bidderActivitySort.key) {
+            indicator.textContent = bidderActivitySort.direction === 'asc' ? '▲' : '▼';
+        } else {
+            indicator.textContent = '↕';
+        }
+    });
+}
+
+function renderBidderActivityTable() {
+    const tbody = document.getElementById('bidderActivityBody');
+    if (!tbody) {
+        return;
+    }
+
+    if (!bidderActivityData.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No bidder activity available</td></tr>';
+        updateActivitySortIndicators();
+        return;
+    }
+
+    const sorted = sortBidderActivity(bidderActivityData);
+    tbody.innerHTML = sorted.map(bidder => `
+        <tr>
+            <td><strong>${escapeHtml(bidder.bidder_name || '')}</strong></td>
+            <td>${bidder.bid_count ?? 0}</td>
+            <td>${bidder.wins ?? 0}</td>
+            <td>${formatWinRate(bidder.win_rate)}</td>
+            <td>${bidder.avg_bid_amount != null ? formatCurrency(bidder.avg_bid_amount) : '—'}</td>
+            <td>${bidder.awarded_amount != null ? formatCurrency(bidder.awarded_amount) : '—'}</td>
+        </tr>
+    `).join('');
+
+    updateActivitySortIndicators();
+}
+
+function setBidderActivityMetric(metric) {
+    if (!metric) {
+        return;
+    }
+
+    bidderActivitySort = {
+        key: metric,
+        direction: metric === 'bidder_name' ? 'asc' : 'desc'
+    };
+
+    const metricSelect = document.getElementById('activityMetric');
+    if (metricSelect && metricSelect.value !== metric && metricSelect.querySelector(`option[value="${metric}"]`)) {
+        metricSelect.value = metric;
+    }
+
+    renderBidderActivityTable();
+}
+
+function setBidderActivitySort(key) {
+    if (!key) {
+        return;
+    }
+
+    if (bidderActivitySort.key === key) {
+        bidderActivitySort.direction = bidderActivitySort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        bidderActivitySort = {
+            key,
+            direction: key === 'bidder_name' ? 'asc' : 'desc'
+        };
+    }
+
+    const metricSelect = document.getElementById('activityMetric');
+    if (metricSelect && metricSelect.querySelector(`option[value="${key}"]`)) {
+        metricSelect.value = key;
+    }
+
+    renderBidderActivityTable();
+}
+
+function appendActivityFilterParams(url) {
+    const params = new URLSearchParams();
+
+    if (activityStartDate) {
+        params.set('startDate', activityStartDate);
+    }
+
+    if (activityEndDate) {
+        params.set('endDate', activityEndDate);
+    }
+
+    const query = params.toString();
+    if (!query) {
+        return url;
+    }
+
+    return `${url}?${query}`;
+}
+
+function updateActivityFilterStatus() {
+    const statusEl = document.getElementById('activityDateStatus');
+    if (!statusEl) {
+        return;
+    }
+
+    const parts = [];
+
+    if (activityStartDate) {
+        parts.push(`from ${formatDate(activityStartDate)}`);
+    }
+
+    if (activityEndDate) {
+        parts.push(`through ${formatDate(activityEndDate)}`);
+    }
+
+    statusEl.textContent = parts.length === 0
+        ? 'Showing all project history.'
+        : `Filtering projects ${parts.join(' ')}`;
+}
+
+function applyActivityDateFilters() {
+    const startInput = document.getElementById('activityStartDate');
+    const endInput = document.getElementById('activityEndDate');
+
+    if (!startInput || !endInput) {
+        return;
+    }
+
+    const nextStart = startInput.value;
+    const nextEnd = endInput.value;
+
+    if (nextStart && nextEnd && new Date(nextStart) > new Date(nextEnd)) {
+        alert('The start date must be before the end date.');
+        return;
+    }
+
+    activityStartDate = nextStart;
+    activityEndDate = nextEnd;
+    bidderActivityLoaded = false;
+    updateActivityFilterStatus();
+    loadBidderActivity();
+}
+
+function clearActivityDateFilters() {
+    const startInput = document.getElementById('activityStartDate');
+    const endInput = document.getElementById('activityEndDate');
+
+    if (startInput) startInput.value = '';
+    if (endInput) endInput.value = '';
+
+    activityStartDate = '';
+    activityEndDate = '';
+    bidderActivityLoaded = false;
+    updateActivityFilterStatus();
+    loadBidderActivity();
+}
+
+async function loadBidderActivity() {
+    const tbody = document.getElementById('bidderActivityBody');
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading bidder activity…</td></tr>';
+    }
+
+    try {
+        const response = await apiFetch(appendActivityFilterParams(`${API_BASE}/aggregate/bidders`));
+        const payload = await response.json();
+
+        bidderActivityData = Array.isArray(payload)
+            ? payload.map(entry => {
+                const bidCount = Number(entry.bid_count) || 0;
+                const wins = Number(entry.wins) || 0;
+                const winRateFromPayload = entry.win_rate != null ? Number(entry.win_rate) : null;
+
+                return {
+                    ...entry,
+                    bidder_name: entry.bidder_name || '',
+                    bid_count: bidCount,
+                    wins,
+                    win_rate: winRateFromPayload != null
+                        ? winRateFromPayload
+                        : (bidCount > 0 ? (wins / bidCount) * 100 : null),
+                    avg_bid_amount: entry.avg_bid_amount != null ? Number(entry.avg_bid_amount) : null,
+                    awarded_amount: entry.awarded_amount != null ? Number(entry.awarded_amount) : null
+                };
+            })
+            : [];
+
+        bidderActivityLoaded = true;
+        renderBidderActivityTable();
+    } catch (error) {
+        console.error('Error loading bidder activity:', error);
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Error loading bidder activity</td></tr>';
+        }
+    }
+}
+
+async function ensureBidderActivityLoaded() {
+    if (bidderActivityLoaded) {
+        renderBidderActivityTable();
+        return;
+    }
+
+    await loadBidderActivity();
+}
+
 function setupBiddersTabs() {
     const tabButtons = document.querySelectorAll('[data-bidders-tab]');
     if (tabButtons.length === 0) {
@@ -538,6 +794,8 @@ function setBiddersTab(tab) {
         if (mapSelect) {
             renderBidderCountyActivity(mapSelect.value);
         }
+    } else if (tab === 'activity') {
+        ensureBidderActivityLoaded();
     }
 }
 
@@ -1060,6 +1318,24 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    const activityStartInput = document.getElementById('activityStartDate');
+    const activityEndInput = document.getElementById('activityEndDate');
+    const clearActivityDateBtn = document.getElementById('clearActivityDateFilter');
+    activityStartInput?.addEventListener('change', applyActivityDateFilters);
+    activityEndInput?.addEventListener('change', applyActivityDateFilters);
+    clearActivityDateBtn?.addEventListener('click', clearActivityDateFilters);
+    updateActivityFilterStatus();
+
+    const activityMetric = document.getElementById('activityMetric');
+    if (activityMetric) {
+        activityMetric.addEventListener('change', event => setBidderActivityMetric(event.target.value));
+        activityMetric.value = bidderActivitySort.key;
+    }
+
+    document.querySelectorAll('[data-activity-sort]').forEach(button => {
+        button.addEventListener('click', () => setBidderActivitySort(button.dataset.activitySort));
+    });
+
     // Merge bidders button
     document.getElementById('mergeBtn').addEventListener('click', async () => {
         const keepId = parseInt(document.getElementById('keepBidder').value);
@@ -1112,4 +1388,5 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load bidders on page load
     loadBidders();
+    ensureBidderActivityLoaded();
 });
