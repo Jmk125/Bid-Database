@@ -3,6 +3,7 @@ let currentStartDate = '';
 let currentEndDate = '';
 let currentCounty = '';
 let currentSizeRange = { min: '', max: '' };
+let divisionBasis = 'selected';
 
 const sortState = {
     divisions: { key: 'csi_division', direction: 'asc' },
@@ -13,6 +14,7 @@ const sortState = {
 let divisionData = [];
 let bidderData = [];
 let projectOverviewData = [];
+let divisionTimeSeries = { basis: divisionBasis, series: [], overall: [] };
 
 function appendFilterParams(url, { includeCounty = true, includeSize = true } = {}) {
     const params = new URLSearchParams();
@@ -54,6 +56,11 @@ function setLoadingStates() {
     document.getElementById('divisionsBody').innerHTML = "<tr><td colspan='6' class='loading'>Loading division data...</td></tr>";
     document.getElementById('biddersBody').innerHTML = "<tr><td colspan='6' class='loading'>Loading bidder data...</td></tr>";
     document.getElementById('projectsBody').innerHTML = "<tr><td colspan='6' class='loading'>Loading projects...</td></tr>";
+
+    const divisionTrendChart = document.getElementById('divisionTrendChart');
+    const medianTrendChart = document.getElementById('medianTrendChart');
+    if (divisionTrendChart) divisionTrendChart.textContent = 'Loading trends…';
+    if (medianTrendChart) medianTrendChart.textContent = 'Loading medians…';
 }
 
 function updateFilterStatus() {
@@ -138,6 +145,18 @@ function initializeDateFilters() {
     clearBtn?.addEventListener('click', clearFilters);
 }
 
+function initializeDivisionBasisControl() {
+    const basisSelect = document.getElementById('divisionBasis');
+    if (!basisSelect) return;
+
+    basisSelect.value = divisionBasis;
+    basisSelect.addEventListener('change', () => {
+        divisionBasis = basisSelect.value || 'selected';
+        loadDivisionMetrics();
+        loadDivisionTimeSeries();
+    });
+}
+
 // Load all dashboard data
 async function loadDashboard() {
     setLoadingStates();
@@ -145,6 +164,7 @@ async function loadDashboard() {
     await Promise.all([
         loadSummaryMetrics(),
         loadDivisionMetrics(),
+        loadDivisionTimeSeries(),
         loadBidderMetrics(),
         loadProjectsOverview()
     ]);
@@ -190,7 +210,7 @@ async function loadSummaryMetrics() {
 // Load division metrics
 async function loadDivisionMetrics() {
     try {
-        const response = await apiFetch(appendFilterParams(`${API_BASE}/aggregate/divisions`));
+        const response = await apiFetch(appendFilterParams(`${API_BASE}/aggregate/divisions?basis=${divisionBasis}`));
         divisionData = await response.json();
 
         renderDivisionTable();
@@ -200,6 +220,22 @@ async function loadDivisionMetrics() {
         if (tbody) {
             tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Error loading division data</td></tr>';
         }
+    }
+}
+
+async function loadDivisionTimeSeries() {
+    try {
+        const response = await apiFetch(appendFilterParams(`${API_BASE}/aggregate/divisions/timeseries?basis=${divisionBasis}`));
+        divisionTimeSeries = await response.json();
+
+        renderDivisionTrendsChart();
+        renderMedianTrendChart();
+    } catch (error) {
+        console.error('Error loading division time series:', error);
+        const divisionChart = document.getElementById('divisionTrendChart');
+        const medianChart = document.getElementById('medianTrendChart');
+        if (divisionChart) divisionChart.innerHTML = '<div class="chart-empty-state">Unable to load trends</div>';
+        if (medianChart) medianChart.innerHTML = '<div class="chart-empty-state">Unable to load medians</div>';
     }
 }
 
@@ -330,6 +366,44 @@ function renderDivisionTable() {
     updateSortIndicators('divisions');
 }
 
+function renderDivisionTrendsChart() {
+    const container = document.getElementById('divisionTrendChart');
+    if (!container) return;
+
+    const series = (divisionTimeSeries.series || [])
+        .filter(entry => entry.points && entry.points.length)
+        .map((entry, index) => ({
+            label: entry.csi_division,
+            color: getSeriesColor(index),
+            points: entry.points
+                .filter(point => point.median_cost_per_sf != null)
+                .map(point => ({ x: point.period, y: point.median_cost_per_sf }))
+        }));
+
+    if (!series.length) {
+        container.innerHTML = '<div class="chart-empty-state">No division trend data available</div>';
+        return;
+    }
+
+    renderLineChart(container, series, { yLabel: 'Median Cost/SF' });
+}
+
+function renderMedianTrendChart() {
+    const container = document.getElementById('medianTrendChart');
+    if (!container) return;
+
+    const points = (divisionTimeSeries.overall || [])
+        .filter(point => point.median_cost_per_sf != null)
+        .map(point => ({ x: point.period, y: point.median_cost_per_sf }));
+
+    if (!points.length) {
+        container.innerHTML = '<div class="chart-empty-state">No median data available</div>';
+        return;
+    }
+
+    renderLineChart(container, [{ label: 'Median Cost/SF', color: getSeriesColor(0), points }], { yLabel: 'Median Cost/SF' });
+}
+
 function renderBidderTable() {
     const tbody = document.getElementById('biddersBody');
     if (!tbody) return;
@@ -380,6 +454,169 @@ function renderProjectsTable() {
     updateSortIndicators('projects');
 }
 
+function renderLineChart(container, series, { yLabel = 'Value' } = {}) {
+    if (!series || !series.length) {
+        container.innerHTML = '<div class="chart-empty-state">No data available</div>';
+        return;
+    }
+
+    const periods = Array.from(new Set(series.flatMap(s => s.points.map(p => p.x)))).sort();
+    const values = series.flatMap(s => s.points.map(p => p.y)).filter(value => Number.isFinite(value));
+
+    if (!periods.length || !values.length) {
+        container.innerHTML = '<div class="chart-empty-state">No data available</div>';
+        return;
+    }
+
+    const width = Math.max(container.clientWidth || 600, 320);
+    const height = Math.max(container.clientHeight || 340, 300);
+    const padding = { top: 20, right: 130, bottom: 50, left: 80 };
+
+    const innerWidth = width - padding.left - padding.right;
+    const innerHeight = height - padding.top - padding.bottom;
+
+    const yMin = Math.min(...values);
+    const yMax = Math.max(...values);
+    const yRange = yMax - yMin || 1;
+
+    const xScale = (period) => {
+        const index = periods.indexOf(period);
+        const ratio = periods.length > 1 ? index / (periods.length - 1) : 0.5;
+        return padding.left + ratio * innerWidth;
+    };
+
+    const yScale = (value) => {
+        const ratio = (value - yMin) / yRange;
+        return padding.top + innerHeight - ratio * innerHeight;
+    };
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+
+    const axisGroup = document.createElementNS(svg.namespaceURI, 'g');
+    axisGroup.setAttribute('stroke', '#dce1e7');
+    axisGroup.setAttribute('fill', 'none');
+    svg.appendChild(axisGroup);
+
+    const yTicks = 4;
+    for (let i = 0; i <= yTicks; i++) {
+        const value = yMin + (i / yTicks) * yRange;
+        const y = yScale(value);
+
+        const line = document.createElementNS(svg.namespaceURI, 'line');
+        line.setAttribute('x1', padding.left);
+        line.setAttribute('x2', width - padding.right);
+        line.setAttribute('y1', y);
+        line.setAttribute('y2', y);
+        line.setAttribute('stroke', '#edf1f5');
+        axisGroup.appendChild(line);
+
+        const label = document.createElementNS(svg.namespaceURI, 'text');
+        label.setAttribute('x', padding.left - 10);
+        label.setAttribute('y', y + 4);
+        label.setAttribute('text-anchor', 'end');
+        label.setAttribute('fill', '#7f8c8d');
+        label.setAttribute('font-size', '11');
+        label.textContent = formatCurrency(value);
+        svg.appendChild(label);
+    }
+
+    periods.forEach((period, index) => {
+        const x = xScale(period);
+        const label = document.createElementNS(svg.namespaceURI, 'text');
+        label.setAttribute('x', x);
+        label.setAttribute('y', height - padding.bottom + 18);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('fill', '#7f8c8d');
+        label.setAttribute('font-size', '11');
+        label.textContent = formatPeriod(period);
+        svg.appendChild(label);
+
+        if (index > 0) {
+            const tick = document.createElementNS(svg.namespaceURI, 'line');
+            tick.setAttribute('x1', x);
+            tick.setAttribute('x2', x);
+            tick.setAttribute('y1', height - padding.bottom);
+            tick.setAttribute('y2', height - padding.bottom + 6);
+            tick.setAttribute('stroke', '#bfc7d0');
+            svg.appendChild(tick);
+        }
+    });
+
+    const xAxis = document.createElementNS(svg.namespaceURI, 'line');
+    xAxis.setAttribute('x1', padding.left);
+    xAxis.setAttribute('x2', width - padding.right);
+    xAxis.setAttribute('y1', height - padding.bottom);
+    xAxis.setAttribute('y2', height - padding.bottom);
+    xAxis.setAttribute('stroke', '#bfc7d0');
+    svg.appendChild(xAxis);
+
+    const yAxis = document.createElementNS(svg.namespaceURI, 'line');
+    yAxis.setAttribute('x1', padding.left);
+    yAxis.setAttribute('x2', padding.left);
+    yAxis.setAttribute('y1', padding.top);
+    yAxis.setAttribute('y2', height - padding.bottom);
+    yAxis.setAttribute('stroke', '#bfc7d0');
+    svg.appendChild(yAxis);
+
+    const yLabelText = document.createElementNS(svg.namespaceURI, 'text');
+    yLabelText.setAttribute('x', padding.left);
+    yLabelText.setAttribute('y', padding.top - 6);
+    yLabelText.setAttribute('fill', '#2c3e50');
+    yLabelText.setAttribute('font-size', '12');
+    yLabelText.setAttribute('font-weight', '600');
+    yLabelText.textContent = yLabel;
+    svg.appendChild(yLabelText);
+
+    series.forEach(seriesEntry => {
+        const filteredPoints = seriesEntry.points.filter(point => Number.isFinite(point.y));
+        if (!filteredPoints.length) return;
+
+        const pathData = filteredPoints
+            .map((point, idx) => `${idx === 0 ? 'M' : 'L'} ${xScale(point.x)} ${yScale(point.y)}`)
+            .join(' ');
+
+        const path = document.createElementNS(svg.namespaceURI, 'path');
+        path.setAttribute('d', pathData);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', seriesEntry.color);
+        path.setAttribute('stroke-width', '2');
+        svg.appendChild(path);
+
+        filteredPoints.forEach(point => {
+            const circle = document.createElementNS(svg.namespaceURI, 'circle');
+            circle.setAttribute('cx', xScale(point.x));
+            circle.setAttribute('cy', yScale(point.y));
+            circle.setAttribute('r', 3);
+            circle.setAttribute('fill', '#fff');
+            circle.setAttribute('stroke', seriesEntry.color);
+            circle.setAttribute('stroke-width', '2');
+            svg.appendChild(circle);
+        });
+    });
+
+    container.innerHTML = '';
+    container.appendChild(svg);
+
+    const legend = document.createElement('div');
+    legend.className = 'chart-legend';
+    series.forEach(entry => {
+        const item = document.createElement('div');
+        item.className = 'chart-legend-item';
+        const swatch = document.createElement('span');
+        swatch.className = 'chart-legend-swatch';
+        swatch.style.backgroundColor = entry.color;
+        const label = document.createElement('span');
+        label.textContent = entry.label;
+        item.appendChild(swatch);
+        item.appendChild(label);
+        legend.appendChild(item);
+    });
+
+    container.appendChild(legend);
+}
+
 function renderTableFor(table) {
     switch (table) {
         case 'divisions':
@@ -394,6 +631,11 @@ function renderTableFor(table) {
         default:
             break;
     }
+}
+
+function getSeriesColor(index) {
+    const palette = ['#3498db', '#e67e22', '#9b59b6', '#1abc9c', '#e74c3c', '#f1c40f', '#34495e', '#2ecc71'];
+    return palette[index % palette.length];
 }
 
 function populateSizeRangeOptions() {
@@ -493,6 +735,13 @@ function formatDate(dateString) {
     return date.toLocaleDateString();
 }
 
+function formatPeriod(period) {
+    if (!period) return '';
+    const [year, month] = period.split('-').map(Number);
+    const date = new Date(year, (month || 1) - 1, 1);
+    return date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -503,5 +752,6 @@ function escapeHtml(text) {
 populateSizeRangeOptions();
 initializeSorting();
 initializeDateFilters();
+initializeDivisionBasisControl();
 loadCountyOptions();
 loadDashboard();

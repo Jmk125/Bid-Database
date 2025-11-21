@@ -2305,8 +2305,107 @@ app.get('/api/aggregate/divisions', (req, res) => {
     
     return div;
   });
-  
+
   res.json(divisionsWithMedian);
+});
+
+// Get per-division cost/SF trends over time
+app.get('/api/aggregate/divisions/timeseries', (req, res) => {
+  const db = getDatabase();
+  const basis = req.query.basis === 'median'
+    ? 'median'
+    : req.query.basis === 'low'
+      ? 'low'
+      : 'selected';
+
+  const amountColumn = basis === 'median'
+    ? 'pkg.median_bid'
+    : basis === 'low'
+      ? 'pkg.low_bid'
+      : 'pkg.selected_amount';
+
+  const { clauses, params } = buildProjectDateFilters(req, 'proj.project_date');
+  const dateFilter = clauses.length ? ` AND ${clauses.join(' AND ')}` : '';
+
+  const query = db.exec(
+    `SELECT
+      pkg.csi_division,
+      strftime('%Y-%m', proj.project_date) as period,
+      ${amountColumn} as amount,
+      proj.building_sf
+    FROM packages pkg
+    JOIN projects proj ON proj.id = pkg.project_id
+    WHERE pkg.csi_division IS NOT NULL
+      AND ${amountColumn} IS NOT NULL
+      AND proj.building_sf IS NOT NULL
+      AND proj.project_date IS NOT NULL${dateFilter}
+    ORDER BY period`,
+    params
+  );
+
+  if (query.length === 0) {
+    return res.json({ basis, series: [], overall: [] });
+  }
+
+  const seriesMap = new Map();
+  const overallMap = new Map();
+
+  query[0].values.forEach(row => {
+    const division = row[0];
+    const period = row[1];
+    const amount = row[2];
+    const buildingSf = row[3];
+
+    if (!period || !Number.isFinite(amount) || !Number.isFinite(buildingSf) || buildingSf === 0) {
+      return;
+    }
+
+    const costPerSf = amount / buildingSf;
+
+    if (!Number.isFinite(costPerSf)) {
+      return;
+    }
+
+    if (!seriesMap.has(division)) {
+      seriesMap.set(division, new Map());
+    }
+
+    const divisionPeriods = seriesMap.get(division);
+    if (!divisionPeriods.has(period)) {
+      divisionPeriods.set(period, []);
+    }
+    divisionPeriods.get(period).push(costPerSf);
+
+    if (!overallMap.has(period)) {
+      overallMap.set(period, []);
+    }
+    overallMap.get(period).push(costPerSf);
+  });
+
+  const series = Array.from(seriesMap.entries()).map(([division, periodMap]) => ({
+    csi_division: division,
+    points: Array.from(periodMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([period, values]) => ({
+        period,
+        median_cost_per_sf: calculateMedian(values),
+        avg_cost_per_sf: values.reduce((sum, value) => sum + value, 0) / values.length,
+        min_cost_per_sf: Math.min(...values),
+        max_cost_per_sf: Math.max(...values)
+      }))
+  }));
+
+  const overall = Array.from(overallMap.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([period, values]) => ({
+      period,
+      median_cost_per_sf: calculateMedian(values),
+      avg_cost_per_sf: values.reduce((sum, value) => sum + value, 0) / values.length,
+      min_cost_per_sf: Math.min(...values),
+      max_cost_per_sf: Math.max(...values)
+    }));
+
+  res.json({ basis, series, overall });
 });
 
 // Get bidder performance across all projects
@@ -2377,7 +2476,18 @@ app.get('/api/bidders', (req, res) => {
           WHERE bid2.bidder_id = b.id AND pkg2.package_code IS NOT NULL
           ORDER BY pkg2.package_code
         ) package_list
-      ) as packages
+      ) as packages,
+      (
+        SELECT GROUP_CONCAT(county_name || '|' || COALESCE(county_state, ''), '||')
+        FROM (
+          SELECT DISTINCT proj2.county_name, proj2.county_state
+          FROM bids bid2
+          JOIN packages pkg2 ON pkg2.id = bid2.package_id
+          JOIN projects proj2 ON proj2.id = pkg2.project_id
+          WHERE bid2.bidder_id = b.id AND proj2.county_name IS NOT NULL
+          ORDER BY proj2.county_name, proj2.county_state
+        ) county_list
+      ) as project_counties
     FROM bidders b
     LEFT JOIN bids bid ON bid.bidder_id = b.id
     LEFT JOIN packages pkg ON pkg.id = bid.package_id
@@ -2393,6 +2503,12 @@ app.get('/api/bidders', (req, res) => {
   const bidders = query[0].values.map(row => {
     const aliasList = row[2] ? row[2].split('||').filter(Boolean) : [];
     const packageList = row[5] ? row[5].split('||').filter(Boolean) : [];
+    const countyList = row[6]
+      ? row[6]
+          .split('||')
+          .map(entry => entry.split('|'))
+          .filter(parts => parts[0])
+      : [];
 
     packageList.sort((a, b) => a.localeCompare(b));
 
@@ -2402,7 +2518,11 @@ app.get('/api/bidders', (req, res) => {
       aliases: aliasList,
       bid_count: row[3] || 0,
       wins: row[4] || 0,
-      packages: packageList
+      packages: packageList,
+      project_counties: countyList.map(([name, state]) => ({
+        name,
+        state: state || null
+      }))
     };
   });
 

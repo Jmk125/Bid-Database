@@ -16,6 +16,7 @@ let selectedBidders = new Set();
 let currentBidderHistory = [];
 let bidderHistorySort = { field: 'project_date', direction: 'desc' };
 let activeBiddersTab = 'list';
+let bidderListSort = { field: 'name', direction: 'asc' };
 let countyMapInitialized = false;
 let countyMapPromise = null;
 let countyPathSelection = null;
@@ -32,7 +33,7 @@ async function loadBidders() {
     try {
         // Show loading message
         document.getElementById('biddersBody').innerHTML =
-            '<tr><td colspan="6" class="loading">Loading bidders and packages (this may take a moment)...</td></tr>';
+            '<tr><td colspan="7" class="loading">Loading bidders and packages (this may take a moment)...</td></tr>';
 
         const response = await apiFetch(`${API_BASE}/bidders`);
         const bidders = await response.json();
@@ -40,7 +41,8 @@ async function loadBidders() {
         allBidders = bidders.map(bidder => ({
             ...bidder,
             aliases: Array.isArray(bidder.aliases) ? bidder.aliases : [],
-            packages: Array.isArray(bidder.packages) ? bidder.packages : []
+            packages: Array.isArray(bidder.packages) ? bidder.packages : [],
+            project_counties: Array.isArray(bidder.project_counties) ? bidder.project_counties : []
         }));
 
         populateMapBidderSelect();
@@ -49,17 +51,38 @@ async function loadBidders() {
     } catch (error) {
         console.error('Error loading bidders:', error);
         document.getElementById('biddersBody').innerHTML =
-            '<tr><td colspan="6" class="empty-state">Error loading bidders</td></tr>';
+            '<tr><td colspan="7" class="empty-state">Error loading bidders</td></tr>';
     }
 }
 
+function getPrimaryCountyLabel(bidder) {
+    if (!bidder.project_counties || bidder.project_counties.length === 0) {
+        return '';
+    }
+
+    const sorted = bidder.project_counties.slice().sort((a, b) => {
+        const nameDiff = (a.name || '').localeCompare(b.name || '');
+        if (nameDiff !== 0) return nameDiff;
+        return (a.state || '').localeCompare(b.state || '');
+    });
+
+    return formatCountyLabel(sorted[0]);
+}
+
+function formatCountyLabel(entry) {
+    if (!entry || !entry.name) {
+        return '';
+    }
+    return entry.state ? `${entry.name}, ${entry.state}` : entry.name;
+}
+
 // Display bidders in table
-function displayBidders(filter = '', packageFilter = '') {
+function displayBidders(filter = '', packageFilter = '', countyFilter = '') {
     const tbody = document.getElementById('biddersBody');
     
     // Check if allBidders is populated
     if (!allBidders || allBidders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading bidders...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Loading bidders...</td></tr>';
         return;
     }
     
@@ -77,23 +100,42 @@ function displayBidders(filter = '', packageFilter = '') {
     // Apply package filter
     if (packageFilter) {
         const lowerPackageFilter = packageFilter.toLowerCase();
-        filteredBidders = filteredBidders.filter(bidder => 
+        filteredBidders = filteredBidders.filter(bidder =>
             bidder.packages && bidder.packages.some(pkg => pkg.toLowerCase().includes(lowerPackageFilter))
         );
     }
-    
+
+    if (countyFilter) {
+        const lowerCountyFilter = countyFilter.toLowerCase();
+        filteredBidders = filteredBidders.filter(bidder =>
+            bidder.project_counties && bidder.project_counties.some(entry =>
+                formatCountyLabel(entry).toLowerCase().includes(lowerCountyFilter) ||
+                (entry.state && entry.state.toLowerCase().includes(lowerCountyFilter))
+            )
+        );
+    }
+
     if (filteredBidders.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No bidders found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No bidders found</td></tr>';
         return;
     }
-    
-    // Sort by name
-    filteredBidders.sort((a, b) => a.canonical_name.localeCompare(b.canonical_name));
-    
-    tbody.innerHTML = filteredBidders.map(bidder => `
+
+    const sortedBidders = filteredBidders.slice().sort((a, b) => {
+        const direction = bidderListSort.direction === 'asc' ? 1 : -1;
+
+        if (bidderListSort.field === 'county') {
+            const countyA = getPrimaryCountyLabel(a).toLowerCase();
+            const countyB = getPrimaryCountyLabel(b).toLowerCase();
+            return countyA.localeCompare(countyB) * direction;
+        }
+
+        return a.canonical_name.localeCompare(b.canonical_name) * direction;
+    });
+
+    tbody.innerHTML = sortedBidders.map(bidder => `
         <tr>
             <td>
-                <input type="checkbox" 
+                <input type="checkbox"
                        class="bidder-checkbox" 
                        data-bidder-id="${bidder.id}"
                        data-bidder-name="${escapeHtml(bidder.canonical_name)}"
@@ -108,8 +150,13 @@ function displayBidders(filter = '', packageFilter = '') {
                     : '—'}
             </td>
             <td>
-                ${bidder.aliases.length > 0 
+                ${bidder.aliases.length > 0
                     ? `<span style="color: #7f8c8d; font-size: 0.875rem;">${escapeHtml(bidder.aliases.join(', '))}</span>`
+                    : '—'}
+            </td>
+            <td>
+                ${bidder.project_counties && bidder.project_counties.length > 0
+                    ? `<span style="color: #2c3e50; font-size: 0.875rem;">${escapeHtml(bidder.project_counties.map(formatCountyLabel).filter(Boolean).join(', '))}</span>`
                     : '—'}
             </td>
             <td>${bidder.bid_count || 0}</td>
@@ -124,6 +171,41 @@ function displayBidders(filter = '', packageFilter = '') {
     // Attach checkbox event listeners
     document.querySelectorAll('.bidder-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', handleCheckboxChange);
+    });
+
+    updateBidderListSortIndicators();
+}
+
+function setBidderListSort(field) {
+    if (!field) {
+        return;
+    }
+
+    if (bidderListSort.field === field) {
+        bidderListSort.direction = bidderListSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        bidderListSort = {
+            field,
+            direction: 'asc'
+        };
+    }
+
+    const bidderFilter = document.getElementById('searchBidders').value;
+    const packageFilter = document.getElementById('filterPackages').value;
+    const countyFilter = document.getElementById('filterCounties').value;
+    displayBidders(bidderFilter, packageFilter, countyFilter);
+}
+
+function updateBidderListSortIndicators() {
+    document.querySelectorAll('.bidder-list-sort').forEach(button => {
+        const indicator = button.querySelector('.sort-indicator');
+        if (!indicator) return;
+
+        if (button.dataset.listSort === bidderListSort.field) {
+            indicator.textContent = bidderListSort.direction === 'asc' ? '▲' : '▼';
+        } else {
+            indicator.textContent = '';
+        }
     });
 }
 
@@ -930,16 +1012,22 @@ function normalizeCountyKey(countyName, stateCode) {
 document.addEventListener('DOMContentLoaded', function() {
     setupBiddersTabs();
 
+    const bidderSearch = document.getElementById('searchBidders');
+    const packageInput = document.getElementById('filterPackages');
+    const countyInput = document.getElementById('filterCounties');
+
     // Add package filter event listener
-    document.getElementById('filterPackages').addEventListener('input', (e) => {
-        const bidderFilter = document.getElementById('searchBidders').value;
-        displayBidders(bidderFilter, e.target.value);
+    packageInput.addEventListener('input', (e) => {
+        displayBidders(bidderSearch.value, e.target.value, countyInput.value);
     });
 
-    // Search functionality  
-    document.getElementById('searchBidders').addEventListener('input', (e) => {
-        const packageFilter = document.getElementById('filterPackages').value;
-        displayBidders(e.target.value, packageFilter);
+    // Search functionality
+    bidderSearch.addEventListener('input', (e) => {
+        displayBidders(e.target.value, packageInput.value, countyInput.value);
+    });
+
+    countyInput.addEventListener('input', (e) => {
+        displayBidders(bidderSearch.value, packageInput.value, e.target.value);
     });
 
     // Handle select all checkbox
@@ -957,8 +1045,12 @@ document.addEventListener('DOMContentLoaded', function() {
         updateMergeSection();
     });
 
-    document.querySelectorAll('.sortable-header').forEach(button => {
+    document.querySelectorAll('#bidderBidsTable .sortable-header').forEach(button => {
         button.addEventListener('click', () => setBidderHistorySort(button.dataset.sortField));
+    });
+
+    document.querySelectorAll('.bidder-list-sort').forEach(button => {
+        button.addEventListener('click', () => setBidderListSort(button.dataset.listSort));
     });
 
     const mapSelect = document.getElementById('mapBidderSelect');
