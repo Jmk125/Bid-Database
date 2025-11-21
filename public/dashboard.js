@@ -4,6 +4,9 @@ let currentEndDate = '';
 let currentCounty = '';
 let currentSizeRange = { min: '', max: '' };
 let divisionBasis = 'median';
+let filteredProjects = [];
+let excludedProjectIds = new Set();
+let divisionTotals = null;
 
 const sortState = {
     divisions: { key: 'csi_division', direction: 'asc' },
@@ -17,7 +20,14 @@ let projectOverviewData = [];
 let divisionTimeSeries = { basis: divisionBasis, series: [], overall: [] };
 const chartState = new Map();
 
-function appendFilterParams(url, { includeCounty = true, includeSize = true } = {}) {
+function getSelectedProjectIds() {
+    if (!filteredProjects.length) return [];
+    return filteredProjects
+        .map(project => project.id)
+        .filter(id => !excludedProjectIds.has(id));
+}
+
+function appendFilterParams(url, { includeCounty = true, includeSize = true, includeProjects = true } = {}) {
     const params = new URLSearchParams();
 
     if (currentStartDate) {
@@ -38,6 +48,13 @@ function appendFilterParams(url, { includeCounty = true, includeSize = true } = 
 
     if (includeSize && currentSizeRange.max !== '') {
         params.set('maxSize', currentSizeRange.max);
+    }
+
+    if (includeProjects) {
+        const selectedProjectIds = getSelectedProjectIds();
+        if (selectedProjectIds.length) {
+            params.set('projectIds', selectedProjectIds.join(','));
+        }
     }
 
     const query = params.toString();
@@ -101,7 +118,6 @@ function initializeDateFilters() {
     const endInput = document.getElementById('endDate');
     const countySelect = document.getElementById('countyFilter');
     const sizeSelect = document.getElementById('sizeRange');
-    const applyBtn = document.getElementById('applyDateFilter');
     const clearBtn = document.getElementById('clearDateFilter');
 
     function applyFilters() {
@@ -115,6 +131,7 @@ function initializeDateFilters() {
             return;
         }
 
+        excludedProjectIds = new Set();
         currentStartDate = nextStart;
         currentEndDate = nextEnd;
         currentCounty = nextCounty;
@@ -129,6 +146,7 @@ function initializeDateFilters() {
         endInput.value = '';
         if (countySelect) countySelect.value = '';
         if (sizeSelect) sizeSelect.value = '';
+        excludedProjectIds = new Set();
         currentStartDate = '';
         currentEndDate = '';
         currentCounty = '';
@@ -138,7 +156,6 @@ function initializeDateFilters() {
         loadCountyOptions();
     }
 
-    applyBtn?.addEventListener('click', applyFilters);
     startInput?.addEventListener('change', applyFilters);
     endInput?.addEventListener('change', applyFilters);
     countySelect?.addEventListener('change', applyFilters);
@@ -158,16 +175,188 @@ function initializeDivisionBasisControl() {
     });
 }
 
+function updateFilteredProjects(projects) {
+    filteredProjects = projects || [];
+    const filteredIds = new Set(filteredProjects.map(project => project.id));
+    excludedProjectIds = new Set([...excludedProjectIds].filter(id => filteredIds.has(id)));
+
+    updateProjectFilterButton();
+    renderProjectFilterList();
+}
+
+function updateProjectFilterButton() {
+    const button = document.getElementById('projectFilterButton');
+    if (!button) return;
+
+    const selectedCount = getSelectedProjectIds().length;
+    const totalCount = filteredProjects.length;
+    const label = totalCount ? `${selectedCount} of ${totalCount} projects` : 'No projects';
+    button.textContent = `Projects (${label})`;
+
+    const summary = document.getElementById('projectFilterSummary');
+    if (summary) {
+        summary.textContent = totalCount
+            ? `Including ${selectedCount} of ${totalCount} projects. Uncheck a project to exclude it from the dashboard.`
+            : 'No projects match the current filters.';
+    }
+}
+
+function renderProjectFilterList() {
+    const list = document.getElementById('projectFilterList');
+    const emptyState = document.getElementById('projectFilterEmpty');
+
+    if (!list || !emptyState) return;
+
+    if (!filteredProjects.length) {
+        list.innerHTML = '';
+        emptyState.style.display = 'block';
+        return;
+    }
+
+    emptyState.style.display = 'none';
+    list.innerHTML = '';
+
+    const selectedIds = new Set(getSelectedProjectIds());
+    const projects = [...filteredProjects].sort((a, b) => {
+        const dateA = a.project_date ? new Date(a.project_date).getTime() : 0;
+        const dateB = b.project_date ? new Date(b.project_date).getTime() : 0;
+
+        if (dateA !== dateB) {
+            return dateB - dateA;
+        }
+
+        return a.name.localeCompare(b.name);
+    });
+
+    projects.forEach(project => {
+        const wrapper = document.createElement('label');
+        wrapper.className = 'project-filter-item';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = selectedIds.has(project.id);
+        checkbox.addEventListener('change', () => {
+            if (checkbox.checked) {
+                excludedProjectIds.delete(project.id);
+            } else {
+                excludedProjectIds.add(project.id);
+            }
+
+            updateProjectFilterButton();
+            loadDashboard();
+        });
+
+        const details = document.createElement('div');
+        details.className = 'project-filter-details';
+        details.innerHTML = `
+            <div class="project-filter-name">${escapeHtml(project.name)}</div>
+            <div class="project-filter-meta">${project.project_date ? formatDate(project.project_date) : 'No date'} • ${project.building_sf ? `${formatNumber(project.building_sf)} SF` : 'Size unknown'}</div>
+        `;
+
+        wrapper.appendChild(checkbox);
+        wrapper.appendChild(details);
+        list.appendChild(wrapper);
+    });
+}
+
+function openProjectFilterModal() {
+    const modal = document.getElementById('projectFilterModal');
+    if (!modal) return;
+    modal.style.display = 'block';
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeProjectFilterModal() {
+    const modal = document.getElementById('projectFilterModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function initializeProjectFilterControls() {
+    const trigger = document.getElementById('projectFilterButton');
+    const closeButtons = document.querySelectorAll('[data-close-project-filter]');
+    const selectAllBtn = document.getElementById('selectAllProjects');
+    const clearSelectionBtn = document.getElementById('clearProjectSelection');
+
+    trigger?.addEventListener('click', openProjectFilterModal);
+    closeButtons.forEach(button => button.addEventListener('click', closeProjectFilterModal));
+
+    selectAllBtn?.addEventListener('click', () => {
+        excludedProjectIds = new Set();
+        updateProjectFilterButton();
+        renderProjectFilterList();
+        loadDashboard();
+    });
+
+    clearSelectionBtn?.addEventListener('click', () => {
+        excludedProjectIds = new Set(filteredProjects.map(project => project.id));
+        updateProjectFilterButton();
+        renderProjectFilterList();
+        loadDashboard();
+    });
+}
+
+async function fetchFilteredProjects() {
+    const response = await apiFetch(appendFilterParams(`${API_BASE}/projects`, { includeProjects: false }));
+    return await response.json();
+}
+
+function renderEmptyDashboardState(message = 'No projects match the current filters or selection.') {
+    document.getElementById('totalProjects').textContent = '0';
+    document.getElementById('totalPackages').textContent = '0';
+    document.getElementById('totalBidders').textContent = '0';
+    document.getElementById('totalBids').textContent = '0';
+    divisionTotals = null;
+    divisionData = [];
+
+    const emptyRow = `<tr><td colspan="6" class="empty-state">${escapeHtml(message)}</td></tr>`;
+    const divisionBody = document.getElementById('divisionsBody');
+    const biddersBody = document.getElementById('biddersBody');
+    const projectsBody = document.getElementById('projectsBody');
+
+    if (divisionBody) divisionBody.innerHTML = emptyRow;
+    if (biddersBody) biddersBody.innerHTML = emptyRow;
+    if (projectsBody) projectsBody.innerHTML = emptyRow;
+
+    const divisionTrendChart = document.getElementById('divisionTrendChart');
+    const medianTrendChart = document.getElementById('medianTrendChart');
+    if (divisionTrendChart) divisionTrendChart.innerHTML = '<div class="chart-empty-state">No data available</div>';
+    if (medianTrendChart) medianTrendChart.innerHTML = '<div class="chart-empty-state">No data available</div>';
+
+    updateSortIndicators('divisions');
+    updateSortIndicators('bidders');
+    updateSortIndicators('projects');
+}
+
 // Load all dashboard data
 async function loadDashboard() {
     setLoadingStates();
     updateFilterStatus();
+
+    let projects = [];
+    try {
+        projects = await fetchFilteredProjects();
+    } catch (error) {
+        console.error('Error loading projects for dashboard:', error);
+        renderEmptyDashboardState('Unable to load projects for the dashboard.');
+        return;
+    }
+
+    updateFilteredProjects(projects);
+
+    const selectedProjectIds = getSelectedProjectIds();
+    if (!selectedProjectIds.length) {
+        renderEmptyDashboardState(projects.length ? 'All filtered projects are excluded from the selection.' : 'No projects match the current filters.');
+        return;
+    }
+
     await Promise.all([
         loadSummaryMetrics(),
         loadDivisionMetrics(),
         loadDivisionTimeSeries(),
         loadBidderMetrics(),
-        loadProjectsOverview()
+        loadProjectsOverview(projects.filter(project => selectedProjectIds.includes(project.id)))
     ]);
 }
 
@@ -212,11 +401,20 @@ async function loadSummaryMetrics() {
 async function loadDivisionMetrics() {
     try {
         const response = await apiFetch(appendFilterParams(`${API_BASE}/aggregate/divisions?basis=${divisionBasis}`));
-        divisionData = await response.json();
+        const payload = await response.json();
+
+        if (Array.isArray(payload)) {
+            divisionData = payload;
+            divisionTotals = null;
+        } else {
+            divisionData = payload.divisions || [];
+            divisionTotals = payload.overall || null;
+        }
 
         renderDivisionTable();
     } catch (error) {
         console.error('Error loading division metrics:', error);
+        divisionTotals = null;
         const tbody = document.getElementById('divisionsBody');
         if (tbody) {
             tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Error loading division data</td></tr>';
@@ -260,10 +458,13 @@ async function loadBidderMetrics() {
 }
 
 // Load projects overview
-async function loadProjectsOverview() {
+async function loadProjectsOverview(baseProjects) {
     try {
-        const response = await apiFetch(appendFilterParams(`${API_BASE}/projects`));
-        const projects = await response.json();
+        let projects = baseProjects;
+        if (!projects) {
+            const response = await apiFetch(appendFilterParams(`${API_BASE}/projects`));
+            projects = await response.json();
+        }
 
         // Get detailed info for each project
         const projectDetails = await Promise.all(
@@ -353,7 +554,7 @@ function renderDivisionTable() {
     }
 
     const sorted = sortData(divisionData, 'divisions');
-    tbody.innerHTML = sorted.map(div => `
+    const rows = sorted.map(div => `
         <tr>
             <td><strong>${escapeHtml(div.csi_division)}</strong></td>
             <td>${div.package_count}</td>
@@ -362,7 +563,22 @@ function renderDivisionTable() {
             <td>${div.min_cost_per_sf ? formatCurrency(div.min_cost_per_sf) : '—'}</td>
             <td>${div.max_cost_per_sf ? formatCurrency(div.max_cost_per_sf) : '—'}</td>
         </tr>
-    `).join('');
+    `);
+
+    if (divisionTotals) {
+        rows.push(`
+            <tr class="totals-row">
+                <td><strong>${escapeHtml(divisionTotals.csi_division || 'Total')}</strong></td>
+                <td>${divisionTotals.package_count ?? '—'}</td>
+                <td>${divisionTotals.median_cost_per_sf ? formatCurrency(divisionTotals.median_cost_per_sf) : '—'}</td>
+                <td>${divisionTotals.avg_cost_per_sf ? formatCurrency(divisionTotals.avg_cost_per_sf) : '—'}</td>
+                <td>${divisionTotals.min_cost_per_sf ? formatCurrency(divisionTotals.min_cost_per_sf) : '—'}</td>
+                <td>${divisionTotals.max_cost_per_sf ? formatCurrency(divisionTotals.max_cost_per_sf) : '—'}</td>
+            </tr>
+        `);
+    }
+
+    tbody.innerHTML = rows.join('');
 
     updateSortIndicators('divisions');
 }
@@ -742,7 +958,7 @@ async function loadCountyOptions() {
     if (!countySelect) return;
 
     try {
-        const response = await apiFetch(appendFilterParams(`${API_BASE}/projects`, { includeCounty: false, includeSize: false }));
+        const response = await apiFetch(appendFilterParams(`${API_BASE}/projects`, { includeCounty: false, includeSize: false, includeProjects: false }));
         const projects = await response.json();
 
         const counties = new Map();
@@ -825,5 +1041,6 @@ populateSizeRangeOptions();
 initializeSorting();
 initializeDateFilters();
 initializeDivisionBasisControl();
+initializeProjectFilterControls();
 loadCountyOptions();
 loadDashboard();
