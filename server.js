@@ -2522,7 +2522,7 @@ app.get('/api/aggregate/bidders', (req, res) => {
       CASE WHEN COUNT(*) = 0 THEN 0 ELSE (COUNT(CASE WHEN b.was_selected = 1 THEN 1 END) * 100.0 / COUNT(*)) END as win_rate,
       AVG(b.bid_amount) as avg_bid_amount,
       SUM(CASE WHEN b.was_selected = 1 THEN b.bid_amount ELSE 0 END) as awarded_amount,
-      GROUP_CONCAT(DISTINCT COALESCE(pkg.package_code, '') || '|' || COALESCE(pkg.package_name, ''), '||') as packages
+      GROUP_CONCAT(DISTINCT COALESCE(pkg.package_code, '') || '|' || COALESCE(pkg.package_name, '')) as packages
     FROM bids b
     JOIN bidders bid ON b.bidder_id = bid.id
     JOIN packages pkg ON pkg.id = b.package_id

@@ -530,13 +530,29 @@ function normalizeActivityPackages(packages) {
             .filter(pkg => pkg.code || pkg.name);
     }
 
-    return String(packages)
-        .split('||')
+    const raw = String(packages);
+    const separator = raw.includes('||') ? '||' : ',';
+    const seen = new Set();
+
+    return raw
+        .split(separator)
         .map(part => {
             const [code = '', name = ''] = part.split('|');
             return { code, name };
         })
-        .filter(pkg => pkg.code || pkg.name);
+        .filter(pkg => {
+            if (!(pkg.code || pkg.name)) {
+                return false;
+            }
+
+            const key = `${pkg.code}|${pkg.name}`;
+            if (seen.has(key)) {
+                return false;
+            }
+
+            seen.add(key);
+            return true;
+        });
 }
 
 function formatActivityPackages(packages) {
