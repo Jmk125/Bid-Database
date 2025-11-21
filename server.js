@@ -86,12 +86,24 @@ function parseNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseIdList(value) {
+  if (!value) {
+    return [];
+  }
+
+  return String(value)
+    .split(',')
+    .map((part) => Number(part.trim()))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
 function buildProjectDateFilters(req, columnName = 'project_date') {
   const startDate = parseDateFilterValue(req.query.startDate || req.query.start_date);
   const endDate = parseDateFilterValue(req.query.endDate || req.query.end_date);
   const county = (req.query.county || '').trim();
   const minSize = parseNumber(req.query.minSize || req.query.min_size);
   const maxSize = parseNumber(req.query.maxSize || req.query.max_size);
+  const projectIds = parseIdList(req.query.projectIds || req.query.project_ids);
 
   const clauses = [];
   const params = [];
@@ -100,6 +112,7 @@ function buildProjectDateFilters(req, columnName = 'project_date') {
   const countyColumn = `${tablePrefix}.county_name`;
   const stateColumn = `${tablePrefix}.county_state`;
   const sizeColumn = `${tablePrefix}.building_sf`;
+  const idColumn = `${tablePrefix}.id`;
 
   if (startDate) {
     clauses.push(`date(${columnName}) >= date(?)`);
@@ -130,6 +143,11 @@ function buildProjectDateFilters(req, columnName = 'project_date') {
   if (maxSize !== null) {
     clauses.push(`${sizeColumn} <= ?`);
     params.push(maxSize);
+  }
+
+  if (projectIds.length > 0) {
+    clauses.push(`${idColumn} IN (${projectIds.map(() => '?').join(',')})`);
+    params.push(...projectIds);
   }
 
   return { clauses, params };
@@ -2295,6 +2313,7 @@ app.get('/api/aggregate/divisions', (req, res) => {
   const divisionProjectTotals = new Map();
   const buildingSfByProject = new Map();
   const packageCountMap = new Map();
+  const overallProjectTotals = new Map();
 
   query[0].values.forEach(row => {
     const division = row[0];
@@ -2308,6 +2327,12 @@ app.get('/api/aggregate/divisions', (req, res) => {
 
     buildingSfByProject.set(projectId, buildingSf);
     packageCountMap.set(division, (packageCountMap.get(division) || 0) + 1);
+
+    if (!overallProjectTotals.has(projectId)) {
+      overallProjectTotals.set(projectId, 0);
+    }
+
+    overallProjectTotals.set(projectId, overallProjectTotals.get(projectId) + amount);
 
     if (!divisionProjectTotals.has(division)) {
       divisionProjectTotals.set(division, new Map());
@@ -2350,7 +2375,17 @@ app.get('/api/aggregate/divisions', (req, res) => {
     };
   }).sort((a, b) => a.csi_division.localeCompare(b.csi_division));
 
-  res.json(divisions);
+  const overall = {
+    csi_division: 'All divisions',
+    package_count: Array.from(packageCountMap.values()).reduce((sum, count) => sum + count, 0),
+    ...calculateCostStats(overallProjectTotals, buildingSfByProject)
+  };
+
+  res.json({
+    basis,
+    overall,
+    divisions
+  });
 });
 
 // Get per-division cost/SF trends over time

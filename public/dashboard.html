@@ -47,7 +47,7 @@
                 </select>
             </div>
             <div class="filter-actions">
-                <button type="button" class="btn btn-primary btn-small" id="applyDateFilter">Apply</button>
+                <button type="button" class="btn btn-primary btn-small" id="projectFilterButton">Projects (loading…)</button>
                 <button type="button" class="btn btn-secondary btn-small" id="clearDateFilter">Clear</button>
             </div>
             <div class="filter-status" id="dateFilterStatus" role="status" aria-live="polite">
@@ -164,6 +164,25 @@
                     <tr><td colspan="6" class="loading">Loading projects...</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <div id="projectFilterModal" class="modal" aria-hidden="true" role="dialog" aria-labelledby="projectFilterTitle">
+        <div class="modal-content modal-wide project-filter-modal">
+            <span class="close" data-close-project-filter aria-label="Close project filter">&times;</span>
+            <h3 id="projectFilterTitle">Project selection</h3>
+            <p class="modal-subtitle">Choose which projects to include in the dashboard metrics.</p>
+
+            <div class="project-filter-toolbar">
+                <div class="project-filter-summary" id="projectFilterSummary">Toggle projects to include or exclude them from the dashboard.</div>
+                <div class="project-filter-actions">
+                    <button type="button" class="btn btn-secondary btn-small" id="clearProjectSelection">Exclude all</button>
+                    <button type="button" class="btn btn-primary btn-small" id="selectAllProjects">Include all</button>
+                </div>
+            </div>
+
+            <div id="projectFilterEmpty" class="empty-state" style="display: none;">No projects match the current filters.</div>
+            <div id="projectFilterList" class="project-filter-list" role="listbox" aria-label="Filtered projects"></div>
         </div>
     </div>
 
