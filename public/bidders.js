@@ -560,16 +560,11 @@ function formatActivityPackages(packages) {
         return '—';
     }
 
-    return packages.map(pkg => {
-        const code = escapeHtml(pkg.code || '');
-        const name = escapeHtml(pkg.name || '');
+    const labels = packages
+        .map(pkg => escapeHtml(pkg.code || pkg.name || ''))
+        .filter(Boolean);
 
-        if (code && name) {
-            return `<span class="activity-package-pill"><strong>${code}</strong> — ${name}</span>`;
-        }
-
-        return `<span class="activity-package-pill">${code || name}</span>`;
-    }).join(' ');
+    return labels.length ? labels.join(', ') : '—';
 }
 
 function getActivitySortValue(row, key) {
@@ -792,7 +787,8 @@ async function loadBidderActivity() {
                 const winRateFromPayload = entry.win_rate != null ? Number(entry.win_rate) : null;
                 const packages = normalizeActivityPackages(entry.packages);
                 const packageSearchText = packages
-                    .map(pkg => `${pkg.code} ${pkg.name}`.trim().toLowerCase())
+                    .map(pkg => (pkg.code || pkg.name || '').toLowerCase())
+                    .filter(Boolean)
                     .join(' ');
 
                 return {
