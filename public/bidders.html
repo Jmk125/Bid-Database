@@ -180,12 +180,15 @@
                             <option value="win_rate">Win rate</option>
                             <option value="avg_bid_amount">Average bid amount</option>
                         </select>
+                        <label for="activityPackageFilter" class="control-label">Filter by package</label>
+                        <input type="text" id="activityPackageFilter" placeholder="Search bid packages…" aria-label="Filter bidder activity by bid package" style="padding: 0.35rem 0.5rem; border: 1px solid #dfe6e9; border-radius: 4px; min-width: 220px;">
                     </div>
                 </div>
                 <table id="bidderActivityTable">
                     <thead>
                         <tr>
                             <th><button type="button" class="sortable-header" data-activity-sort="bidder_name">Bidder <span class="sort-indicator">↕</span></button></th>
+                            <th>Bid packages</th>
                             <th><button type="button" class="sortable-header" data-activity-sort="bid_count">Quantity of bids <span class="sort-indicator">↕</span></button></th>
                             <th><button type="button" class="sortable-header" data-activity-sort="wins">Wins <span class="sort-indicator">↕</span></button></th>
                             <th><button type="button" class="sortable-header" data-activity-sort="win_rate">Win rate <span class="sort-indicator">↕</span></button></th>
@@ -194,7 +197,7 @@
                         </tr>
                     </thead>
                     <tbody id="bidderActivityBody">
-                        <tr><td colspan="6" class="loading">Loading bidder activity…</td></tr>
+                        <tr><td colspan="7" class="loading">Loading bidder activity…</td></tr>
                     </tbody>
                 </table>
             </div>
