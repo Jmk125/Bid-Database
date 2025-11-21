@@ -3,7 +3,7 @@ let currentStartDate = '';
 let currentEndDate = '';
 let currentCounty = '';
 let currentSizeRange = { min: '', max: '' };
-let divisionBasis = 'selected';
+let divisionBasis = 'median';
 
 const sortState = {
     divisions: { key: 'csi_division', direction: 'asc' },
@@ -15,6 +15,7 @@ let divisionData = [];
 let bidderData = [];
 let projectOverviewData = [];
 let divisionTimeSeries = { basis: divisionBasis, series: [], overall: [] };
+const chartState = new Map();
 
 function appendFilterParams(url, { includeCounty = true, includeSize = true } = {}) {
     const params = new URLSearchParams();
@@ -460,8 +461,40 @@ function renderLineChart(container, series, { yLabel = 'Value' } = {}) {
         return;
     }
 
-    const periods = Array.from(new Set(series.flatMap(s => s.points.map(p => p.x)))).sort();
-    const values = series.flatMap(s => s.points.map(p => p.y)).filter(value => Number.isFinite(value));
+    const chartKey = container.id || container;
+    const state = chartState.get(chartKey) || { hidden: new Set(), series, options: { yLabel } };
+    state.series = series;
+    state.options = { yLabel };
+    chartState.set(chartKey, state);
+
+    const visibleSeries = series.filter(s => !state.hidden.has(s.label));
+
+    if (!visibleSeries.length) {
+        container.innerHTML = '<div class="chart-empty-state">Select a series from the legend to view data.</div>';
+        const legend = document.createElement('div');
+        legend.className = 'chart-legend';
+        series.forEach(entry => {
+            const item = document.createElement('div');
+            item.className = 'chart-legend-item';
+            if (state.hidden.has(entry.label)) {
+                item.classList.add('disabled');
+            }
+            const swatch = document.createElement('span');
+            swatch.className = 'chart-legend-swatch';
+            swatch.style.backgroundColor = entry.color;
+            const label = document.createElement('span');
+            label.textContent = entry.label;
+            item.appendChild(swatch);
+            item.appendChild(label);
+            item.addEventListener('click', () => toggleSeries(container, entry.label));
+            legend.appendChild(item);
+        });
+        container.appendChild(legend);
+        return;
+    }
+
+    const periods = Array.from(new Set(visibleSeries.flatMap(s => s.points.map(p => p.x)))).sort();
+    const values = visibleSeries.flatMap(s => s.points.map(p => p.y)).filter(value => Number.isFinite(value));
 
     if (!periods.length || !values.length) {
         container.innerHTML = '<div class="chart-empty-state">No data available</div>';
@@ -569,7 +602,14 @@ function renderLineChart(container, series, { yLabel = 'Value' } = {}) {
     yLabelText.textContent = yLabel;
     svg.appendChild(yLabelText);
 
-    series.forEach(seriesEntry => {
+    const tooltip = document.createElement('div');
+    tooltip.className = 'chart-tooltip';
+    tooltip.style.display = 'none';
+    container.innerHTML = '';
+    container.appendChild(svg);
+    container.appendChild(tooltip);
+
+    visibleSeries.forEach(seriesEntry => {
         const filteredPoints = seriesEntry.points.filter(point => Number.isFinite(point.y));
         if (!filteredPoints.length) return;
 
@@ -592,18 +632,35 @@ function renderLineChart(container, series, { yLabel = 'Value' } = {}) {
             circle.setAttribute('fill', '#fff');
             circle.setAttribute('stroke', seriesEntry.color);
             circle.setAttribute('stroke-width', '2');
+            circle.addEventListener('mouseenter', (event) => {
+                tooltip.style.display = 'block';
+                tooltip.innerHTML = `
+                    <div style="font-weight: 700; margin-bottom: 0.2rem;">${escapeHtml(seriesEntry.label)}</div>
+                    <div>${formatPeriod(point.x)}</div>
+                    <div>${formatCurrency(point.y)}</div>
+                `;
+                tooltip.style.left = `${event.offsetX}px`;
+                tooltip.style.top = `${event.offsetY}px`;
+            });
+            circle.addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
+            });
+            circle.addEventListener('mousemove', (event) => {
+                tooltip.style.left = `${event.offsetX}px`;
+                tooltip.style.top = `${event.offsetY}px`;
+            });
             svg.appendChild(circle);
         });
     });
-
-    container.innerHTML = '';
-    container.appendChild(svg);
 
     const legend = document.createElement('div');
     legend.className = 'chart-legend';
     series.forEach(entry => {
         const item = document.createElement('div');
         item.className = 'chart-legend-item';
+        if (state.hidden.has(entry.label)) {
+            item.classList.add('disabled');
+        }
         const swatch = document.createElement('span');
         swatch.className = 'chart-legend-swatch';
         swatch.style.backgroundColor = entry.color;
@@ -611,10 +668,25 @@ function renderLineChart(container, series, { yLabel = 'Value' } = {}) {
         label.textContent = entry.label;
         item.appendChild(swatch);
         item.appendChild(label);
+        item.addEventListener('click', () => toggleSeries(container, entry.label));
         legend.appendChild(item);
     });
 
     container.appendChild(legend);
+}
+
+function toggleSeries(container, label) {
+    const chartKey = container.id || container;
+    const state = chartState.get(chartKey);
+    if (!state) return;
+
+    if (state.hidden.has(label)) {
+        state.hidden.delete(label);
+    } else {
+        state.hidden.add(label);
+    }
+
+    renderLineChart(container, state.series, state.options);
 }
 
 function renderTableFor(table) {

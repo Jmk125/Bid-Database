@@ -2258,55 +2258,99 @@ function calculateMedian(arr) {
 // Get aggregated metrics across all projects by CSI division
 app.get('/api/aggregate/divisions', (req, res) => {
   const db = getDatabase();
+  const basis = req.query.basis === 'median'
+    ? 'median'
+    : req.query.basis === 'low'
+      ? 'low'
+      : 'selected';
+
+  const amountColumn = basis === 'median'
+    ? 'pkg.median_bid'
+    : basis === 'low'
+      ? 'pkg.low_bid'
+      : 'pkg.selected_amount';
+
   const { clauses, params } = buildProjectDateFilters(req, 'proj.project_date');
   const dateFilter = clauses.length ? ` AND ${clauses.join(' AND ')}` : '';
 
   const query = db.exec(
     `SELECT
       pkg.csi_division,
-      COUNT(*) as package_count,
-      AVG(pkg.cost_per_sf) as avg_cost_per_sf,
-      MIN(pkg.cost_per_sf) as min_cost_per_sf,
-      MAX(pkg.cost_per_sf) as max_cost_per_sf
+      proj.id as project_id,
+      ${amountColumn} as amount,
+      proj.building_sf
     FROM packages pkg
     JOIN projects proj ON proj.id = pkg.project_id
-    WHERE pkg.csi_division IS NOT NULL AND pkg.cost_per_sf IS NOT NULL${dateFilter}
-    GROUP BY pkg.csi_division
+    WHERE pkg.csi_division IS NOT NULL
+      AND ${amountColumn} IS NOT NULL
+      AND proj.building_sf IS NOT NULL${dateFilter}
     ORDER BY pkg.csi_division`,
     params
   );
-  
+
   if (query.length === 0) {
     return res.json([]);
   }
-  
-  const divisions = query[0].values.map(row => ({
-    csi_division: row[0],
-    package_count: row[1],
-    avg_cost_per_sf: row[2],
-    min_cost_per_sf: row[3],
-    max_cost_per_sf: row[4]
-  }));
 
-  // Calculate median for each division
-  const divisionsWithMedian = divisions.map(div => {
-    const costsQuery = db.exec(
-      `SELECT pkg.cost_per_sf
-       FROM packages pkg
-       JOIN projects proj ON proj.id = pkg.project_id
-       WHERE pkg.csi_division = ? AND pkg.cost_per_sf IS NOT NULL${dateFilter}`,
-      [div.csi_division, ...params]
-    );
-    
-    if (costsQuery.length > 0) {
-      const costs = costsQuery[0].values.map(r => r[0]);
-      div.median_cost_per_sf = calculateMedian(costs);
+  const divisionProjectTotals = new Map();
+  const buildingSfByProject = new Map();
+  const packageCountMap = new Map();
+
+  query[0].values.forEach(row => {
+    const division = row[0];
+    const projectId = row[1];
+    const amount = row[2];
+    const buildingSf = row[3];
+
+    if (!division || !projectId || !Number.isFinite(amount) || !Number.isFinite(buildingSf) || buildingSf === 0) {
+      return;
     }
-    
-    return div;
+
+    buildingSfByProject.set(projectId, buildingSf);
+    packageCountMap.set(division, (packageCountMap.get(division) || 0) + 1);
+
+    if (!divisionProjectTotals.has(division)) {
+      divisionProjectTotals.set(division, new Map());
+    }
+
+    const projectTotals = divisionProjectTotals.get(division);
+    if (!projectTotals.has(projectId)) {
+      projectTotals.set(projectId, 0);
+    }
+
+    projectTotals.set(projectId, projectTotals.get(projectId) + amount);
   });
 
-  res.json(divisionsWithMedian);
+  const divisions = Array.from(divisionProjectTotals.entries()).map(([division, projectTotals]) => {
+    const costPerSfValues = Array.from(projectTotals.entries())
+      .map(([projectId, totalAmount]) => {
+        const buildingSf = buildingSfByProject.get(projectId);
+        return buildingSf ? totalAmount / buildingSf : null;
+      })
+      .filter(value => Number.isFinite(value));
+
+    if (!costPerSfValues.length) {
+      return {
+        csi_division: division,
+        package_count: packageCountMap.get(division) || 0,
+        median_cost_per_sf: null,
+        avg_cost_per_sf: null,
+        min_cost_per_sf: null,
+        max_cost_per_sf: null
+      };
+    }
+
+    return {
+      csi_division: division,
+      package_count: packageCountMap.get(division) || 0,
+      median_cost_per_sf: calculateMedian(costPerSfValues),
+      avg_cost_per_sf: costPerSfValues.reduce((sum, value) => sum + value, 0) / costPerSfValues.length,
+      min_cost_per_sf: Math.min(...costPerSfValues),
+      max_cost_per_sf: Math.max(...costPerSfValues)
+    };
+  }).sort((a, b) => a.csi_division.localeCompare(b.csi_division));
+
+  res.json(divisions);
 });
 
 // Get per-division cost/SF trends over time
@@ -2332,7 +2376,8 @@ app.get('/api/aggregate/divisions/timeseries', (req, res) => {
       pkg.csi_division,
       strftime('%Y-%m', proj.project_date) as period,
       ${amountColumn} as amount,
-      proj.building_sf
+      proj.building_sf,
+      proj.id as project_id
     FROM packages pkg
     JOIN projects proj ON proj.id = pkg.project_id
     WHERE pkg.csi_division IS NOT NULL
@@ -2348,23 +2393,21 @@ app.get('/api/aggregate/divisions/timeseries', (req, res) => {
   }
 
   const seriesMap = new Map();
-  const overallMap = new Map();
+  const buildingSfByProject = new Map();
+  const overallProjectTotals = new Map();
 
   query[0].values.forEach(row => {
     const division = row[0];
     const period = row[1];
     const amount = row[2];
     const buildingSf = row[3];
+    const projectId = row[4];
 
-    if (!period || !Number.isFinite(amount) || !Number.isFinite(buildingSf) || buildingSf === 0) {
+    if (!period || !Number.isFinite(amount) || !Number.isFinite(buildingSf) || buildingSf === 0 || !projectId) {
       return;
     }
 
-    const costPerSf = amount / buildingSf;
-
-    if (!Number.isFinite(costPerSf)) {
-      return;
-    }
+    buildingSfByProject.set(projectId, buildingSf);
 
     if (!seriesMap.has(division)) {
       seriesMap.set(division, new Map());
@@ -2372,14 +2415,16 @@ app.get('/api/aggregate/divisions/timeseries', (req, res) => {
 
     const divisionPeriods = seriesMap.get(division);
     if (!divisionPeriods.has(period)) {
-      divisionPeriods.set(period, []);
+      divisionPeriods.set(period, new Map());
     }
-    divisionPeriods.get(period).push(costPerSf);
+    const divisionProjects = divisionPeriods.get(period);
+    divisionProjects.set(projectId, (divisionProjects.get(projectId) || 0) + amount);
 
-    if (!overallMap.has(period)) {
-      overallMap.set(period, []);
+    if (!overallProjectTotals.has(period)) {
+      overallProjectTotals.set(period, new Map());
     }
-    overallMap.get(period).push(costPerSf);
+    const periodProjects = overallProjectTotals.get(period);
+    periodProjects.set(projectId, (periodProjects.get(projectId) || 0) + amount);
   });
 
   const series = Array.from(seriesMap.entries()).map(([division, periodMap]) => ({
@@ -2388,25 +2433,44 @@ app.get('/api/aggregate/divisions/timeseries', (req, res) => {
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([period, values]) => ({
         period,
-        median_cost_per_sf: calculateMedian(values),
-        avg_cost_per_sf: values.reduce((sum, value) => sum + value, 0) / values.length,
-        min_cost_per_sf: Math.min(...values),
-        max_cost_per_sf: Math.max(...values)
+        ...calculateCostStats(values, buildingSfByProject)
       }))
   }));
 
-  const overall = Array.from(overallMap.entries())
+  const overall = Array.from(overallProjectTotals.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([period, values]) => ({
+    .map(([period, projects]) => ({
       period,
-      median_cost_per_sf: calculateMedian(values),
-      avg_cost_per_sf: values.reduce((sum, value) => sum + value, 0) / values.length,
-      min_cost_per_sf: Math.min(...values),
-      max_cost_per_sf: Math.max(...values)
+      ...calculateCostStats(projects, buildingSfByProject)
     }));
 
   res.json({ basis, series, overall });
 });
+
+function calculateCostStats(projectTotalsMap, buildingSfByProject) {
+  const values = Array.from(projectTotalsMap.entries())
+    .map(([projectId, totalAmount]) => {
+      const buildingSf = buildingSfByProject.get(projectId);
+      return buildingSf ? totalAmount / buildingSf : null;
+    })
+    .filter(value => Number.isFinite(value));
+
+  if (!values.length) {
+    return {
+      median_cost_per_sf: null,
+      avg_cost_per_sf: null,
+      min_cost_per_sf: null,
+      max_cost_per_sf: null
+    };
+  }
+
+  return {
+    median_cost_per_sf: calculateMedian(values),
+    avg_cost_per_sf: values.reduce((sum, value) => sum + value, 0) / values.length,
+    min_cost_per_sf: Math.min(...values),
+    max_cost_per_sf: Math.max(...values)
+  };
+}
 
 // Get bidder performance across all projects
 app.get('/api/aggregate/bidders', (req, res) => {
