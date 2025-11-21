@@ -1306,6 +1306,21 @@ tr:hover {
     font-weight: 600;
 }
 
+.activity-package-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.5rem;
+    background: #f3f6fa;
+    border: 1px solid #e1e8f0;
+    border-radius: 999px;
+    color: #2c3e50;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    margin: 0.15rem 0.25rem 0.15rem 0;
+    white-space: nowrap;
+}
+
 .status-bid {
     background-color: #d4edda;
     color: #155724;
