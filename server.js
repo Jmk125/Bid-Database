@@ -2536,14 +2536,25 @@ app.get('/api/aggregate/bidders', (req, res) => {
     return res.json([]);
   }
   
-  const bidders = query[0].values.map(row => ({
-    bidder_name: row[0],
-    bid_count: row[1],
-    wins: row[2],
-    avg_bid_amount: row[3],
-    awarded_amount: row[4],
-    win_rate: row[1] > 0 ? (row[2] / row[1] * 100).toFixed(1) : 0
-  }));
+  const bidders = query[0].values.map(row => {
+    const bidderId = row[0];
+    const bidderName = row[1];
+    const bidCount = row[2];
+    const wins = row[3];
+    const winRate = row[4];
+    const avgBidAmount = row[5];
+    const awardedAmount = row[6];
+
+    return {
+      bidder_id: bidderId,
+      bidder_name: bidderName,
+      bid_count: bidCount,
+      wins,
+      win_rate: Number.isFinite(winRate) ? winRate : (bidCount > 0 ? (wins / bidCount) * 100 : null),
+      avg_bid_amount: avgBidAmount,
+      awarded_amount: awardedAmount
+    };
+  });
   
   res.json(bidders);
 });
