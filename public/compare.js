@@ -130,6 +130,36 @@ const METRIC_OPTIONS = {
             return (median - gmp) / gmp;
         }
     },
+    gmp_to_low_bid_delta_by_package: {
+        label: 'GMP to Low Bid delta (pkg)',
+        description: 'Low bid minus GMP estimate for each package.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.PACKAGE,
+        getValue: (pkg) => {
+            if (!pkg) return null;
+            const gmp = toFiniteNumber(pkg.gmp_amount);
+            const low = toFiniteNumber(pkg.low_bid);
+            if (gmp == null || low == null) {
+                return null;
+            }
+            return low - gmp;
+        }
+    },
+    gmp_to_low_bid_delta_percentage_by_package: {
+        label: 'GMP to Low Bid delta % (pkg)',
+        description: 'Low bid minus GMP estimate shown as a percentage of the GMP.',
+        format: formatPercentage,
+        scope: METRIC_SCOPES.PACKAGE,
+        getValue: (pkg) => {
+            if (!pkg) return null;
+            const gmp = toFiniteNumber(pkg.gmp_amount);
+            const low = toFiniteNumber(pkg.low_bid);
+            if (gmp == null || gmp === 0 || low == null) {
+                return null;
+            }
+            return (low - gmp) / gmp;
+        }
+    },
     low_to_median_delta_by_package: {
         label: 'Low to Median delta (pkg)',
         description: 'Median bid minus low bid for each package.',
