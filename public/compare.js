@@ -264,6 +264,96 @@ const METRIC_OPTIONS = {
             }
             return medianTotal / project.building_sf;
         }
+    },
+    category_gmp_to_median_delta: {
+        label: 'GMP to Median delta (cat)',
+        description: 'Total median bid minus total GMP estimate for each category.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.CATEGORY,
+        getValue: (categoryEntry) => {
+            if (!categoryEntry) return null;
+            const gmpTotal = toFiniteNumber(categoryEntry.gmp_total);
+            const medianTotal = toFiniteNumber(categoryEntry.median_total);
+            if (gmpTotal == null || medianTotal == null) {
+                return null;
+            }
+            return medianTotal - gmpTotal;
+        }
+    },
+    category_gmp_to_median_delta_percentage: {
+        label: 'GMP to Median delta % (cat)',
+        description: 'Total median bid minus total GMP estimate shown as a percentage of the GMP for each category.',
+        format: formatPercentage,
+        scope: METRIC_SCOPES.CATEGORY,
+        getValue: (categoryEntry) => {
+            if (!categoryEntry) return null;
+            const gmpTotal = toFiniteNumber(categoryEntry.gmp_total);
+            const medianTotal = toFiniteNumber(categoryEntry.median_total);
+            if (gmpTotal == null || gmpTotal === 0 || medianTotal == null) {
+                return null;
+            }
+            return (medianTotal - gmpTotal) / gmpTotal;
+        }
+    },
+    category_gmp_to_low_bid_delta: {
+        label: 'GMP to Low Bid delta (cat)',
+        description: 'Total low bid minus total GMP estimate for each category.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.CATEGORY,
+        getValue: (categoryEntry) => {
+            if (!categoryEntry) return null;
+            const gmpTotal = toFiniteNumber(categoryEntry.gmp_total);
+            const lowTotal = toFiniteNumber(categoryEntry.low_total);
+            if (gmpTotal == null || lowTotal == null) {
+                return null;
+            }
+            return lowTotal - gmpTotal;
+        }
+    },
+    category_gmp_to_low_bid_delta_percentage: {
+        label: 'GMP to Low Bid delta % (cat)',
+        description: 'Total low bid minus total GMP estimate shown as a percentage of the GMP for each category.',
+        format: formatPercentage,
+        scope: METRIC_SCOPES.CATEGORY,
+        getValue: (categoryEntry) => {
+            if (!categoryEntry) return null;
+            const gmpTotal = toFiniteNumber(categoryEntry.gmp_total);
+            const lowTotal = toFiniteNumber(categoryEntry.low_total);
+            if (gmpTotal == null || gmpTotal === 0 || lowTotal == null) {
+                return null;
+            }
+            return (lowTotal - gmpTotal) / gmpTotal;
+        }
+    },
+    category_low_to_median_delta: {
+        label: 'Low to Median delta (cat)',
+        description: 'Total median bid minus total low bid for each category.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.CATEGORY,
+        getValue: (categoryEntry) => {
+            if (!categoryEntry) return null;
+            const medianTotal = toFiniteNumber(categoryEntry.median_total);
+            const lowTotal = toFiniteNumber(categoryEntry.low_total);
+            if (medianTotal == null || lowTotal == null) {
+                return null;
+            }
+            return medianTotal - lowTotal;
+        }
+    },
+    category_low_to_median_delta_percentage: {
+        label: 'Low to Median delta % (cat)',
+        description: 'Total median bid minus total low bid expressed as a percentage of the median bid for each category.',
+        format: formatPercentage,
+        scope: METRIC_SCOPES.CATEGORY,
+        getValue: (categoryEntry) => {
+            if (!categoryEntry) return null;
+            const medianTotal = toFiniteNumber(categoryEntry.median_total);
+            const lowTotal = toFiniteNumber(categoryEntry.low_total);
+            if (medianTotal == null || medianTotal === 0 || lowTotal == null) {
+                return null;
+            }
+            return (medianTotal - lowTotal) / medianTotal;
+        }
     }
 };
 
@@ -523,7 +613,8 @@ function aggregateCategoriesByProject(packages) {
                 selected_total: 0,
                 median_total: 0,
                 low_total: 0,
-                high_total: 0
+                high_total: 0,
+                gmp_total: 0
             }
         ])
     );
@@ -548,11 +639,13 @@ function aggregateCategoriesByProject(packages) {
         const medianBid = toFiniteNumber(pkg.median_bid);
         const lowBid = toFiniteNumber(pkg.low_bid);
         const highBid = toFiniteNumber(pkg.high_bid);
+        const gmpAmount = toFiniteNumber(pkg.gmp_amount);
 
         totals.selected_total += selectedAmount;
         totals.median_total += medianBid != null ? medianBid : selectedAmount;
         totals.low_total += lowBid != null ? lowBid : selectedAmount;
         totals.high_total += highBid != null ? highBid : selectedAmount;
+        totals.gmp_total += gmpAmount != null ? gmpAmount : 0;
     });
 
     return categoryMap;
