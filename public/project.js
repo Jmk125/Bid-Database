@@ -145,24 +145,24 @@ function displayMetrics() {
             showValidation: true
         },
         {
+            key: 'median-cost',
+            title: 'Median Bid Cost/SF',
+            valueHtml: currentProject.building_sf ? formatCurrency(medianBidCostPerSF) : 'N/A',
+            subHtml: `<div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">Total: ${formatCurrency(totalMedianBid)}</div>`,
+            showValidation: true
+        },
+        {
             key: 'selected-cost',
-            title: 'Selected Cost/SF',
+            title: 'SELECTED LOW COST/SF',
             valueHtml: currentProject.building_sf ? formatCurrency(avgCostPerSF) : 'N/A',
             subHtml: `<div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">Total: ${formatCurrency(totalCost)}</div>`,
             showValidation: true
         },
         {
             key: 'low-cost',
-            title: 'Low Bid Cost/SF',
+            title: 'RAW LOW BID COST/SF',
             valueHtml: currentProject.building_sf ? formatCurrency(lowBidCostPerSF) : 'N/A',
             subHtml: `<div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">Total: ${formatCurrency(totalLowBid)}</div>`,
-            showValidation: true
-        },
-        {
-            key: 'median-cost',
-            title: 'Median Bid Cost/SF',
-            valueHtml: currentProject.building_sf ? formatCurrency(medianBidCostPerSF) : 'N/A',
-            subHtml: `<div style="font-size: 0.875rem; margin-top: 0.5rem; color: #7f8c8d;">Total: ${formatCurrency(totalMedianBid)}</div>`,
             showValidation: true
         },
         {
