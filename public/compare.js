@@ -55,11 +55,37 @@ const METRIC_OPTIONS = {
         getValue: (metrics) => metrics?.selected_cost_per_sf ?? 0,
         scope: METRIC_SCOPES.PROJECT
     },
+    gmp_to_selected_total_delta_percentage: {
+        label: 'GMP to Selected delta % (total)',
+        description: 'Selected total minus GMP total shown as a percentage of the GMP total.',
+        format: formatPercentage,
+        getValue: (_, project) => {
+            const totals = computeProjectBudgetTotals(project);
+            if (!totals.hasGmp || totals.gmpTotal === 0 || !totals.hasSelected) {
+                return null;
+            }
+            return (totals.selectedTotal - totals.gmpTotal) / totals.gmpTotal;
+        },
+        scope: METRIC_SCOPES.PROJECT
+    },
     median_cost_per_sf: {
         label: 'Median Cost / SF',
         description: 'Median bid cost per square foot.',
         format: formatCurrency,
         getValue: (metrics) => metrics?.median_bid_cost_per_sf ?? metrics?.median_cost_per_sf ?? 0,
+        scope: METRIC_SCOPES.PROJECT
+    },
+    gmp_to_median_total_delta_percentage: {
+        label: 'GMP to Median delta % (total)',
+        description: 'Median total minus GMP total shown as a percentage of the GMP total.',
+        format: formatPercentage,
+        getValue: (_, project) => {
+            const totals = computeProjectBudgetTotals(project);
+            if (!totals.hasGmp || totals.gmpTotal === 0 || !totals.hasMedian) {
+                return null;
+            }
+            return (totals.medianTotal - totals.gmpTotal) / totals.gmpTotal;
+        },
         scope: METRIC_SCOPES.PROJECT
     },
     low_bid_cost_per_sf: {
@@ -357,6 +383,93 @@ const METRIC_OPTIONS = {
     }
 };
 
+const METRIC_GROUPS = [
+    {
+        label: 'Project totals',
+        metrics: ['selected_total', 'selected_cost_per_sf', 'median_cost_per_sf', 'low_bid_cost_per_sf']
+    },
+    {
+        label: 'GMP totals',
+        metrics: ['gmp_to_selected_total_delta_percentage', 'gmp_to_median_total_delta_percentage']
+    },
+    {
+        label: 'Package bid spreads',
+        metrics: ['bid_spread_by_package', 'bid_spread_percentage_by_package', 'low_to_median_delta_by_package', 'low_to_median_delta_percentage_by_package']
+    },
+    {
+        label: 'Package GMP deltas',
+        metrics: [
+            'gmp_to_median_delta_by_package',
+            'gmp_to_median_delta_percentage_by_package',
+            'gmp_to_low_bid_delta_by_package',
+            'gmp_to_low_bid_delta_percentage_by_package'
+        ]
+    },
+    {
+        label: 'Bid volume',
+        metrics: ['bid_count_by_package']
+    },
+    {
+        label: 'Package $/SF',
+        metrics: ['median_cost_per_sf_by_package', 'low_cost_per_sf_by_package']
+    },
+    {
+        label: 'Category metrics',
+        metrics: [
+            'category_selected_cost_per_sf',
+            'category_median_cost_per_sf',
+            'category_gmp_to_median_delta',
+            'category_gmp_to_median_delta_percentage',
+            'category_gmp_to_low_bid_delta',
+            'category_gmp_to_low_bid_delta_percentage',
+            'category_low_to_median_delta',
+            'category_low_to_median_delta_percentage'
+        ]
+    }
+];
+
+function computeProjectBudgetTotals(project) {
+    const totals = {
+        gmpTotal: 0,
+        selectedTotal: 0,
+        medianTotal: 0,
+        lowTotal: 0,
+        hasGmp: false,
+        hasSelected: false,
+        hasMedian: false,
+        hasLow: false
+    };
+
+    (project?.packages || []).forEach((pkg) => {
+        const gmp = toFiniteNumber(pkg.gmp_amount);
+        const selected = toFiniteNumber(pkg.selected_amount);
+        const median = toFiniteNumber(pkg.median_bid);
+        const low = toFiniteNumber(pkg.low_bid);
+
+        if (gmp != null) {
+            totals.gmpTotal += gmp;
+            totals.hasGmp = true;
+        }
+
+        if (selected != null) {
+            totals.selectedTotal += selected;
+            totals.hasSelected = true;
+        }
+
+        if (median != null) {
+            totals.medianTotal += median;
+            totals.hasMedian = true;
+        }
+
+        if (low != null) {
+            totals.lowTotal += low;
+            totals.hasLow = true;
+        }
+    });
+
+    return totals;
+}
+
 const PIE_DATA_OPTIONS = {
     median: {
         label: 'Median bids',
@@ -382,9 +495,12 @@ function registerChartPlugins() {
 }
 
 function initComparisonPage() {
+    populateMetricDropdown();
+    updateMetricMetadata(compareMetricSelect.value);
     loadProjects();
     projectSelector.addEventListener('change', () => fetchComparison());
     compareMetricSelect.addEventListener('change', () => {
+        updateMetricMetadata(compareMetricSelect.value);
         if (currentProjects.length) {
             renderComparison(currentProjects);
         }
@@ -399,6 +515,44 @@ function initComparisonPage() {
             renderComparison(currentProjects);
         }
     });
+}
+
+function populateMetricDropdown() {
+    if (!compareMetricSelect) {
+        return;
+    }
+
+    compareMetricSelect.innerHTML = '';
+
+    METRIC_GROUPS.forEach((group) => {
+        const optGroup = document.createElement('optgroup');
+        optGroup.label = group.label;
+
+        group.metrics.forEach((metricKey) => {
+            const metric = METRIC_OPTIONS[metricKey];
+            if (!metric) return;
+            const option = document.createElement('option');
+            option.value = metricKey;
+            option.textContent = metric.label;
+            optGroup.appendChild(option);
+        });
+
+        if (optGroup.children.length > 0) {
+            compareMetricSelect.appendChild(optGroup);
+        }
+    });
+
+    const firstOption = compareMetricSelect.querySelector('option');
+    if (firstOption) {
+        compareMetricSelect.value = firstOption.value;
+    }
+}
+
+function updateMetricMetadata(metricKey) {
+    const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
+    chartTitleEl.textContent = metricConfig.label;
+    chartSubtitleEl.textContent = metricConfig.description;
+    metricDescriptionEl.textContent = metricConfig.description;
 }
 
 async function loadProjects() {
@@ -479,9 +633,7 @@ function renderComparison(projects) {
             break;
     }
 
-    chartTitleEl.textContent = metricConfig.label;
-    chartSubtitleEl.textContent = metricConfig.description;
-    metricDescriptionEl.textContent = metricConfig.description;
+    updateMetricMetadata(metricKey);
 
     if (comparisonChart) {
         comparisonChart.destroy();
@@ -519,7 +671,7 @@ function buildProjectMetricData(projects, metricConfig) {
         datasets: [
             {
                 label: metricConfig.label,
-                data: projects.map((project) => metricConfig.getValue(project.metrics || {})),
+                data: projects.map((project) => metricConfig.getValue(project.metrics || {}, project)),
                 borderRadius: 6,
                 backgroundColor: '#3498db'
             }

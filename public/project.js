@@ -815,16 +815,18 @@ function renderGmpSummary() {
     }
 
     const chartLabels = [];
-    const lowVsGmp = [];
+    const selectedVsGmp = [];
     const medianVsGmp = [];
     const medianVsLow = [];
-    const lowVsGmpPercent = [];
+    const selectedVsGmpPercent = [];
     const medianVsGmpPercent = [];
     const medianVsLowPercent = [];
 
     const totals = {
         gmp: 0,
         gmpCount: 0,
+        selected: 0,
+        selectedCount: 0,
         low: 0,
         lowCount: 0,
         median: 0,
@@ -835,6 +837,7 @@ function renderGmpSummary() {
         const code = pkg.package_code || '—';
         const name = pkg.package_name || '—';
         const gmp = toFiniteNumber(pkg.gmp_amount);
+        const selected = toFiniteNumber(pkg.selected_amount);
         const low = toFiniteNumber(pkg.low_bid);
         const median = toFiniteNumber(pkg.median_bid);
 
@@ -843,9 +846,9 @@ function renderGmpSummary() {
             totals.gmpCount += 1;
         }
 
-        if (low != null) {
-            totals.low += low;
-            totals.lowCount += 1;
+        if (selected != null) {
+            totals.selected += selected;
+            totals.selectedCount += 1;
         }
 
         if (median != null) {
@@ -853,9 +856,14 @@ function renderGmpSummary() {
             totals.medianCount += 1;
         }
 
-        const gmpLowDelta = gmp != null && low != null ? low - gmp : null;
-        const gmpLowPercent = gmpLowDelta != null && isValidPercentBase(gmp)
-            ? (gmpLowDelta / gmp) * 100
+        if (low != null) {
+            totals.low += low;
+            totals.lowCount += 1;
+        }
+
+        const gmpSelectedDelta = gmp != null && selected != null ? selected - gmp : null;
+        const gmpSelectedPercent = gmpSelectedDelta != null && isValidPercentBase(gmp)
+            ? (gmpSelectedDelta / gmp) * 100
             : null;
 
         const gmpMedianDelta = gmp != null && median != null ? median - gmp : null;
@@ -870,21 +878,21 @@ function renderGmpSummary() {
 
         const label = name && name !== '—' ? `${code} – ${name}` : code;
         chartLabels.push(label);
-        lowVsGmp.push(gmpLowDelta != null ? gmpLowDelta : null);
+        selectedVsGmp.push(gmpSelectedDelta != null ? gmpSelectedDelta : null);
         medianVsGmp.push(gmpMedianDelta != null ? gmpMedianDelta : null);
         medianVsLow.push(medianLowDelta != null ? medianLowDelta : null);
-        lowVsGmpPercent.push(gmpLowPercent != null ? gmpLowPercent : null);
+        selectedVsGmpPercent.push(gmpSelectedPercent != null ? gmpSelectedPercent : null);
         medianVsGmpPercent.push(gmpMedianPercent != null ? gmpMedianPercent : null);
         medianVsLowPercent.push(medianLowPercent != null ? medianLowPercent : null);
 
-        const gmpLowClass = getBudgetDeltaClass(gmpLowDelta);
+        const gmpSelectedClass = getBudgetDeltaClass(gmpSelectedDelta);
         const gmpMedianClass = getBudgetDeltaClass(gmpMedianDelta);
         const medianLowClass = getSpreadDeltaClass(medianLowDelta);
 
         const gmpCell = formatAmountWithSf(gmp);
-        const lowCell = formatAmountWithSf(low);
+        const selectedCell = formatAmountWithSf(selected);
         const medianCell = formatAmountWithSf(median);
-        const gmpLowCell = formatAmountWithSf(gmpLowDelta, { isDelta: true });
+        const gmpSelectedCell = formatAmountWithSf(gmpSelectedDelta, { isDelta: true });
         const gmpMedianCell = formatAmountWithSf(gmpMedianDelta, { isDelta: true });
         const medianLowCell = formatAmountWithSf(medianLowDelta, { isDelta: true });
 
@@ -893,9 +901,9 @@ function renderGmpSummary() {
                 <td><strong>${escapeHtml(code)}</strong></td>
                 <td>${escapeHtml(name)}</td>
                 <td>${gmpCell}</td>
-                <td>${lowCell}</td>
-                <td class="${gmpLowClass}">${gmpLowCell}</td>
-                <td class="${gmpLowClass}">${formatPercentageDelta(gmpLowPercent)}</td>
+                <td>${selectedCell}</td>
+                <td class="${gmpSelectedClass}">${gmpSelectedCell}</td>
+                <td class="${gmpSelectedClass}">${formatPercentageDelta(gmpSelectedPercent)}</td>
                 <td>${medianCell}</td>
                 <td class="${gmpMedianClass}">${gmpMedianCell}</td>
                 <td class="${gmpMedianClass}">${formatPercentageDelta(gmpMedianPercent)}</td>
@@ -907,9 +915,9 @@ function renderGmpSummary() {
 
     tbody.innerHTML = rowsHtml;
 
-    const totalLowDelta = totals.lowCount > 0 && totals.gmpCount > 0 ? totals.low - totals.gmp : null;
-    const totalLowPercent = totalLowDelta != null && isValidPercentBase(totals.gmp)
-        ? (totalLowDelta / totals.gmp) * 100
+    const totalSelectedDelta = totals.selectedCount > 0 && totals.gmpCount > 0 ? totals.selected - totals.gmp : null;
+    const totalSelectedPercent = totalSelectedDelta != null && isValidPercentBase(totals.gmp)
+        ? (totalSelectedDelta / totals.gmp) * 100
         : null;
 
     const totalMedianDelta = totals.medianCount > 0 && totals.gmpCount > 0 ? totals.median - totals.gmp : null;
@@ -922,14 +930,14 @@ function renderGmpSummary() {
         ? (totalMedianLowDelta / totals.low) * 100
         : null;
 
-    const totalLowClass = getBudgetDeltaClass(totalLowDelta);
+    const totalSelectedClass = getBudgetDeltaClass(totalSelectedDelta);
     const totalMedianClass = getBudgetDeltaClass(totalMedianDelta);
     const totalMedianLowClass = getSpreadDeltaClass(totalMedianLowDelta);
 
     const totalGmpCell = totals.gmpCount > 0 ? formatAmountWithSf(totals.gmp) : '—';
-    const totalLowCell = totals.lowCount > 0 ? formatAmountWithSf(totals.low) : '—';
+    const totalSelectedCell = totals.selectedCount > 0 ? formatAmountWithSf(totals.selected) : '—';
     const totalMedianCell = totals.medianCount > 0 ? formatAmountWithSf(totals.median) : '—';
-    const totalLowDeltaCell = formatAmountWithSf(totalLowDelta, { isDelta: true });
+    const totalSelectedDeltaCell = formatAmountWithSf(totalSelectedDelta, { isDelta: true });
     const totalMedianDeltaCell = formatAmountWithSf(totalMedianDelta, { isDelta: true });
     const totalMedianLowDeltaCell = formatAmountWithSf(totalMedianLowDelta, { isDelta: true });
 
@@ -937,9 +945,9 @@ function renderGmpSummary() {
         <th scope="row">Totals</th>
         <td>—</td>
         <td>${totalGmpCell}</td>
-        <td>${totalLowCell}</td>
-        <td class="${totalLowClass}">${totalLowDeltaCell}</td>
-        <td class="${totalLowClass}">${formatPercentageDelta(totalLowPercent)}</td>
+        <td>${totalSelectedCell}</td>
+        <td class="${totalSelectedClass}">${totalSelectedDeltaCell}</td>
+        <td class="${totalSelectedClass}">${formatPercentageDelta(totalSelectedPercent)}</td>
         <td>${totalMedianCell}</td>
         <td class="${totalMedianClass}">${totalMedianDeltaCell}</td>
         <td class="${totalMedianClass}">${formatPercentageDelta(totalMedianPercent)}</td>
@@ -962,10 +970,10 @@ function renderGmpSummary() {
 
     latestGmpChartData = {
         labels: chartLabels,
-        lowVsGmp,
+        selectedVsGmp,
         medianVsGmp,
         medianVsLow,
-        lowVsGmpPercent,
+        selectedVsGmpPercent,
         medianVsGmpPercent,
         medianVsLowPercent
     };
@@ -1022,8 +1030,8 @@ function renderGmpDeltaChart() {
     const isPercentMode = gmpChartMode === 'percent';
     const chartDatasets = [
         {
-            label: 'Low vs GMP',
-            data: isPercentMode ? (chartData.lowVsGmpPercent || []) : (chartData.lowVsGmp || []),
+            label: 'Selected vs GMP',
+            data: isPercentMode ? (chartData.selectedVsGmpPercent || []) : (chartData.selectedVsGmp || []),
             backgroundColor: 'rgba(192, 57, 43, 0.35)',
             borderColor: '#c0392b',
             borderWidth: 1.5,
