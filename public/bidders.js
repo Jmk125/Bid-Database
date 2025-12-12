@@ -40,6 +40,16 @@ let selectedCountyFips = new Set();
 let activeCountyFocus = null;
 let countyBidderCache = new Map();
 
+function getSelectedCountyMetas() {
+    return Array.from(selectedCountyFips)
+        .map(fips => countyMetadata.get(fips))
+        .filter(Boolean);
+}
+
+function getSelectionSignature(fipsSet = selectedCountyFips) {
+    return Array.from(fipsSet).sort().join('|');
+}
+
 // Load all bidders
 async function loadBidders() {
     try {
@@ -1462,27 +1472,34 @@ function renderCountyDetailPanel() {
     const table = document.getElementById('countyBidderTable');
     const title = document.getElementById('countyDetailTitle');
 
-    if (!activeCountyFocus) {
+    const selectedMetas = getSelectedCountyMetas();
+    const selectionSignature = getSelectionSignature();
+
+    if (!activeCountyFocus || selectedCountyFips.size === 0 || selectedMetas.length === 0) {
         if (title) title.textContent = 'Select a county';
         if (emptyMessage) emptyMessage.style.display = 'block';
         if (table) table.hidden = true;
         return;
     }
 
-    const meta = countyMetadata.get(activeCountyFocus);
     if (title) {
-        title.textContent = meta ? `${meta.county_name}, ${meta.state_code}` : 'Select a county';
+        if (selectedMetas.length === 1) {
+            const [meta] = selectedMetas;
+            title.textContent = meta ? `${meta.county_name}, ${meta.state_code}` : 'Select a county';
+        } else {
+            title.textContent = `${selectedMetas.length} counties selected`;
+        }
     }
     if (emptyMessage) emptyMessage.style.display = 'none';
-    renderCountySelectionDetail(meta);
+    renderCountySelectionDetail(selectedMetas, selectionSignature);
 }
 
-async function renderCountySelectionDetail(meta) {
+async function renderCountySelectionDetail(selectedMetas, selectionSignature) {
     const table = document.getElementById('countyBidderTable');
     const tbody = document.getElementById('countyBidderTableBody');
     const summary = document.getElementById('countyBidderSummary');
 
-    if (!meta || !tbody || !table || !summary) {
+    if (!Array.isArray(selectedMetas) || selectedMetas.length === 0 || !tbody || !table || !summary) {
         return;
     }
 
@@ -1490,15 +1507,12 @@ async function renderCountySelectionDetail(meta) {
     table.hidden = false;
 
     try {
-        const bidders = await loadCountyBidderLeaderboard(meta.county_name, meta.state_code);
-        const activeMeta = activeCountyFocus ? countyMetadata.get(activeCountyFocus) : null;
-        if (activeMeta && (activeMeta.county_name !== meta.county_name || activeMeta.state_code !== meta.state_code)) {
-            return; // selection changed while loading
-        }
+        const bidders = await aggregateSelectedCountyBidders(selectedMetas, selectionSignature);
+        if (!bidders) return; // selection changed while loading
 
         if (!Array.isArray(bidders) || bidders.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="2">No bids recorded in this county yet.</td></tr>';
-            summary.textContent = '0 bidders';
+            tbody.innerHTML = '<tr><td colspan="2">No bids recorded in these counties yet.</td></tr>';
+            summary.textContent = `0 bidders across ${selectedMetas.length} county${selectedMetas.length === 1 ? '' : 'ies'}`;
             return;
         }
 
@@ -1517,11 +1531,42 @@ async function renderCountySelectionDetail(meta) {
         `).join('');
 
         const total = sorted.length;
-        summary.textContent = `${total} bidder${total === 1 ? '' : 's'} • showing top ${top.length}`;
+        summary.textContent = `${total} bidder${total === 1 ? '' : 's'} across ${selectedMetas.length} county${selectedMetas.length === 1 ? '' : 'ies'} • showing top ${top.length}`;
     } catch (error) {
         console.error('Error loading county bidders:', error);
-        tbody.innerHTML = '<tr><td colspan="2">Failed to load bidders for this county.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="2">Failed to load bidders for these counties.</td></tr>';
     }
+}
+
+async function aggregateSelectedCountyBidders(selectedMetas, expectedSignature) {
+    if (!Array.isArray(selectedMetas) || selectedMetas.length === 0) {
+        return [];
+    }
+
+    const results = await Promise.all(selectedMetas.map(meta =>
+        loadCountyBidderLeaderboard(meta.county_name, meta.state_code)
+    ));
+
+    if (expectedSignature && expectedSignature !== getSelectionSignature()) {
+        return null;
+    }
+
+    const biddersById = new Map();
+    results.forEach(list => {
+        list.forEach(entry => {
+            const existing = biddersById.get(entry.bidder_id) || {
+                bidder_id: entry.bidder_id,
+                canonical_name: entry.canonical_name,
+                bid_count: 0,
+                package_count: 0
+            };
+            existing.bid_count += Number(entry.bid_count) || 0;
+            existing.package_count += Number(entry.package_count) || 0;
+            biddersById.set(entry.bidder_id, existing);
+        });
+    });
+
+    return Array.from(biddersById.values());
 }
 
 async function loadCountyBidderLeaderboard(countyName, stateCode) {
@@ -1550,11 +1595,13 @@ async function loadCountyBidderLeaderboard(countyName, stateCode) {
 }
 
 async function openFullCountyList() {
-    if (!activeCountyFocus) return;
-    const meta = countyMetadata.get(activeCountyFocus);
-    if (!meta) return;
+    const selectedMetas = getSelectedCountyMetas();
+    if (selectedMetas.length === 0) return;
 
-    const bidders = await loadCountyBidderLeaderboard(meta.county_name, meta.state_code);
+    const selectionSignature = getSelectionSignature();
+    const bidders = await aggregateSelectedCountyBidders(selectedMetas, selectionSignature);
+    if (!bidders) return;
+
     const sorted = bidders.slice().sort((a, b) => (Number(b.bid_count) || 0) - (Number(a.bid_count) || 0));
     const popup = window.open('', '_blank');
     if (!popup) {
@@ -1562,8 +1609,16 @@ async function openFullCountyList() {
         return;
     }
 
+    const countyTitle = selectedMetas.length === 1
+        ? `${selectedMetas[0].county_name}, ${selectedMetas[0].state_code}`
+        : `${selectedMetas.length} counties selected`;
+
+    const countyList = selectedMetas.length > 1
+        ? `<p><strong>Counties:</strong> ${selectedMetas.map(meta => `${escapeHtml(meta.county_name)}, ${escapeHtml(meta.state_code)}`).join('; ')}</p>`
+        : '';
+
     popup.document.write(`
-        <html><head><title>${meta.county_name}, ${meta.state_code} bidders</title>
+        <html><head><title>${countyTitle} bidders</title>
         <style>
             body { font-family: Arial, sans-serif; padding: 1rem; }
             table { border-collapse: collapse; width: 100%; }
@@ -1571,8 +1626,9 @@ async function openFullCountyList() {
             th:last-child, td:last-child { text-align: right; }
         </style>
         </head><body>
-        <h2>${escapeHtml(meta.county_name)}, ${escapeHtml(meta.state_code)}</h2>
-        <p>${sorted.length} bidder${sorted.length === 1 ? '' : 's'} in this county.</p>
+        <h2>${escapeHtml(countyTitle)}</h2>
+        ${countyList}
+        <p>${sorted.length} bidder${sorted.length === 1 ? '' : 's'} in these counties.</p>
         <table>
             <thead><tr><th>Bidder</th><th style="text-align:right;">Bids</th></tr></thead>
             <tbody>
@@ -1583,7 +1639,6 @@ async function openFullCountyList() {
     `);
     popup.document.close();
 }
-
 function getChoroplethColor(value, max) {
     if (!value || !max) {
         return '#eef2f7';
