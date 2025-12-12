@@ -30,9 +30,15 @@ let stateBorderSelection = null;
 let mapTooltip = null;
 let mapContainerElement = null;
 let countyLookup = new Map();
+let countyMetadata = new Map();
 let countyActivityCache = new Map();
 let activeCountyData = new Map();
-let selectedMapBidderId = null;
+let selectedMapBidderIds = new Set();
+let packageSelectionBidderIds = new Set();
+let packageBidderLookup = new Map();
+let selectedCountyFips = new Set();
+let activeCountyFocus = null;
+let countyBidderCache = new Map();
 
 // Load all bidders
 async function loadBidders() {
@@ -51,7 +57,12 @@ async function loadBidders() {
             project_counties: Array.isArray(bidder.project_counties) ? bidder.project_counties : []
         }));
 
+        const validIds = new Set(allBidders.map(b => String(b.id)));
+        selectedMapBidderIds = new Set(Array.from(selectedMapBidderIds).filter(id => validIds.has(String(id))));
+        packageSelectionBidderIds = new Set(Array.from(packageSelectionBidderIds).filter(id => validIds.has(String(id))));
+
         populateMapBidderSelect();
+        populateMapPackageSelect();
         // NOW display the bidders after everything is loaded
         displayBidders();
     } catch (error) {
@@ -870,7 +881,10 @@ function setBiddersTab(tab) {
         initializeMapView();
         const mapSelect = document.getElementById('mapBidderSelect');
         if (mapSelect) {
-            renderBidderCountyActivity(mapSelect.value);
+            const combined = getCombinedMapBidderIds();
+            if (combined.length) {
+                renderSelectedBiddersCountyActivity(combined);
+            }
         }
     } else if (tab === 'activity') {
         ensureBidderActivityLoaded();
@@ -883,19 +897,102 @@ function populateMapBidderSelect() {
         return;
     }
 
-    const previousValue = select.value;
+    const previousSelection = new Set(Array.from(select.selectedOptions).map(opt => opt.value));
     select.innerHTML = '<option value="">-- Choose bidder --</option>';
     const sorted = allBidders.slice().sort((a, b) => a.canonical_name.localeCompare(b.canonical_name));
     sorted.forEach(bidder => {
         const option = document.createElement('option');
         option.value = bidder.id;
         option.textContent = bidder.canonical_name;
+        if (previousSelection.has(String(bidder.id)) || selectedMapBidderIds.has(String(bidder.id))) {
+            option.selected = true;
+        }
         select.appendChild(option);
     });
+}
 
-    if (previousValue && select.querySelector(`option[value="${previousValue}"]`)) {
-        select.value = previousValue;
+function populateMapPackageSelect() {
+    const container = document.getElementById('mapPackageSelect');
+    if (!container) {
+        return;
     }
+
+    const packageMap = new Map();
+    allBidders.forEach(bidder => {
+        (bidder.packages || []).forEach(pkg => {
+            if (!packageMap.has(pkg)) {
+                packageMap.set(pkg, new Set());
+            }
+            packageMap.get(pkg).add(bidder.id);
+        });
+    });
+
+    packageBidderLookup = packageMap;
+
+    const sorted = Array.from(packageMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    container.innerHTML = sorted.map(([pkg, bidderSet]) => {
+        const isChecked = Array.from(packageSelectionBidderIds).some(id => bidderSet.has(Number(id))); // preserve state
+        return `
+            <div class="package-option">
+                <label>
+                    <input type="checkbox" value="${escapeHtml(pkg)}" ${isChecked ? 'checked' : ''}>
+                    <strong>${escapeHtml(pkg)}</strong>
+                </label>
+                <span class="package-badge">${bidderSet.size} bidder${bidderSet.size === 1 ? '' : 's'}</span>
+            </div>
+        `;
+    }).join('');
+
+    container.querySelectorAll('input[type="checkbox"]').forEach(box => {
+        box.addEventListener('change', handlePackageSelectionChange);
+    });
+}
+
+function getCombinedMapBidderIds() {
+    const combined = new Set([
+        ...Array.from(selectedMapBidderIds).map(String),
+        ...Array.from(packageSelectionBidderIds).map(String)
+    ]);
+    return Array.from(combined).filter(Boolean);
+}
+
+function syncMapBidderSelect(combinedIds) {
+    const select = document.getElementById('mapBidderSelect');
+    if (!select) {
+        return;
+    }
+
+    Array.from(select.options).forEach(option => {
+        if (!option.value) return;
+        option.selected = combinedIds.includes(option.value);
+    });
+}
+
+function handleMapBidderSelectChange(event) {
+    const newSelection = Array.from(event.target.selectedOptions)
+        .map(option => option.value)
+        .filter(Boolean);
+    selectedMapBidderIds = new Set(newSelection);
+    renderSelectedBiddersCountyActivity(getCombinedMapBidderIds());
+}
+
+function handlePackageSelectionChange() {
+    const checkboxes = document.querySelectorAll('#mapPackageSelect input[type="checkbox"]');
+    const selectedPackages = Array.from(checkboxes)
+        .filter(box => box.checked)
+        .map(box => box.value);
+
+    packageSelectionBidderIds = new Set();
+    selectedPackages.forEach(pkg => {
+        const biddersForPackage = packageBidderLookup.get(pkg);
+        if (biddersForPackage) {
+            biddersForPackage.forEach(id => packageSelectionBidderIds.add(String(id)));
+        }
+    });
+
+    const combinedIds = getCombinedMapBidderIds();
+    syncMapBidderSelect(combinedIds);
+    renderSelectedBiddersCountyActivity(combinedIds);
 }
 
 async function initializeMapView() {
@@ -983,7 +1080,8 @@ async function buildCountyMap() {
                     .style('fill', '#eef2f7')
                     .attr('d', path)
                     .on('mousemove', (event, feature) => handleCountyHover(event, feature))
-                    .on('mouseleave', hideMapTooltip);
+                    .on('mouseleave', hideMapTooltip)
+                    .on('click', (event, feature) => toggleCountySelection(feature));
 
                 const ohioStateFeature = states.find(feature => String(feature.id).padStart(2, '0') === ohioFips);
                 const stateBorderData = ohioStateFeature
@@ -1001,6 +1099,9 @@ async function buildCountyMap() {
                     const stateFips = fips.slice(0, 2);
                     const stateCode = STATE_CODE_BY_FIPS[stateFips];
                     const key = normalizeCountyKey(countyName, stateCode);
+                    if (countyName && stateCode) {
+                        countyMetadata.set(fips, { county_name: countyName, state_code: stateCode });
+                    }
                     if (!key) {
                         return;
                     }
@@ -1009,21 +1110,25 @@ async function buildCountyMap() {
                     }
                     countyLookup.get(key).push(fips);
                 });
+
+                applyCountySelections();
             });
     }
 
     return countyMapPromise;
 }
 
-async function renderBidderCountyActivity(bidderId) {
+async function renderSelectedBiddersCountyActivity(bidderIds) {
     const summary = document.getElementById('mapBidderSummary');
     const emptyState = document.getElementById('mapEmptyState');
     const legend = document.getElementById('mapLegend');
     const mapMessage = document.getElementById('mapUnavailableMessage');
 
-    if (!bidderId) {
+    const normalizedIds = Array.from(new Set((bidderIds || []).filter(Boolean).map(String)));
+
+    if (!normalizedIds.length) {
         if (summary) {
-            summary.innerHTML = '<p>Select a bidder to see their coverage.</p>';
+            summary.innerHTML = '<p>Select one or more bidders or packages to see coverage.</p>';
         }
         if (legend) {
             legend.setAttribute('aria-hidden', 'true');
@@ -1036,11 +1141,6 @@ async function renderBidderCountyActivity(bidderId) {
         return;
     }
 
-    const bidder = allBidders.find(b => String(b.id) === String(bidderId));
-    if (!bidder) {
-        return;
-    }
-
     if (mapMessage && mapMessage.style.display === 'block') {
         return;
     }
@@ -1049,9 +1149,9 @@ async function renderBidderCountyActivity(bidderId) {
         if (countyMapPromise) {
             await countyMapPromise;
         }
-        const data = await loadBidderCountyActivity(bidderId);
-        selectedMapBidderId = bidderId;
-        updateMapBidderSummary(bidder, data);
+
+        const data = await combineBidderCountyData(normalizedIds);
+        updateMapBidderSummary(normalizedIds, data);
 
         if (!data.length) {
             resetMapColors();
@@ -1129,6 +1229,43 @@ function paintCountyData(data) {
 
     updateMapLegend(maxPackages);
     updateMapCountyList(data, unmatched);
+    applyCountySelections();
+}
+
+async function combineBidderCountyData(bidderIds) {
+    const aggregated = new Map();
+
+    for (const bidderId of bidderIds) {
+        const bidderData = await loadBidderCountyActivity(bidderId);
+        bidderData.forEach(entry => {
+            const key = normalizeCountyKey(entry.county_name, entry.state_code);
+            if (!key) {
+                return;
+            }
+
+            if (!aggregated.has(key)) {
+                aggregated.set(key, {
+                    ...entry,
+                    package_count: 0,
+                    project_count: 0,
+                    bid_submissions: 0,
+                    bidders: new Set()
+                });
+            }
+
+            const agg = aggregated.get(key);
+            agg.package_count += Number(entry.package_count) || 0;
+            agg.project_count += Number(entry.project_count) || 0;
+            agg.bid_submissions += Number(entry.bid_submissions) || 0;
+            agg.latest_project_date = latestDate(agg.latest_project_date, entry.latest_project_date);
+            agg.bidders.add(String(bidderId));
+        });
+    }
+
+    return Array.from(aggregated.values()).map(entry => ({
+        ...entry,
+        bidder_count: entry.bidders.size
+    }));
 }
 
 function resetMapColors() {
@@ -1139,23 +1276,29 @@ function resetMapColors() {
     }
     activeCountyData.clear();
     hideMapTooltip();
+    applyCountySelections();
 }
 
-function updateMapBidderSummary(bidder, data) {
+function updateMapBidderSummary(bidderIds, data) {
     const summary = document.getElementById('mapBidderSummary');
     if (!summary) {
         return;
     }
 
     if (!data.length) {
-        summary.innerHTML = `<h4>${escapeHtml(bidder.canonical_name)}</h4><p>No county-level bids recorded yet.</p>`;
+        const bidderNames = bidderIds
+            .map(id => allBidders.find(b => String(b.id) === String(id))?.canonical_name)
+            .filter(Boolean)
+            .join(', ');
+        summary.innerHTML = `<h4>${escapeHtml(bidderNames || 'Selected bidders')}</h4><p>No county-level bids recorded yet.</p>`;
         return;
     }
 
     const totalPackages = data.reduce((sum, entry) => sum + (Number(entry.package_count) || 0), 0);
     const totalProjects = data.reduce((sum, entry) => sum + (Number(entry.project_count) || 0), 0);
+    const uniqueBidders = bidderIds.length;
     summary.innerHTML = `
-        <h4>${escapeHtml(bidder.canonical_name)}</h4>
+        <h4>${uniqueBidders === 1 ? '1 bidder selected' : `${uniqueBidders} bidders selected`}</h4>
         <p>${totalPackages} package${totalPackages === 1 ? '' : 's'} across ${data.length} count${data.length === 1 ? 'y' : 'ies'}
         (${totalProjects} project${totalProjects === 1 ? '' : 's'}).</p>
     `;
@@ -1208,10 +1351,12 @@ function updateMapCountyList(data, unmatched) {
     const rows = sorted.map(entry => {
         const pkgCount = Number(entry.package_count) || 0;
         const projectCount = Number(entry.project_count) || 0;
+        const bidderCount = Number(entry.bidder_count || entry.bidders?.size || 0);
         const latestDate = entry.latest_project_date ? formatDate(entry.latest_project_date) : '—';
         return `
             <tr>
                 <td><strong>${escapeHtml(entry.county_name)}</strong>, ${escapeHtml(entry.state_code)}</td>
+                <td>${bidderCount}</td>
                 <td>${pkgCount}</td>
                 <td>${projectCount}</td>
                 <td>${latestDate}</td>
@@ -1230,6 +1375,7 @@ function updateMapCountyList(data, unmatched) {
             <thead>
                 <tr>
                     <th>County</th>
+                    <th>Bidders</th>
                     <th>Packages</th>
                     <th>Projects</th>
                     <th>Last Bid</th>
@@ -1250,18 +1396,30 @@ function handleCountyHover(event, feature) {
 
     const fips = String(feature.id).padStart(5, '0');
     const entry = activeCountyData.get(fips);
-    if (!entry) {
+    const meta = countyMetadata.get(fips);
+    if (!meta) {
         hideMapTooltip();
         return;
     }
 
     const [x, y] = d3.pointer(event, mapContainerElement);
-    const pkgCount = Number(entry.package_count) || 0;
-    const projectCount = Number(entry.project_count) || 0;
-    mapTooltip.innerHTML = `
-        <strong>${escapeHtml(entry.county_name)}</strong>, ${escapeHtml(entry.state_code)}<br>
-        ${pkgCount} package${pkgCount === 1 ? '' : 's'} • ${projectCount} project${projectCount === 1 ? '' : 's'}
-    `;
+    const hasActiveCountyData = activeCountyData.size > 0;
+
+    if (!hasActiveCountyData) {
+        mapTooltip.innerHTML = `<strong>${escapeHtml(meta.county_name)}</strong>, ${escapeHtml(meta.state_code)}`;
+    } else {
+        const pkgCount = entry ? Number(entry.package_count) || 0 : 0;
+        const projectCount = entry ? Number(entry.project_count) || 0 : 0;
+        const bidderCount = entry ? Number(entry.bidder_count || entry.bidders?.size || 0) : 0;
+        const bidderText = bidderCount
+            ? ` • ${bidderCount} bidder${bidderCount === 1 ? '' : 's'}`
+            : ' • No bids recorded';
+
+        mapTooltip.innerHTML = `
+            <strong>${escapeHtml(meta.county_name)}</strong>, ${escapeHtml(meta.state_code)}<br>
+            ${pkgCount} package${pkgCount === 1 ? '' : 's'} • ${projectCount} project${projectCount === 1 ? '' : 's'}${bidderText}
+        `;
+    }
     mapTooltip.style.left = `${x}px`;
     mapTooltip.style.top = `${y}px`;
     mapTooltip.style.opacity = 1;
@@ -1273,6 +1431,157 @@ function hideMapTooltip() {
         mapTooltip.style.opacity = 0;
         mapTooltip.setAttribute('aria-hidden', 'true');
     }
+}
+
+function applyCountySelections() {
+    if (!countyPathSelection) {
+        return;
+    }
+
+    countyPathSelection.classed('is-selected', feature => selectedCountyFips.has(String(feature.id).padStart(5, '0')));
+}
+
+function toggleCountySelection(feature) {
+    const fips = String(feature.id).padStart(5, '0');
+    if (selectedCountyFips.has(fips)) {
+        selectedCountyFips.delete(fips);
+        if (activeCountyFocus === fips) {
+            activeCountyFocus = selectedCountyFips.size ? Array.from(selectedCountyFips)[selectedCountyFips.size - 1] : null;
+        }
+    } else {
+        selectedCountyFips.add(fips);
+        activeCountyFocus = fips;
+    }
+
+    applyCountySelections();
+    renderCountyDetailPanel();
+}
+
+function renderCountyDetailPanel() {
+    const emptyMessage = document.getElementById('countyDetailEmpty');
+    const table = document.getElementById('countyBidderTable');
+    const title = document.getElementById('countyDetailTitle');
+
+    if (!activeCountyFocus) {
+        if (title) title.textContent = 'Select a county';
+        if (emptyMessage) emptyMessage.style.display = 'block';
+        if (table) table.hidden = true;
+        return;
+    }
+
+    const meta = countyMetadata.get(activeCountyFocus);
+    if (title) {
+        title.textContent = meta ? `${meta.county_name}, ${meta.state_code}` : 'Select a county';
+    }
+    if (emptyMessage) emptyMessage.style.display = 'none';
+    renderCountySelectionDetail(meta);
+}
+
+async function renderCountySelectionDetail(meta) {
+    const table = document.getElementById('countyBidderTable');
+    const tbody = document.getElementById('countyBidderTableBody');
+    const summary = document.getElementById('countyBidderSummary');
+
+    if (!meta || !tbody || !table || !summary) {
+        return;
+    }
+
+    tbody.innerHTML = '<tr><td colspan="2" class="loading">Loading bidders…</td></tr>';
+    table.hidden = false;
+
+    try {
+        const bidders = await loadCountyBidderLeaderboard(meta.county_name, meta.state_code);
+        const activeMeta = activeCountyFocus ? countyMetadata.get(activeCountyFocus) : null;
+        if (activeMeta && (activeMeta.county_name !== meta.county_name || activeMeta.state_code !== meta.state_code)) {
+            return; // selection changed while loading
+        }
+
+        if (!Array.isArray(bidders) || bidders.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2">No bids recorded in this county yet.</td></tr>';
+            summary.textContent = '0 bidders';
+            return;
+        }
+
+        const sorted = bidders.slice().sort((a, b) => {
+            const diff = (Number(b.bid_count) || 0) - (Number(a.bid_count) || 0);
+            if (diff !== 0) return diff;
+            return (a.canonical_name || '').localeCompare(b.canonical_name || '');
+        });
+
+        const top = sorted.slice(0, 10);
+        tbody.innerHTML = top.map(entry => `
+            <tr>
+                <td>${escapeHtml(entry.canonical_name)}</td>
+                <td style="text-align: right;">${entry.bid_count}</td>
+            </tr>
+        `).join('');
+
+        const total = sorted.length;
+        summary.textContent = `${total} bidder${total === 1 ? '' : 's'} • showing top ${top.length}`;
+    } catch (error) {
+        console.error('Error loading county bidders:', error);
+        tbody.innerHTML = '<tr><td colspan="2">Failed to load bidders for this county.</td></tr>';
+    }
+}
+
+async function loadCountyBidderLeaderboard(countyName, stateCode) {
+    if (!countyName || !stateCode) {
+        return [];
+    }
+    const cacheKey = `${countyName}|${stateCode}`;
+    if (countyBidderCache.has(cacheKey)) {
+        return countyBidderCache.get(cacheKey);
+    }
+
+    const params = new URLSearchParams({ county_name: countyName, state_code: stateCode });
+    const response = await apiFetch(`${API_BASE}/counties/bidders?${params.toString()}`);
+    const payload = await response.json();
+    const sanitized = Array.isArray(payload)
+        ? payload.map(entry => ({
+            bidder_id: entry.bidder_id,
+            canonical_name: entry.canonical_name,
+            bid_count: Number(entry.bid_count) || 0,
+            package_count: Number(entry.package_count) || 0
+        }))
+        : [];
+
+    countyBidderCache.set(cacheKey, sanitized);
+    return sanitized;
+}
+
+async function openFullCountyList() {
+    if (!activeCountyFocus) return;
+    const meta = countyMetadata.get(activeCountyFocus);
+    if (!meta) return;
+
+    const bidders = await loadCountyBidderLeaderboard(meta.county_name, meta.state_code);
+    const sorted = bidders.slice().sort((a, b) => (Number(b.bid_count) || 0) - (Number(a.bid_count) || 0));
+    const popup = window.open('', '_blank');
+    if (!popup) {
+        alert('Popup blocked. Allow popups to view the full list.');
+        return;
+    }
+
+    popup.document.write(`
+        <html><head><title>${meta.county_name}, ${meta.state_code} bidders</title>
+        <style>
+            body { font-family: Arial, sans-serif; padding: 1rem; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { padding: 8px 10px; border-bottom: 1px solid #ddd; text-align: left; }
+            th:last-child, td:last-child { text-align: right; }
+        </style>
+        </head><body>
+        <h2>${escapeHtml(meta.county_name)}, ${escapeHtml(meta.state_code)}</h2>
+        <p>${sorted.length} bidder${sorted.length === 1 ? '' : 's'} in this county.</p>
+        <table>
+            <thead><tr><th>Bidder</th><th style="text-align:right;">Bids</th></tr></thead>
+            <tbody>
+                ${sorted.map(entry => `<tr><td>${escapeHtml(entry.canonical_name)}</td><td style="text-align:right;">${entry.bid_count}</td></tr>`).join('')}
+            </tbody>
+        </table>
+        </body></html>
+    `);
+    popup.document.close();
 }
 
 function getChoroplethColor(value, max) {
@@ -1287,6 +1596,12 @@ function getChoroplethColor(value, max) {
         return Math.round(channel + delta * ratio);
     });
     return `rgb(${channels[0]}, ${channels[1]}, ${channels[2]})`;
+}
+
+function latestDate(dateA, dateB) {
+    if (!dateA) return dateB;
+    if (!dateB) return dateA;
+    return dateA > dateB ? dateA : dateB;
 }
 
 const COUNTY_SUFFIXES = [
@@ -1391,10 +1706,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const mapSelect = document.getElementById('mapBidderSelect');
     if (mapSelect) {
-        mapSelect.addEventListener('change', (event) => {
-            renderBidderCountyActivity(event.target.value);
-        });
+        mapSelect.addEventListener('change', handleMapBidderSelectChange);
     }
+
+    const clearCountySelectionBtn = document.getElementById('clearCountySelection');
+    clearCountySelectionBtn?.addEventListener('click', () => {
+        selectedCountyFips.clear();
+        activeCountyFocus = null;
+        applyCountySelections();
+        renderCountyDetailPanel();
+    });
+
+    const openFullCountyListBtn = document.getElementById('openFullCountyList');
+    openFullCountyListBtn?.addEventListener('click', openFullCountyList);
 
     const activityStartInput = document.getElementById('activityStartDate');
     const activityEndInput = document.getElementById('activityEndDate');

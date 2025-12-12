@@ -2754,6 +2754,45 @@ app.get('/api/bidders/:id/counties', (req, res) => {
   res.json(rows);
 });
 
+app.get('/api/counties/bidders', (req, res) => {
+  const db = getDatabase();
+  const countyName = (req.query.county_name || '').toString().trim();
+  const stateCode = (req.query.state_code || 'OH').toString().trim().toUpperCase();
+
+  if (!countyName || !stateCode) {
+    return res.json([]);
+  }
+
+  const query = db.exec(`
+    SELECT
+      b.bidder_id,
+      bd.canonical_name,
+      COUNT(*) AS bid_count,
+      COUNT(DISTINCT pkg.id) AS package_count
+    FROM bids b
+    JOIN bidders bd ON bd.id = b.bidder_id
+    JOIN packages pkg ON pkg.id = b.package_id
+    JOIN projects proj ON proj.id = pkg.project_id
+    WHERE proj.county_name = ?
+      AND UPPER(COALESCE(NULLIF(TRIM(proj.county_state), ''), 'OH')) = ?
+    GROUP BY b.bidder_id, bd.canonical_name
+    ORDER BY bid_count DESC, bd.canonical_name ASC
+  `, [countyName, stateCode]);
+
+  if (query.length === 0) {
+    return res.json([]);
+  }
+
+  const rows = query[0].values.map(row => ({
+    bidder_id: row[0],
+    canonical_name: row[1],
+    bid_count: row[2],
+    package_count: row[3]
+  }));
+
+  res.json(rows);
+});
+
 // Merge bidders
 app.post('/api/bidders/merge', (req, res) => {
   const db = getDatabase();
