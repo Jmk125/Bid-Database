@@ -198,13 +198,11 @@ function displayBidders(filter = '', packageFilter = '', countyFilter = '') {
                     : '—'}
             </td>
             <td>${bidder.bid_count || 0}</td>
-            <td style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+            <td class="bidder-actions-cell">
                 <button class="btn btn-small btn-secondary" onclick="viewBidderDetail(${bidder.id}, '${escapeHtml(bidder.canonical_name)}')">
                     View Details
                 </button>
-                <button type="button" class="btn btn-small btn-danger bidder-delete-btn" data-bidder-id="${bidder.id}" data-bidder-name="${escapeHtml(bidder.canonical_name)}" aria-label="Delete ${escapeHtml(bidder.canonical_name)}">
-                    ×
-                </button>
+                <button type="button" class="bidder-delete-btn" data-bidder-id="${bidder.id}" data-bidder-name="${escapeHtml(bidder.canonical_name)}" aria-label="Delete ${escapeHtml(bidder.canonical_name)}">×</button>
             </td>
         </tr>
     `).join('');
