@@ -724,7 +724,7 @@ async function displayPackages() {
     const packages = currentProject.packages || [];
 
     if (packages.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No packages yet. Upload a bid tab or add a package manually.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="empty-state">No packages yet. Upload a bid tab or add a package manually.</td></tr>';
         renderGmpSummary();
         return;
     }
@@ -756,6 +756,7 @@ async function displayPackages() {
             `<a href="#" onclick="viewBids(${pkg.id}); return false;" style="color: #3498db; text-decoration: underline;">${bidCount}</a>` :
             '—';
 
+        const gmpAmountCell = formatAmountWithSf(pkg.gmp_amount);
         const selectedAmountCell = formatAmountWithSf(pkg.selected_amount, { perSfValue: pkg.cost_per_sf });
         const lowAmountCell = formatAmountWithSf(pkg.low_bid);
         const medianAmountCell = formatAmountWithSf(pkg.median_bid);
@@ -768,6 +769,7 @@ async function displayPackages() {
                 <td>${escapeHtml(pkg.package_name)}</td>
                 <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                 <td>${pkg.bidder_name ? escapeHtml(pkg.bidder_name) : '—'}</td>
+                <td>${gmpAmountCell}</td>
                 <td>${selectedAmountCell}</td>
                 <td>${lowAmountCell}</td>
                 <td>${medianAmountCell}</td>
@@ -2037,6 +2039,7 @@ function editPackage(packageId) {
     document.getElementById('editPackageCode').value = pkg.package_code;
     document.getElementById('editPackageName').value = pkg.package_name;
     document.getElementById('editSelectedAmount').value = pkg.selected_amount || '';
+    document.getElementById('editGmpAmount').value = pkg.gmp_amount || '';
     document.getElementById('editLowBid').value = pkg.low_bid || '';
     document.getElementById('editMedianBid').value = pkg.median_bid || '';
     document.getElementById('editHighBid').value = pkg.high_bid || '';
@@ -2059,6 +2062,7 @@ document.getElementById('editPackageForm').onsubmit = async (e) => {
     const package_code = document.getElementById('editPackageCode').value;
     const package_name = document.getElementById('editPackageName').value;
     const selected_amount = parseFloat(document.getElementById('editSelectedAmount').value);
+    const gmp_amount = document.getElementById('editGmpAmount').value ? parseFloat(document.getElementById('editGmpAmount').value) : null;
     const low_bid = document.getElementById('editLowBid').value ? parseFloat(document.getElementById('editLowBid').value) : null;
     const median_bid = document.getElementById('editMedianBid').value ? parseFloat(document.getElementById('editMedianBid').value) : null;
     const high_bid = document.getElementById('editHighBid').value ? parseFloat(document.getElementById('editHighBid').value) : null;
@@ -2074,6 +2078,7 @@ document.getElementById('editPackageForm').onsubmit = async (e) => {
                 package_code,
                 package_name,
                 selected_amount,
+                gmp_amount,
                 low_bid,
                 median_bid,
                 high_bid,
