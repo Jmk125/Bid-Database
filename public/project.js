@@ -387,9 +387,16 @@ function openPreconNotesModal() {
     const modal = document.getElementById('preconNotesModal');
     const textarea = document.getElementById('preconNotesInput');
     const saveBtn = document.getElementById('savePreconNotesBtn');
+    const meta = document.getElementById('preconNotesMeta');
 
     if (textarea) {
         textarea.value = currentProject.precon_notes || '';
+    }
+
+    if (meta) {
+        const updatedAt = currentProject.modified_at || currentProject.created_at;
+        const updatedText = updatedAt ? `Last updated ${formatDateTime(updatedAt)}` : 'No updates recorded yet';
+        meta.textContent = `${currentProject.name ? `${currentProject.name} • ` : ''}${updatedText}`;
     }
 
     if (saveBtn) {

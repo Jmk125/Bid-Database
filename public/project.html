@@ -247,14 +247,18 @@
 
     <!-- Pre-con Notes Modal -->
     <div id="preconNotesModal" class="modal">
-        <div class="modal-content modal-narrow">
+        <div class="modal-content modal-notes">
             <span class="close" onclick="closePreconNotesModal()">&times;</span>
             <h3>Pre-con Notes</h3>
             <p class="modal-subtitle">Share estimator context for anyone referencing this project's numbers.</p>
+            <div class="precon-notes-meta" id="preconNotesMeta"></div>
             <form id="preconNotesForm">
                 <div class="form-group">
                     <label for="preconNotesInput">Notes</label>
-                    <textarea id="preconNotesInput" rows="6" placeholder="Add notes the team should consider when reviewing these numbers..."></textarea>
+                    <div class="precon-notes-body">
+                        <textarea id="preconNotesInput" rows="8" placeholder="Add notes the team should consider when reviewing these numbers..."></textarea>
+                        <div class="precon-notes-hint">Think about assumptions, inclusions/exclusions, and anything that could impact comparisons.</div>
+                    </div>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closePreconNotesModal()">Cancel</button>

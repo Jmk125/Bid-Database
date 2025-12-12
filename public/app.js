@@ -7,6 +7,11 @@ const addBtn = document.getElementById('addProjectBtn');
 const closeBtn = document.querySelector('.close');
 const cancelBtn = document.getElementById('cancelAddProject');
 const projectStateSelect = document.getElementById('projectState');
+const projectPreconModal = document.getElementById('projectPreconModal');
+
+let activePreconProjectId = null;
+let activePreconProjectName = '';
+let isSavingProjectPrecon = false;
 
 if (projectStateSelect) {
     projectStateSelect.value = DEFAULT_PROJECT_STATE;
@@ -27,6 +32,10 @@ if (cancelBtn) {
 window.onclick = (event) => {
     if (event.target == modal) {
         modal.style.display = 'none';
+    }
+
+    if (projectPreconModal && event.target === projectPreconModal) {
+        closeProjectPreconNotes();
     }
 };
 
@@ -123,6 +132,7 @@ async function loadProjects(sortBy = 'date-desc') {
                     </div>` : ''}
                 </div>
                 <div class="actions" onclick="event.stopPropagation()">
+                    <button class="btn btn-tiny btn-secondary" onclick="openProjectPreconNotes(${project.id})">🗒️ Pre-con Notes</button>
                     <button class="btn btn-tiny btn-danger" onclick="deleteProject(${project.id}, '${escapeHtml(project.name)}')">Delete</button>
                 </div>
             </div>
@@ -184,6 +194,11 @@ if (addProjectForm) {
     };
 }
 
+const projectPreconForm = document.getElementById('projectPreconForm');
+if (projectPreconForm) {
+    projectPreconForm.addEventListener('submit', handleProjectPreconSubmit);
+}
+
 // Delete project
 async function deleteProject(id, name) {
     if (!confirm(`Are you sure you want to delete "${name}"? This will delete all associated bid data.`)) {
@@ -199,6 +214,153 @@ async function deleteProject(id, name) {
     } catch (error) {
         console.error('Error deleting project:', error);
         alert('Error deleting project');
+    }
+}
+
+// Pre-con notes from the project list
+async function openProjectPreconNotes(projectId) {
+    const modalTitle = document.getElementById('projectPreconTitle');
+    const meta = document.getElementById('projectPreconMeta');
+    const textarea = document.getElementById('projectPreconInput');
+    const saveBtn = document.getElementById('projectPreconSaveBtn');
+
+    if (!projectPreconModal || !textarea) {
+        return;
+    }
+
+    projectPreconModal.style.display = 'block';
+    activePreconProjectId = projectId;
+    activePreconProjectName = '';
+
+    if (modalTitle) {
+        modalTitle.textContent = 'Pre-con Notes';
+    }
+
+    if (meta) {
+        meta.textContent = 'Loading notes...';
+    }
+
+    textarea.value = '';
+
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Loading...';
+    }
+
+    try {
+        const response = await apiFetch(`${API_BASE}/projects/${projectId}`);
+
+        if (!response.ok) {
+            throw new Error('Failed to load project for pre-con notes');
+        }
+
+        const project = await response.json();
+        activePreconProjectName = project.name || '';
+
+        if (modalTitle) {
+            modalTitle.textContent = project.name ? `Pre-con Notes — ${project.name}` : 'Pre-con Notes';
+        }
+
+        if (meta) {
+            const updatedAt = project.modified_at || project.created_at;
+            const updatedText = updatedAt ? `Last updated ${formatDateTime(updatedAt)}` : 'No updates recorded yet';
+            meta.textContent = updatedText;
+        }
+
+        textarea.value = project.precon_notes || '';
+
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Notes';
+        }
+
+        textarea.focus();
+    } catch (error) {
+        console.error('Error loading pre-con notes:', error);
+        if (meta) {
+            meta.textContent = 'Error loading pre-con notes. Please try again.';
+        }
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Save Notes';
+        }
+    }
+}
+
+function closeProjectPreconNotes() {
+    if (projectPreconModal) {
+        projectPreconModal.style.display = 'none';
+    }
+
+    const textarea = document.getElementById('projectPreconInput');
+    const meta = document.getElementById('projectPreconMeta');
+    const saveBtn = document.getElementById('projectPreconSaveBtn');
+    const modalTitle = document.getElementById('projectPreconTitle');
+
+    if (textarea) {
+        textarea.value = '';
+    }
+
+    if (meta) {
+        meta.textContent = '';
+    }
+
+    if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Notes';
+    }
+
+    if (modalTitle) {
+        modalTitle.textContent = 'Pre-con Notes';
+    }
+
+    activePreconProjectId = null;
+    activePreconProjectName = '';
+    isSavingProjectPrecon = false;
+}
+
+async function handleProjectPreconSubmit(event) {
+    event.preventDefault();
+
+    if (!activePreconProjectId || isSavingProjectPrecon) {
+        return;
+    }
+
+    const textarea = document.getElementById('projectPreconInput');
+    const saveBtn = document.getElementById('projectPreconSaveBtn');
+    const notesValue = textarea ? textarea.value.trim() : '';
+
+    try {
+        isSavingProjectPrecon = true;
+
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+        }
+
+        const response = await apiFetch(`${API_BASE}/projects/${activePreconProjectId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                precon_notes: notesValue ? notesValue : null
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to save pre-con notes');
+        }
+
+        closeProjectPreconNotes();
+        loadProjects(sortSelector ? sortSelector.value : 'date-desc');
+    } catch (error) {
+        console.error('Error saving pre-con notes:', error);
+        alert('Error saving pre-con notes');
+    } finally {
+        isSavingProjectPrecon = false;
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Notes';
+        }
     }
 }
 
@@ -225,6 +387,21 @@ function formatDate(dateString) {
     if (!dateString) return '';
     const date = new Date(dateString);
     return date.toLocaleDateString();
+}
+
+function formatDateTime(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+        return dateString;
+    }
+    return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
 }
 
 function escapeHtml(text) {

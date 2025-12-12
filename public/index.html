@@ -131,6 +131,28 @@
         </div>
     </div>
 
+    <div id="projectPreconModal" class="modal">
+        <div class="modal-content modal-notes">
+            <span class="close" onclick="closeProjectPreconNotes()">&times;</span>
+            <h3 id="projectPreconTitle">Pre-con Notes</h3>
+            <p class="modal-subtitle">Read or update estimator notes without opening the full project.</p>
+            <div class="precon-notes-meta" id="projectPreconMeta"></div>
+            <form id="projectPreconForm">
+                <div class="form-group">
+                    <label for="projectPreconInput">Notes</label>
+                    <div class="precon-notes-body">
+                        <textarea id="projectPreconInput" rows="8" placeholder="Add notes the team should consider when reviewing these numbers..."></textarea>
+                        <div class="precon-notes-hint">These notes save directly to the project and are visible to the whole team.</div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeProjectPreconNotes()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="projectPreconSaveBtn">Save Notes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="edit-key.js"></script>
     <script src="app.js"></script>
 </body>
