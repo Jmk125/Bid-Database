@@ -206,28 +206,62 @@
         <div id="biddersMapContent" class="tab-content" role="tabpanel" aria-hidden="true" aria-labelledby="mapViewTab" data-tab-panel="map">
             <div class="table-container map-view">
                 <div class="map-controls">
-                    <div class="form-group" style="flex: 1;">
-                        <label for="mapBidderSelect">Select a bidder</label>
-                        <select id="mapBidderSelect">
+                    <div class="form-group" style="min-width: 280px; flex: 1;">
+                        <label for="mapBidderSelect">Select bidders</label>
+                        <select id="mapBidderSelect" multiple size="6" aria-label="Select one or more bidders">
                             <option value="">-- Choose bidder --</option>
                         </select>
+                        <p class="input-hint">Use Ctrl/Cmd + click to multi-select.</p>
+                    </div>
+                    <div class="form-group" style="min-width: 280px; flex: 1;">
+                        <label for="mapPackageSelect">Bid packages</label>
+                        <div id="mapPackageSelect" class="package-checklist" aria-label="Select bidders by bid package"></div>
                     </div>
                     <div class="map-bidder-summary" id="mapBidderSummary">
-                        <p>Select a bidder to see their coverage.</p>
+                        <p>Select one or more bidders or packages to see coverage.</p>
                     </div>
                 </div>
-                <div id="mapUnavailableMessage" class="map-empty-state" style="display: none;">
-                    <p>Mapping libraries failed to load. Refresh the page or check your connection.</p>
+                <div class="map-layout">
+                    <div class="map-canvas">
+                        <div id="mapUnavailableMessage" class="map-empty-state" style="display: none;">
+                            <p>Mapping libraries failed to load. Refresh the page or check your connection.</p>
+                        </div>
+                        <div class="bidder-map" id="bidderMap">
+                            <div class="map-loading" id="mapLoading">Loading map…</div>
+                        </div>
+                        <div class="map-legend" id="mapLegend" aria-hidden="true"></div>
+                        <div class="map-empty-state" id="mapEmptyState" style="display: none;">
+                            <h4>No county data yet</h4>
+                            <p>Set the county and state on each project to unlock bidder coverage.</p>
+                        </div>
+                        <div class="map-county-list" id="mapCountyList"></div>
+                    </div>
+                    <aside class="county-detail" id="countyDetailPanel">
+                        <div class="county-detail__header">
+                            <div>
+                                <p class="eyebrow">County bidders</p>
+                                <h4 id="countyDetailTitle" style="margin: 0;">Select a county</h4>
+                            </div>
+                            <button class="btn btn-secondary btn-small" id="clearCountySelection" type="button">Clear</button>
+                        </div>
+                        <div id="countyDetailEmpty" class="county-detail__empty">Click any county to see bidder counts.</div>
+                        <div id="countyBidderTable" class="county-detail__table" hidden>
+                            <div class="county-detail__meta">
+                                <p id="countyBidderSummary" class="eyebrow">—</p>
+                                <button class="btn btn-link" id="openFullCountyList" type="button">Open full list</button>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Bidder</th>
+                                        <th style="text-align: right;">Bids</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="countyBidderTableBody"></tbody>
+                            </table>
+                        </div>
+                    </aside>
                 </div>
-                <div class="bidder-map" id="bidderMap">
-                    <div class="map-loading" id="mapLoading">Loading map…</div>
-                </div>
-                <div class="map-legend" id="mapLegend" aria-hidden="true"></div>
-                <div class="map-empty-state" id="mapEmptyState" style="display: none;">
-                    <h4>No county data yet</h4>
-                    <p>Set the county and state on each project to unlock bidder coverage.</p>
-                </div>
-                <div class="map-county-list" id="mapCountyList"></div>
                 <div id="mapTooltip" class="map-tooltip" aria-hidden="true"></div>
             </div>
         </div>
