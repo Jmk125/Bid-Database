@@ -1403,13 +1403,23 @@ function handleCountyHover(event, feature) {
     }
 
     const [x, y] = d3.pointer(event, mapContainerElement);
-    const pkgCount = entry ? Number(entry.package_count) || 0 : 0;
-    const projectCount = entry ? Number(entry.project_count) || 0 : 0;
-    const bidderCount = entry ? Number(entry.bidder_count || entry.bidders?.size || 0) : 0;
-    mapTooltip.innerHTML = `
-        <strong>${escapeHtml(meta.county_name)}</strong>, ${escapeHtml(meta.state_code)}<br>
-        ${pkgCount} package${pkgCount === 1 ? '' : 's'} • ${projectCount} project${projectCount === 1 ? '' : 's'}${bidderCount ? ` • ${bidderCount} bidder${bidderCount === 1 ? '' : 's'}` : ' • No bids recorded'}
-    `;
+    const hasActiveCountyData = activeCountyData.size > 0;
+
+    if (!hasActiveCountyData) {
+        mapTooltip.innerHTML = `<strong>${escapeHtml(meta.county_name)}</strong>, ${escapeHtml(meta.state_code)}`;
+    } else {
+        const pkgCount = entry ? Number(entry.package_count) || 0 : 0;
+        const projectCount = entry ? Number(entry.project_count) || 0 : 0;
+        const bidderCount = entry ? Number(entry.bidder_count || entry.bidders?.size || 0) : 0;
+        const bidderText = bidderCount
+            ? ` • ${bidderCount} bidder${bidderCount === 1 ? '' : 's'}`
+            : ' • No bids recorded';
+
+        mapTooltip.innerHTML = `
+            <strong>${escapeHtml(meta.county_name)}</strong>, ${escapeHtml(meta.state_code)}<br>
+            ${pkgCount} package${pkgCount === 1 ? '' : 's'} • ${projectCount} project${projectCount === 1 ? '' : 's'}${bidderText}
+        `;
+    }
     mapTooltip.style.left = `${x}px`;
     mapTooltip.style.top = `${y}px`;
     mapTooltip.style.opacity = 1;
