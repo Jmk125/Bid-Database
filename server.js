@@ -2644,6 +2644,40 @@ app.get('/api/bidders', (req, res) => {
   res.json(bidders);
 });
 
+app.delete('/api/bidders/:id', (req, res) => {
+  const db = getDatabase();
+  const bidderId = Number(req.params.id);
+
+  if (!Number.isFinite(bidderId)) {
+    return res.status(400).json({ error: 'A valid bidder id is required.' });
+  }
+
+  const existing = db.exec('SELECT id FROM bidders WHERE id = ? LIMIT 1', [bidderId]);
+  if (existing.length === 0 || existing[0].values.length === 0) {
+    return res.status(404).json({ error: 'Bidder not found.' });
+  }
+
+  const bidCountResult = db.exec('SELECT COUNT(*) FROM bids WHERE bidder_id = ?', [bidderId]);
+  const bidCount = bidCountResult[0]?.values?.[0]?.[0] || 0;
+
+  const aliasCountResult = db.exec('SELECT COUNT(*) FROM bidder_aliases WHERE bidder_id = ?', [bidderId]);
+  const aliasCount = aliasCountResult[0]?.values?.[0]?.[0] || 0;
+
+  db.run('UPDATE packages SET selected_bidder_id = NULL WHERE selected_bidder_id = ?', [bidderId]);
+  db.run('UPDATE bid_event_bidders SET assigned_bidder_id = NULL WHERE assigned_bidder_id = ?', [bidderId]);
+  db.run('DELETE FROM bids WHERE bidder_id = ?', [bidderId]);
+  db.run('DELETE FROM bidder_aliases WHERE bidder_id = ?', [bidderId]);
+  db.run('DELETE FROM bidders WHERE id = ?', [bidderId]);
+
+  saveDatabase();
+
+  res.json({
+    success: true,
+    removed_bids: bidCount,
+    removed_aliases: aliasCount
+  });
+});
+
 app.get('/api/bidders/:id/history', (req, res) => {
   const db = getDatabase();
   const bidderId = req.params.id;

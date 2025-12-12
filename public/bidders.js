@@ -15,6 +15,8 @@ let allBidders = [];
 let selectedBidders = new Set();
 let currentBidderHistory = [];
 let bidderHistorySort = { field: 'project_date', direction: 'desc' };
+let activeBidderId = null;
+let activeBidderName = '';
 let activeBiddersTab = 'list';
 let bidderListSort = { field: 'name', direction: 'asc' };
 let bidderActivityData = [];
@@ -62,6 +64,7 @@ async function loadBidders() {
 
         allBidders = bidders.map(bidder => ({
             ...bidder,
+            bid_count: Number(bidder.bid_count) || 0,
             aliases: Array.isArray(bidder.aliases) ? bidder.aliases : [],
             packages: Array.isArray(bidder.packages) ? bidder.packages : [],
             project_counties: Array.isArray(bidder.project_counties) ? bidder.project_counties : []
@@ -156,6 +159,14 @@ function displayBidders(filter = '', packageFilter = '', countyFilter = '') {
             return countyA.localeCompare(countyB) * direction;
         }
 
+        if (bidderListSort.field === 'bids') {
+            const bidsA = Number(a.bid_count) || 0;
+            const bidsB = Number(b.bid_count) || 0;
+            if (bidsA !== bidsB) {
+                return (bidsA - bidsB) * direction;
+            }
+        }
+
         return a.canonical_name.localeCompare(b.canonical_name) * direction;
     });
 
@@ -187,10 +198,11 @@ function displayBidders(filter = '', packageFilter = '', countyFilter = '') {
                     : '—'}
             </td>
             <td>${bidder.bid_count || 0}</td>
-            <td>
+            <td class="bidder-actions-cell">
                 <button class="btn btn-small btn-secondary" onclick="viewBidderDetail(${bidder.id}, '${escapeHtml(bidder.canonical_name)}')">
                     View Details
                 </button>
+                <button type="button" class="bidder-delete-btn" data-bidder-id="${bidder.id}" data-bidder-name="${escapeHtml(bidder.canonical_name)}" aria-label="Delete ${escapeHtml(bidder.canonical_name)}">×</button>
             </td>
         </tr>
     `).join('');
@@ -198,6 +210,14 @@ function displayBidders(filter = '', packageFilter = '', countyFilter = '') {
     // Attach checkbox event listeners
     document.querySelectorAll('.bidder-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', handleCheckboxChange);
+    });
+
+    document.querySelectorAll('.bidder-delete-btn').forEach(button => {
+        button.addEventListener('click', (event) => {
+            const bidderId = Number(event.currentTarget.dataset.bidderId);
+            const bidderName = event.currentTarget.dataset.bidderName || 'this bidder';
+            deleteBidder(bidderId, bidderName);
+        });
     });
 
     updateBidderListSortIndicators();
@@ -213,7 +233,7 @@ function setBidderListSort(field) {
     } else {
         bidderListSort = {
             field,
-            direction: 'asc'
+            direction: field === 'bids' ? 'desc' : 'asc'
         };
     }
 
@@ -234,6 +254,41 @@ function updateBidderListSortIndicators() {
             indicator.textContent = '';
         }
     });
+}
+
+async function deleteBidder(bidderId, bidderName) {
+    if (!Number.isFinite(bidderId)) {
+        return;
+    }
+
+    const confirmation = confirm(
+        `Delete "${bidderName}" and remove their bids from the database?\n\n` +
+        'This will clear any selections, aliases, and bids tied to this bidder.'
+    );
+
+    if (!confirmation) {
+        return;
+    }
+
+    try {
+        const response = await apiFetch(`${API_BASE}/bidders/${bidderId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('Delete request was not successful');
+        }
+
+        alert(`Deleted ${bidderName}.`);
+        selectedBidders.delete(bidderId);
+        if (activeBidderId === bidderId) {
+            closeBidderDetail();
+        }
+        loadBidders();
+    } catch (error) {
+        console.error('Failed to delete bidder:', error);
+        alert('Unable to delete this bidder right now. Please try again.');
+    }
 }
 
 // Handle checkbox selection
@@ -281,6 +336,14 @@ function updateMergeSection() {
 async function viewBidderDetail(bidderId, bidderName) {
     document.getElementById('bidderDetailName').textContent = `${bidderName} - Bid History`;
     document.getElementById('bidderDetail').style.display = 'block';
+    activeBidderId = bidderId;
+    activeBidderName = bidderName;
+
+    const mapButton = document.getElementById('bidderMapButton');
+    if (mapButton) {
+        mapButton.style.display = 'inline-flex';
+        mapButton.disabled = false;
+    }
 
     // Scroll to the details section
     setTimeout(() => {
@@ -307,15 +370,25 @@ async function viewBidderDetail(bidderId, bidderName) {
         if (metrics) {
             metrics.style.display = 'none';
         }
+        const mapButton = document.getElementById('bidderMapButton');
+        if (mapButton) {
+            mapButton.style.display = 'none';
+        }
     }
 }
 
 function closeBidderDetail() {
     document.getElementById('bidderDetail').style.display = 'none';
     currentBidderHistory = [];
+    activeBidderId = null;
+    activeBidderName = '';
     const metrics = document.getElementById('bidderMetrics');
     if (metrics) {
         metrics.style.display = 'none';
+    }
+    const mapButton = document.getElementById('bidderMapButton');
+    if (mapButton) {
+        mapButton.style.display = 'none';
     }
 }
 
@@ -898,6 +971,28 @@ function setBiddersTab(tab) {
         }
     } else if (tab === 'activity') {
         ensureBidderActivityLoaded();
+    }
+}
+
+async function focusBidderOnMap(bidderId) {
+    if (!bidderId) {
+        return;
+    }
+
+    selectedMapBidderIds = new Set([String(bidderId)]);
+    packageSelectionBidderIds = new Set();
+    populateMapBidderSelect();
+    populateMapPackageSelect();
+    setBiddersTab('map');
+
+    const combined = getCombinedMapBidderIds();
+    syncMapBidderSelect(combined);
+
+    try {
+        await initializeMapView();
+        renderSelectedBiddersCountyActivity(combined);
+    } catch (error) {
+        console.error('Unable to show bidder on map:', error);
     }
 }
 
@@ -1758,6 +1853,15 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.bidder-list-sort').forEach(button => {
         button.addEventListener('click', () => setBidderListSort(button.dataset.listSort));
     });
+
+    const bidderMapButton = document.getElementById('bidderMapButton');
+    if (bidderMapButton) {
+        bidderMapButton.addEventListener('click', () => {
+            if (activeBidderId) {
+                focusBidderOnMap(activeBidderId);
+            }
+        });
+    }
 
     const mapSelect = document.getElementById('mapBidderSelect');
     if (mapSelect) {

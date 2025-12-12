@@ -62,7 +62,12 @@
                                     <span class="sort-indicator" aria-hidden="true"></span>
                                 </button>
                             </th>
-                            <th>Total Bids</th>
+                            <th>
+                                <button type="button" class="sortable-header bidder-list-sort" data-list-sort="bids">
+                                    Total Bids
+                                    <span class="sort-indicator" aria-hidden="true"></span>
+                                </button>
+                            </th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -113,7 +118,10 @@
                         </div>
                     </div>
 
-                    <h4 style="margin-bottom: 0.5rem;">Bid History</h4>
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; gap: 1rem;">
+                        <h4 style="margin: 0;">Bid History</h4>
+                        <button type="button" id="bidderMapButton" class="btn btn-secondary btn-small" style="display: none;">See map</button>
+                    </div>
                     <table id="bidderBidsTable">
                         <thead>
                             <tr>

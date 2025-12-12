@@ -1958,3 +1958,30 @@ tr:hover {
     color: #7f8c8d;
     margin-top: 0.25rem;
 }
+
+.bidder-actions-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+}
+
+.bidder-delete-btn {
+    background: none;
+    border: none;
+    color: #9aa0a6;
+    padding: 0;
+    line-height: 1;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.bidder-delete-btn:hover {
+    color: #c0392b;
+}
+
+.bidder-delete-btn:focus-visible {
+    outline: 2px solid #c0392b;
+    outline-offset: 2px;
+    border-radius: 2px;
+}
