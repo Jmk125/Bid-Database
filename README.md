@@ -90,6 +90,16 @@ Restart the server so the new value is picked up. You can also set `EDIT_KEY` (o
 
 The UI prompts for the key the first time you attempt to make a change and stores it in session storage until you click the "🔓/🔒" toggle in the navigation bar to lock the session again.
 
+### Hiding bidders from reporting views
+
+If you need to collect bids from a subcontractor but want them excluded from bidder dashboards, activity lists, and county maps, set the `REPORTING_BIDDER_EXCLUSIONS` environment variable in your `.env` file. Provide canonical bidder names separated by commas, semicolons, pipes, or new lines:
+
+```bash
+REPORTING_BIDDER_EXCLUSIONS="XYZ Construction,ACME Concrete"
+```
+
+Excluded bidders will still appear on project-level bid tabs so you can track their submissions, but they will be omitted from cross-project reporting endpoints.
+
 ### Adding a Project
 
 1. Click "+ Add Project" on the main page

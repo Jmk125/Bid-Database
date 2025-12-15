@@ -21,6 +21,28 @@ const EDIT_KEY_HEADER = 'x-edit-key';
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const BIDDER_AUTO_MATCH_THRESHOLD = 0.9;
 const BIDDER_SUGGESTION_LIMIT = 6;
+const REPORTING_BIDDER_EXCLUSIONS = parseExclusionList(process.env.REPORTING_BIDDER_EXCLUSIONS);
+
+function parseExclusionList(rawValue) {
+  if (!rawValue) {
+    return new Set();
+  }
+
+  return new Set(
+    String(rawValue)
+      .split(/[\n,;|]/)
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function isBidderExcluded(bidderName) {
+  if (!bidderName || REPORTING_BIDDER_EXCLUSIONS.size === 0) {
+    return false;
+  }
+
+  return REPORTING_BIDDER_EXCLUSIONS.has(String(bidderName).trim().toLowerCase());
+}
 
 function toFiniteNumber(value) {
   if (value == null) {
@@ -95,6 +117,19 @@ function parseIdList(value) {
     .split(',')
     .map((part) => Number(part.trim()))
     .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+function isBidderIdExcluded(db, bidderId) {
+  if (!Number.isFinite(bidderId)) {
+    return false;
+  }
+
+  const result = db.exec('SELECT canonical_name FROM bidders WHERE id = ? LIMIT 1', [bidderId]);
+  const canonicalName = result.length > 0 && result[0].values.length > 0
+    ? result[0].values[0][0]
+    : null;
+
+  return isBidderExcluded(canonicalName);
 }
 
 function buildProjectDateFilters(req, columnName = 'project_date') {
@@ -2585,7 +2620,7 @@ app.get('/api/aggregate/bidders', (req, res) => {
       awarded_amount: awardedAmount,
       packages
     };
-  });
+  }).filter(bidder => !isBidderExcluded(bidder.bidder_name));
   
   res.json(bidders);
 });
@@ -2667,7 +2702,7 @@ app.get('/api/bidders', (req, res) => {
         state: state || null
       }))
     };
-  });
+  }).filter(bidder => !isBidderExcluded(bidder.canonical_name));
 
   res.json(bidders);
 });
@@ -2708,7 +2743,15 @@ app.delete('/api/bidders/:id', (req, res) => {
 
 app.get('/api/bidders/:id/history', (req, res) => {
   const db = getDatabase();
-  const bidderId = req.params.id;
+  const bidderId = Number(req.params.id);
+
+  if (!Number.isFinite(bidderId)) {
+    return res.status(400).json({ error: 'A valid bidder id is required.' });
+  }
+
+  if (isBidderIdExcluded(db, bidderId)) {
+    return res.status(404).json({ error: 'Bidder not available for reporting.' });
+  }
 
   const query = db.exec(`
     WITH bidder_stats AS (
@@ -2781,7 +2824,15 @@ app.get('/api/bidders/:id/history', (req, res) => {
 
 app.get('/api/bidders/:id/counties', (req, res) => {
   const db = getDatabase();
-  const bidderId = req.params.id;
+  const bidderId = Number(req.params.id);
+
+  if (!Number.isFinite(bidderId)) {
+    return res.status(400).json({ error: 'A valid bidder id is required.' });
+  }
+
+  if (isBidderIdExcluded(db, bidderId)) {
+    return res.status(404).json({ error: 'Bidder not available for reporting.' });
+  }
 
   const query = db.exec(`
     SELECT
@@ -2854,7 +2905,7 @@ app.get('/api/counties/bidders', (req, res) => {
     canonical_name: row[1],
     bid_count: row[2],
     package_count: row[3]
-  }));
+  })).filter(row => !isBidderExcluded(row.canonical_name));
 
   res.json(rows);
 });
