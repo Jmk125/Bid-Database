@@ -2790,7 +2790,9 @@ app.get('/api/bidders/:id/counties', (req, res) => {
       COUNT(DISTINCT pkg.id) AS package_count,
       COUNT(DISTINCT proj.id) AS project_count,
       COUNT(b.id) AS bid_submissions,
-      MAX(proj.project_date) AS latest_project_date
+      MAX(proj.project_date) AS latest_project_date,
+      GROUP_CONCAT(DISTINCT pkg.id) AS package_ids,
+      GROUP_CONCAT(DISTINCT proj.id) AS project_ids
     FROM bids b
     JOIN packages pkg ON pkg.id = b.package_id
     JOIN projects proj ON proj.id = pkg.project_id
@@ -2810,7 +2812,9 @@ app.get('/api/bidders/:id/counties', (req, res) => {
     package_count: row[2],
     project_count: row[3],
     bid_submissions: row[4],
-    latest_project_date: row[5]
+    latest_project_date: row[5],
+    package_ids: (row[6] || '').split(',').filter(Boolean).map(Number),
+    project_ids: (row[7] || '').split(',').filter(Boolean).map(Number)
   }));
 
   res.json(rows);

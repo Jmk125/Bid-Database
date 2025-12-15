@@ -11,6 +11,19 @@ const STATE_FIPS_BY_CODE = {
 
 const STATE_CODE_BY_FIPS = Object.fromEntries(Object.entries(STATE_FIPS_BY_CODE).map(([code, fips]) => [fips, code]));
 
+function parseIdList(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+        return value
+            .map(Number)
+            .filter(Number.isFinite);
+    }
+    return String(value)
+        .split(',')
+        .map(part => Number(part))
+        .filter(Number.isFinite);
+}
+
 let allBidders = [];
 let selectedBidders = new Set();
 let currentBidderHistory = [];
@@ -1291,6 +1304,11 @@ async function loadBidderCountyActivity(bidderId) {
     const payload = await response.json();
     const sanitized = Array.isArray(payload)
         ? payload.filter(item => item?.county_name && item?.state_code)
+            .map(item => ({
+                ...item,
+                package_ids: parseIdList(item.package_ids),
+                project_ids: parseIdList(item.project_ids)
+            }))
         : [];
 
     countyActivityCache.set(cacheKey, sanitized);
@@ -1348,19 +1366,24 @@ async function combineBidderCountyData(bidderIds) {
                 return;
             }
 
+            const packageIds = parseIdList(entry.package_ids);
+            const projectIds = parseIdList(entry.project_ids);
+
             if (!aggregated.has(key)) {
                 aggregated.set(key, {
-                    ...entry,
-                    package_count: 0,
-                    project_count: 0,
+                    county_name: entry.county_name,
+                    state_code: entry.state_code,
+                    package_ids: new Set(),
+                    project_ids: new Set(),
                     bid_submissions: 0,
+                    latest_project_date: entry.latest_project_date,
                     bidders: new Set()
                 });
             }
 
             const agg = aggregated.get(key);
-            agg.package_count += Number(entry.package_count) || 0;
-            agg.project_count += Number(entry.project_count) || 0;
+            packageIds.forEach(id => agg.package_ids.add(id));
+            projectIds.forEach(id => agg.project_ids.add(id));
             agg.bid_submissions += Number(entry.bid_submissions) || 0;
             agg.latest_project_date = latestDate(agg.latest_project_date, entry.latest_project_date);
             agg.bidders.add(String(bidderId));
@@ -1368,7 +1391,13 @@ async function combineBidderCountyData(bidderIds) {
     }
 
     return Array.from(aggregated.values()).map(entry => ({
-        ...entry,
+        county_name: entry.county_name,
+        state_code: entry.state_code,
+        package_count: entry.package_ids.size || 0,
+        project_count: entry.project_ids.size || 0,
+        bid_submissions: entry.bid_submissions,
+        latest_project_date: entry.latest_project_date,
+        bidders: entry.bidders,
         bidder_count: entry.bidders.size
     }));
 }
