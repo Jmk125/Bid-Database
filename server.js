@@ -1735,6 +1735,22 @@ async function parseBidTab(workbook, projectId, filename) {
   const db = getDatabase();
   const XLSX = require('xlsx');
 
+  const previousPackageCountQuery = db.exec(
+    `SELECT MAX(package_count) FROM (
+       SELECT COUNT(*) as package_count
+       FROM packages p
+       INNER JOIN bid_events e ON p.bid_event_id = e.id
+       WHERE e.project_id = ?
+       GROUP BY p.bid_event_id
+     )`,
+    [projectId]
+  );
+
+  const previousMaxPackageCount =
+    previousPackageCountQuery.length > 0 && previousPackageCountQuery[0].values.length > 0
+      ? previousPackageCountQuery[0].values[0][0]
+      : null;
+
   const gmpEstimates = extractGmpEstimates(workbook, XLSX);
   const bidderDirectory = loadBidderDirectory(db);
   const reviewStats = { total_bids: 0, flagged_bids: 0, new_bidders: 0 };
@@ -1770,27 +1786,12 @@ async function parseBidTab(workbook, projectId, filename) {
     if (gmpSheet['D3']) {
       building_sf = parseFloat(gmpSheet['D3'].v);
     }
-    
-    // Update project if we found these values
-    if (project_date || building_sf) {
-      const updates = [];
-      const values = [];
-      
-      if (project_date) {
-        updates.push('project_date = ?');
-        values.push(project_date);
-      }
-      
-      if (building_sf) {
-        updates.push('building_sf = ?');
-        values.push(building_sf);
-      }
-      
-      values.push(projectId);
-      
+
+    // Update project SF immediately if available
+    if (building_sf) {
       db.run(
-        `UPDATE projects SET ${updates.join(', ')}, modified_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        values
+        'UPDATE projects SET building_sf = ?, modified_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [building_sf, projectId]
       );
     }
   }
@@ -1908,9 +1909,21 @@ async function parseBidTab(workbook, projectId, filename) {
       });
     }
   }
-  
+
+  if (project_date) {
+    const shouldUpdateProjectDate =
+      previousMaxPackageCount == null || packagesAdded.length > previousMaxPackageCount;
+
+    if (shouldUpdateProjectDate) {
+      db.run(
+        'UPDATE projects SET project_date = ?, modified_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [project_date, projectId]
+      );
+    }
+  }
+
   saveDatabase();
-  
+
   return {
     success: true,
     bid_event_id: bidEventId,
