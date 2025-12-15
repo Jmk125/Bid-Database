@@ -2016,10 +2016,25 @@ function getBidderReviewPayload(db, bidEventId) {
         const matchType = row[9] || 'legacy';
         const matchConfidence = row[8] != null ? Number(row[8]) : (matchType === 'legacy' ? 1 : 0);
         const wasAutoCreated = row[10] ? true : false;
-        const suggestions = buildBidderSuggestions(directory, rawName);
+        const assignedConfidence = matchConfidence != null ? Number(matchConfidence.toFixed(3)) : 1;
+        let suggestions = buildBidderSuggestions(directory, rawName);
 
         if (bidderId && !suggestions.some(s => s.bidder_id === bidderId)) {
-          suggestions.unshift({ bidder_id: bidderId, name: bidderName || rawName || 'Assigned Bidder', confidence: 1 });
+          suggestions.push({ bidder_id: bidderId, name: bidderName || rawName || 'Assigned Bidder', confidence: assignedConfidence });
+        }
+
+        suggestions.sort((a, b) => b.confidence - a.confidence || a.name.localeCompare(b.name));
+
+        if (suggestions.length > BIDDER_SUGGESTION_LIMIT) {
+          suggestions = suggestions.slice(0, BIDDER_SUGGESTION_LIMIT);
+          if (bidderId && !suggestions.some(s => s.bidder_id === bidderId)) {
+            suggestions[suggestions.length - 1] = {
+              bidder_id: bidderId,
+              name: bidderName || rawName || 'Assigned Bidder',
+              confidence: assignedConfidence
+            };
+            suggestions.sort((a, b) => b.confidence - a.confidence || a.name.localeCompare(b.name));
+          }
         }
 
         const needsReview = Boolean(
