@@ -1419,12 +1419,25 @@ function updateMapBidderSummary(bidderIds, data) {
         return;
     }
 
+    const selectedBidders = bidderIds
+        .map(id => allBidders.find(b => String(b.id) === String(id))?.canonical_name)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b));
+
+    const bidderListHtml = selectedBidders.length
+        ? `
+            <div class="map-bidder-list" role="list" aria-label="Selected bidders">
+                ${selectedBidders.map(name => `<span role="listitem">${escapeHtml(name)}</span>`).join('')}
+            </div>
+        `
+        : '';
+
     if (!data.length) {
-        const bidderNames = bidderIds
-            .map(id => allBidders.find(b => String(b.id) === String(id))?.canonical_name)
-            .filter(Boolean)
-            .join(', ');
-        summary.innerHTML = `<h4>${escapeHtml(bidderNames || 'Selected bidders')}</h4><p>No county-level bids recorded yet.</p>`;
+        summary.innerHTML = `
+            <h4>${selectedBidders.length === 1 ? '1 bidder selected' : `${selectedBidders.length} bidders selected`}</h4>
+            <p>No county-level bids recorded yet.</p>
+            ${bidderListHtml}
+        `;
         return;
     }
 
@@ -1435,6 +1448,7 @@ function updateMapBidderSummary(bidderIds, data) {
         <h4>${uniqueBidders === 1 ? '1 bidder selected' : `${uniqueBidders} bidders selected`}</h4>
         <p>${totalPackages} package${totalPackages === 1 ? '' : 's'} across ${data.length} count${data.length === 1 ? 'y' : 'ies'}
         (${totalProjects} project${totalProjects === 1 ? '' : 's'}).</p>
+        ${bidderListHtml}
     `;
 }
 
