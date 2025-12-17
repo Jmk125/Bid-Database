@@ -130,7 +130,9 @@ const METRIC_OPTIONS = {
         format: formatCurrency,
         scope: METRIC_SCOPES.PROJECT,
         stacked: true,
-        buildChartData: (projects) => buildGmpOverlayChartData(projects, 'median', 'Median')
+        overlayTarget: 'median',
+        buildChartData: (projects) => buildGmpOverlayChartData(projects, 'median', 'Median'),
+        tooltipFormatter: (context) => buildGmpOverlayTooltip(context, 'median')
     },
     gmp_selected_low_overlay: {
         label: 'GMP Selected Low Overlay',
@@ -138,7 +140,29 @@ const METRIC_OPTIONS = {
         format: formatCurrency,
         scope: METRIC_SCOPES.PROJECT,
         stacked: true,
-        buildChartData: (projects) => buildGmpOverlayChartData(projects, 'low', 'Selected low')
+        overlayTarget: 'low',
+        buildChartData: (projects) => buildGmpOverlayChartData(projects, 'low', 'Selected low'),
+        tooltipFormatter: (context) => buildGmpOverlayTooltip(context, 'low')
+    },
+    gmp_median_overlay_percentage: {
+        label: 'GMP Median Overlay %',
+        description: 'Shows GMP versus median totals as stacked percentages, highlighting overages and savings.',
+        format: formatPercentage,
+        scope: METRIC_SCOPES.PROJECT,
+        stacked: true,
+        overlayTarget: 'median',
+        buildChartData: (projects) => buildGmpOverlayChartData(projects, 'median', 'Median', true),
+        tooltipFormatter: (context) => buildGmpOverlayTooltip(context, 'median', true)
+    },
+    gmp_selected_low_overlay_percentage: {
+        label: 'GMP Selected Low Overlay %',
+        description: 'Shows GMP versus selected low totals as stacked percentages, highlighting overages and savings.',
+        format: formatPercentage,
+        scope: METRIC_SCOPES.PROJECT,
+        stacked: true,
+        overlayTarget: 'low',
+        buildChartData: (projects) => buildGmpOverlayChartData(projects, 'low', 'Selected low', true),
+        tooltipFormatter: (context) => buildGmpOverlayTooltip(context, 'low', true)
     },
     total_bid_count: {
         label: 'Total bids',
@@ -506,7 +530,9 @@ const METRIC_GROUPS = [
             'low_to_median_total_delta',
             'low_to_median_total_delta_percentage',
             'gmp_median_overlay',
-            'gmp_selected_low_overlay'
+            'gmp_selected_low_overlay',
+            'gmp_median_overlay_percentage',
+            'gmp_selected_low_overlay_percentage'
         ]
     },
     {
@@ -812,61 +838,129 @@ function buildProjectMetricData(projects, metricConfig) {
     };
 }
 
-function buildGmpOverlayChartData(projects, targetKey, targetLabel) {
+function buildGmpOverlayChartData(projects, targetKey, targetLabel, asPercentage = false) {
     const targetAccessor = {
         median: (totals) => (totals.hasMedian ? totals.medianTotal : null),
         low: (totals) => (totals.hasLow ? totals.lowTotal : null)
     }[targetKey];
 
+    const totalsByProject = projects.map((project) => computeProjectBudgetTotals(project));
+
+    const mapValue = (projectIndex, mapper) => {
+        const totals = totalsByProject[projectIndex];
+        const targetTotal = targetAccessor ? targetAccessor(totals) : null;
+        if (!totals.hasGmp || targetTotal == null) {
+            return null;
+        }
+        if (asPercentage) {
+            if (totals.gmpTotal === 0) {
+                return null;
+            }
+            return mapper(totals, targetTotal, targetTotal / totals.gmpTotal);
+        }
+        return mapper(totals, targetTotal, targetTotal);
+    };
+
     return {
         labels: projects.map((project) => project.name),
         datasets: [
             {
-                label: 'GMP portion',
-                data: projects.map((project) => {
-                    const totals = computeProjectBudgetTotals(project);
-                    const targetTotal = targetAccessor ? targetAccessor(totals) : null;
-                    if (!totals.hasGmp || targetTotal == null) {
-                        return null;
-                    }
-                    return Math.min(totals.gmpTotal, targetTotal);
-                }),
+                label: 'GMP total',
+                data: projects.map((_, index) =>
+                    mapValue(index, (totals, targetTotal, targetRatio) => {
+                        if (asPercentage) {
+                            return Math.min(1, targetRatio);
+                        }
+                        return Math.min(totals.gmpTotal, targetTotal);
+                    })
+                ),
                 borderRadius: 6,
                 backgroundColor: GMP_BASE_COLOR,
-                stack: 'gmpOverlay'
+                stack: 'gmpOverlay',
+                projectTotals: totalsByProject
             },
             {
                 label: `${targetLabel} under GMP`,
-                data: projects.map((project) => {
-                    const totals = computeProjectBudgetTotals(project);
-                    const targetTotal = targetAccessor ? targetAccessor(totals) : null;
-                    if (!totals.hasGmp || targetTotal == null) {
-                        return null;
-                    }
-                    const diff = totals.gmpTotal - targetTotal;
-                    return diff > 0 ? diff : 0;
-                }),
+                data: projects.map((_, index) =>
+                    mapValue(index, (totals, targetTotal, targetRatio) => {
+                        const diff = asPercentage ? 1 - targetRatio : totals.gmpTotal - targetTotal;
+                        return diff > 0 ? diff : 0;
+                    })
+                ),
                 borderRadius: 6,
                 backgroundColor: GMP_SAVINGS_COLOR,
-                stack: 'gmpOverlay'
+                stack: 'gmpOverlay',
+                projectTotals: totalsByProject
             },
             {
                 label: `${targetLabel} over GMP`,
-                data: projects.map((project) => {
-                    const totals = computeProjectBudgetTotals(project);
-                    const targetTotal = targetAccessor ? targetAccessor(totals) : null;
-                    if (!totals.hasGmp || targetTotal == null) {
-                        return null;
-                    }
-                    const diff = targetTotal - totals.gmpTotal;
-                    return diff > 0 ? diff : 0;
-                }),
+                data: projects.map((_, index) =>
+                    mapValue(index, (totals, targetTotal, targetRatio) => {
+                        const diff = asPercentage ? targetRatio - 1 : targetTotal - totals.gmpTotal;
+                        return diff > 0 ? diff : 0;
+                    })
+                ),
                 borderRadius: 6,
                 backgroundColor: GMP_OVERAGE_COLOR,
-                stack: 'gmpOverlay'
+                stack: 'gmpOverlay',
+                projectTotals: totalsByProject
             }
         ]
     };
+}
+
+function buildGmpOverlayTooltip(context, targetKey, asPercentage = false) {
+    if (!context) {
+        return null;
+    }
+
+    const targetAccessor = {
+        median: (totals) => (totals.hasMedian ? totals.medianTotal : null),
+        low: (totals) => (totals.hasLow ? totals.lowTotal : null)
+    }[targetKey];
+
+    const projectTotals = context.dataset?.projectTotals;
+    const totals = Array.isArray(projectTotals) ? projectTotals[context.dataIndex] : null;
+    if (!totals || !totals.hasGmp) {
+        return null;
+    }
+
+    const targetTotal = targetAccessor ? targetAccessor(totals) : null;
+    if (targetTotal == null) {
+        return null;
+    }
+
+    const formatter = asPercentage ? formatPercentage : formatCurrency;
+    const gmpValue = asPercentage
+        ? totals.gmpTotal === 0
+            ? null
+            : 1
+        : totals.gmpTotal;
+    const targetValue = asPercentage
+        ? totals.gmpTotal === 0
+            ? null
+            : targetTotal / totals.gmpTotal
+        : targetTotal;
+    const deltaValue = asPercentage
+        ? totals.gmpTotal === 0
+            ? null
+            : (targetTotal - totals.gmpTotal) / totals.gmpTotal
+        : targetTotal - totals.gmpTotal;
+
+    const targetLabel = targetKey === 'low' ? 'Selected low' : 'Median';
+    const lines = [];
+
+    if (gmpValue != null) {
+        lines.push(`GMP total: ${formatter(gmpValue)}`);
+    }
+    if (targetValue != null) {
+        lines.push(`${targetLabel} total: ${formatter(targetValue)}`);
+    }
+    if (deltaValue != null && Number.isFinite(deltaValue)) {
+        lines.push(`Delta: ${formatter(deltaValue)}`);
+    }
+
+    return lines.length ? lines : null;
 }
 
 function buildPackageMetricData(projects, metricConfig) {
@@ -1049,6 +1143,13 @@ function buildComparisonChartOptions(metricConfig) {
             tooltip: {
                 callbacks: {
                     label: (context) => {
+                        if (typeof metricConfig.tooltipFormatter === 'function') {
+                            const custom = metricConfig.tooltipFormatter(context, metricConfig);
+                            if (custom) {
+                                return custom;
+                            }
+                        }
+
                         const value = getNumericValueFromContext(context);
                         const formatted = metricConfig.format(value);
                         const multipleDatasets = (context.chart?.data?.datasets?.length || 0) > 1;
