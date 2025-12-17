@@ -144,6 +144,50 @@ const METRIC_OPTIONS = {
             }, 0);
         }
     },
+    bids_per_package: {
+        label: 'Bids per package',
+        description: 'Average number of bids received per package.',
+        format: formatAverage,
+        scope: METRIC_SCOPES.PROJECT,
+        getValue: (metrics, project) => {
+            if (!project) {
+                return null;
+            }
+
+            const totalBids = (() => {
+                const metricCount = toFiniteNumber(metrics?.total_bid_count);
+                if (metricCount != null) {
+                    return metricCount;
+                }
+                const packages = project.packages || [];
+                if (!packages.length) {
+                    return null;
+                }
+                const aggregated = packages.reduce((sum, pkg) => {
+                    const count = toFiniteNumber(pkg?.bid_count);
+                    return sum + (count != null ? count : 0);
+                }, 0);
+                return aggregated;
+            })();
+
+            const packageCount = (() => {
+                const metricPackages = toFiniteNumber(metrics?.package_count);
+                if (metricPackages != null) {
+                    return metricPackages;
+                }
+                if (Number.isFinite(project.package_count)) {
+                    return project.package_count;
+                }
+                return project.packages?.length ?? null;
+            })();
+
+            if (packageCount == null || packageCount === 0 || totalBids == null) {
+                return null;
+            }
+
+            return totalBids / packageCount;
+        }
+    },
     bid_spread_by_package: {
         label: 'Bid spread by package',
         description: 'Difference between the highest and lowest bid recorded for each package.',
@@ -463,7 +507,7 @@ const METRIC_GROUPS = [
     },
     {
         label: 'Bid volume',
-        metrics: ['total_bid_count', 'bid_count_by_package']
+        metrics: ['total_bid_count', 'bids_per_package', 'bid_count_by_package']
     },
     {
         label: 'Package $/SF',
@@ -1233,6 +1277,13 @@ function formatPercentage(value) {
 
 function formatInteger(value) {
     return formatNumber(value);
+}
+
+function formatAverage(value) {
+    if (!Number.isFinite(value)) {
+        return '—';
+    }
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
 }
 
 function formatNumber(value) {
