@@ -39,6 +39,9 @@ const METRIC_SCOPES = {
 };
 
 const PROJECT_COLORS = ['#3498db', '#e67e22', '#2ecc71', '#9b59b6', '#1abc9c', '#f1c40f', '#e74c3c', '#34495e'];
+const GMP_BASE_COLOR = '#95a5a6';
+const GMP_OVERAGE_COLOR = '#e74c3c';
+const GMP_SAVINGS_COLOR = '#27ae60';
 
 const METRIC_OPTIONS = {
     selected_total: {
@@ -120,6 +123,22 @@ const METRIC_OPTIONS = {
             return (totals.medianTotal - totals.lowTotal) / totals.medianTotal;
         },
         scope: METRIC_SCOPES.PROJECT
+    },
+    gmp_median_overlay: {
+        label: 'GMP Median Overlay',
+        description: 'Shows GMP totals with green savings (GMP above median) or red overages (median above GMP).',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.PROJECT,
+        stacked: true,
+        buildChartData: (projects) => buildGmpOverlayChartData(projects, 'median', 'Median')
+    },
+    gmp_selected_low_overlay: {
+        label: 'GMP Selected Low Overlay',
+        description: 'Shows GMP totals with green savings (GMP above selected low) or red overages (selected low above GMP).',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.PROJECT,
+        stacked: true,
+        buildChartData: (projects) => buildGmpOverlayChartData(projects, 'low', 'Selected low')
     },
     total_bid_count: {
         label: 'Total bids',
@@ -485,7 +504,9 @@ const METRIC_GROUPS = [
             'median_cost_per_sf',
             'low_bid_cost_per_sf',
             'low_to_median_total_delta',
-            'low_to_median_total_delta_percentage'
+            'low_to_median_total_delta_percentage',
+            'gmp_median_overlay',
+            'gmp_selected_low_overlay'
         ]
     },
     {
@@ -728,17 +749,21 @@ function renderComparison(projects) {
     const metricKey = compareMetricSelect.value;
     const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
     let chartData;
-    switch (metricConfig.scope) {
-        case METRIC_SCOPES.PACKAGE:
-            chartData = buildPackageMetricData(projects, metricConfig);
-            break;
-        case METRIC_SCOPES.CATEGORY:
-            chartData = buildCategoryMetricData(projects, metricConfig);
-            break;
-        case METRIC_SCOPES.PROJECT:
-        default:
-            chartData = buildProjectMetricData(projects, metricConfig);
-            break;
+    if (typeof metricConfig.buildChartData === 'function') {
+        chartData = metricConfig.buildChartData(projects);
+    } else {
+        switch (metricConfig.scope) {
+            case METRIC_SCOPES.PACKAGE:
+                chartData = buildPackageMetricData(projects, metricConfig);
+                break;
+            case METRIC_SCOPES.CATEGORY:
+                chartData = buildCategoryMetricData(projects, metricConfig);
+                break;
+            case METRIC_SCOPES.PROJECT:
+            default:
+                chartData = buildProjectMetricData(projects, metricConfig);
+                break;
+        }
     }
 
     updateMetricMetadata(metricKey);
@@ -782,6 +807,63 @@ function buildProjectMetricData(projects, metricConfig) {
                 data: projects.map((project) => metricConfig.getValue(project.metrics || {}, project)),
                 borderRadius: 6,
                 backgroundColor: '#3498db'
+            }
+        ]
+    };
+}
+
+function buildGmpOverlayChartData(projects, targetKey, targetLabel) {
+    const targetAccessor = {
+        median: (totals) => (totals.hasMedian ? totals.medianTotal : null),
+        low: (totals) => (totals.hasLow ? totals.lowTotal : null)
+    }[targetKey];
+
+    return {
+        labels: projects.map((project) => project.name),
+        datasets: [
+            {
+                label: 'GMP portion',
+                data: projects.map((project) => {
+                    const totals = computeProjectBudgetTotals(project);
+                    const targetTotal = targetAccessor ? targetAccessor(totals) : null;
+                    if (!totals.hasGmp || targetTotal == null) {
+                        return null;
+                    }
+                    return Math.min(totals.gmpTotal, targetTotal);
+                }),
+                borderRadius: 6,
+                backgroundColor: GMP_BASE_COLOR,
+                stack: 'gmpOverlay'
+            },
+            {
+                label: `${targetLabel} under GMP`,
+                data: projects.map((project) => {
+                    const totals = computeProjectBudgetTotals(project);
+                    const targetTotal = targetAccessor ? targetAccessor(totals) : null;
+                    if (!totals.hasGmp || targetTotal == null) {
+                        return null;
+                    }
+                    const diff = totals.gmpTotal - targetTotal;
+                    return diff > 0 ? diff : 0;
+                }),
+                borderRadius: 6,
+                backgroundColor: GMP_SAVINGS_COLOR,
+                stack: 'gmpOverlay'
+            },
+            {
+                label: `${targetLabel} over GMP`,
+                data: projects.map((project) => {
+                    const totals = computeProjectBudgetTotals(project);
+                    const targetTotal = targetAccessor ? targetAccessor(totals) : null;
+                    if (!totals.hasGmp || targetTotal == null) {
+                        return null;
+                    }
+                    const diff = targetTotal - totals.gmpTotal;
+                    return diff > 0 ? diff : 0;
+                }),
+                borderRadius: 6,
+                backgroundColor: GMP_OVERAGE_COLOR,
+                stack: 'gmpOverlay'
             }
         ]
     };
@@ -958,6 +1040,7 @@ function buildComparisonChartOptions(metricConfig) {
     const xAxisConfig = isMultiEntryScope
         ? { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } }
         : { ticks: { autoSkip: true } };
+    const stacked = metricConfig.stacked === true;
     return {
         responsive: true,
         maintainAspectRatio: false,
@@ -968,7 +1051,8 @@ function buildComparisonChartOptions(metricConfig) {
                     label: (context) => {
                         const value = getNumericValueFromContext(context);
                         const formatted = metricConfig.format(value);
-                        if (isMultiEntryScope) {
+                        const multipleDatasets = (context.chart?.data?.datasets?.length || 0) > 1;
+                        if (isMultiEntryScope || multipleDatasets) {
                             const datasetLabel = context.dataset?.label ? `${context.dataset.label}: ` : '';
                             return `${datasetLabel}${formatted}`;
                         }
@@ -985,9 +1069,10 @@ function buildComparisonChartOptions(metricConfig) {
                 ticks: {
                     callback: (value) => metricConfig.format(value)
                 },
-                beginAtZero: true
+                beginAtZero: true,
+                stacked
             },
-            x: xAxisConfig
+            x: stacked ? { ...xAxisConfig, stacked: true } : xAxisConfig
         }
     };
 }
