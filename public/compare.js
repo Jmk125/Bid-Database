@@ -95,6 +95,32 @@ const METRIC_OPTIONS = {
         getValue: (metrics) => metrics?.low_bid_cost_per_sf ?? 0,
         scope: METRIC_SCOPES.PROJECT
     },
+    low_to_median_total_delta: {
+        label: 'Low to Median delta (total)',
+        description: 'Total median bid minus total low bid for each project.',
+        format: formatCurrency,
+        getValue: (_, project) => {
+            const totals = computeProjectBudgetTotals(project);
+            if (!totals.hasMedian || !totals.hasLow) {
+                return null;
+            }
+            return totals.medianTotal - totals.lowTotal;
+        },
+        scope: METRIC_SCOPES.PROJECT
+    },
+    low_to_median_total_delta_percentage: {
+        label: 'Low to Median delta % (total)',
+        description: 'Total median bid minus total low bid shown as a percentage of the median total.',
+        format: formatPercentage,
+        getValue: (_, project) => {
+            const totals = computeProjectBudgetTotals(project);
+            if (!totals.hasMedian || totals.medianTotal === 0 || !totals.hasLow) {
+                return null;
+            }
+            return (totals.medianTotal - totals.lowTotal) / totals.medianTotal;
+        },
+        scope: METRIC_SCOPES.PROJECT
+    },
     bid_spread_by_package: {
         label: 'Bid spread by package',
         description: 'Difference between the highest and lowest bid recorded for each package.',
@@ -386,7 +412,14 @@ const METRIC_OPTIONS = {
 const METRIC_GROUPS = [
     {
         label: 'Project totals',
-        metrics: ['selected_total', 'selected_cost_per_sf', 'median_cost_per_sf', 'low_bid_cost_per_sf']
+        metrics: [
+            'selected_total',
+            'selected_cost_per_sf',
+            'median_cost_per_sf',
+            'low_bid_cost_per_sf',
+            'low_to_median_total_delta',
+            'low_to_median_total_delta_percentage'
+        ]
     },
     {
         label: 'GMP totals',
@@ -429,6 +462,14 @@ const METRIC_GROUPS = [
 ];
 
 function computeProjectBudgetTotals(project) {
+    const getSelectedLowBid = (pkg) => {
+        const selected = toFiniteNumber(pkg.selected_amount);
+        if (selected != null) {
+            return selected;
+        }
+        return toFiniteNumber(pkg.low_bid);
+    };
+
     const totals = {
         gmpTotal: 0,
         selectedTotal: 0,
@@ -444,7 +485,7 @@ function computeProjectBudgetTotals(project) {
         const gmp = toFiniteNumber(pkg.gmp_amount);
         const selected = toFiniteNumber(pkg.selected_amount);
         const median = toFiniteNumber(pkg.median_bid);
-        const low = toFiniteNumber(pkg.low_bid);
+        const low = getSelectedLowBid(pkg);
 
         if (gmp != null) {
             totals.gmpTotal += gmp;
