@@ -121,6 +121,29 @@ const METRIC_OPTIONS = {
         },
         scope: METRIC_SCOPES.PROJECT
     },
+    total_bid_count: {
+        label: 'Total bids',
+        description: 'Total number of bids submitted across all packages.',
+        format: formatInteger,
+        scope: METRIC_SCOPES.PROJECT,
+        getValue: (metrics, project) => {
+            if (!project) {
+                return null;
+            }
+            const metricCount = toFiniteNumber(metrics?.total_bid_count);
+            if (metricCount != null) {
+                return metricCount;
+            }
+            const packages = project.packages || [];
+            if (!packages.length) {
+                return 0;
+            }
+            return packages.reduce((sum, pkg) => {
+                const count = toFiniteNumber(pkg?.bid_count);
+                return sum + (count != null ? count : 0);
+            }, 0);
+        }
+    },
     bid_spread_by_package: {
         label: 'Bid spread by package',
         description: 'Difference between the highest and lowest bid recorded for each package.',
@@ -440,7 +463,7 @@ const METRIC_GROUPS = [
     },
     {
         label: 'Bid volume',
-        metrics: ['bid_count_by_package']
+        metrics: ['total_bid_count', 'bid_count_by_package']
     },
     {
         label: 'Package $/SF',

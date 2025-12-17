@@ -201,7 +201,8 @@ function normalizeValidationMetrics(metrics) {
     low_bid_total: roundToTwo(metrics.low_bid_total),
     low_bid_cost_per_sf: roundToTwo(metrics.low_bid_cost_per_sf),
     median_bid_total: roundToTwo(metrics.median_bid_total),
-    median_bid_cost_per_sf: roundToTwo(metrics.median_bid_cost_per_sf)
+    median_bid_cost_per_sf: roundToTwo(metrics.median_bid_cost_per_sf),
+    total_bid_count: metrics.total_bid_count != null ? Number(metrics.total_bid_count) : null
   };
 }
 
@@ -282,14 +283,16 @@ function computeProjectMetrics(project, packages) {
       const selectedAmount = toFiniteNumber(pkg.selected_amount) || 0;
       const lowBid = toFiniteNumber(pkg.low_bid);
       const medianBid = toFiniteNumber(pkg.median_bid);
+      const bidCount = toFiniteNumber(pkg.bid_count);
 
       acc.selected_total += selectedAmount;
       acc.low_bid_total += lowBid != null ? lowBid : selectedAmount;
       acc.median_bid_total += medianBid != null ? medianBid : selectedAmount;
+      acc.bid_count_total += bidCount != null ? bidCount : 0;
 
       return acc;
     },
-    { selected_total: 0, low_bid_total: 0, median_bid_total: 0 }
+    { selected_total: 0, low_bid_total: 0, median_bid_total: 0, bid_count_total: 0 }
   );
 
   const metrics = {
@@ -300,7 +303,8 @@ function computeProjectMetrics(project, packages) {
     low_bid_total: totals.low_bid_total,
     low_bid_cost_per_sf: buildingSf ? totals.low_bid_total / buildingSf : null,
     median_bid_total: totals.median_bid_total,
-    median_bid_cost_per_sf: buildingSf ? totals.median_bid_total / buildingSf : null
+    median_bid_cost_per_sf: buildingSf ? totals.median_bid_total / buildingSf : null,
+    total_bid_count: totals.bid_count_total
   };
 
   return normalizeValidationMetrics(metrics);
