@@ -462,6 +462,14 @@ const METRIC_GROUPS = [
 ];
 
 function computeProjectBudgetTotals(project) {
+    const getSelectedLowBid = (pkg) => {
+        const selected = toFiniteNumber(pkg.selected_amount);
+        if (selected != null) {
+            return selected;
+        }
+        return toFiniteNumber(pkg.low_bid);
+    };
+
     const totals = {
         gmpTotal: 0,
         selectedTotal: 0,
@@ -477,7 +485,7 @@ function computeProjectBudgetTotals(project) {
         const gmp = toFiniteNumber(pkg.gmp_amount);
         const selected = toFiniteNumber(pkg.selected_amount);
         const median = toFiniteNumber(pkg.median_bid);
-        const low = toFiniteNumber(pkg.low_bid);
+        const low = getSelectedLowBid(pkg);
 
         if (gmp != null) {
             totals.gmpTotal += gmp;
