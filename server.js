@@ -201,7 +201,10 @@ function normalizeValidationMetrics(metrics) {
     low_bid_total: roundToTwo(metrics.low_bid_total),
     low_bid_cost_per_sf: roundToTwo(metrics.low_bid_cost_per_sf),
     median_bid_total: roundToTwo(metrics.median_bid_total),
-    median_bid_cost_per_sf: roundToTwo(metrics.median_bid_cost_per_sf)
+    median_bid_cost_per_sf: roundToTwo(metrics.median_bid_cost_per_sf),
+    total_bid_count: metrics.total_bid_count != null ? Number(metrics.total_bid_count) : null,
+    package_count: metrics.package_count != null ? Number(metrics.package_count) : null,
+    bids_per_package: metrics.bids_per_package != null ? Number(metrics.bids_per_package) : null
   };
 }
 
@@ -276,20 +279,23 @@ function metricsAreEqual(a, b) {
 
 function computeProjectMetrics(project, packages) {
   const buildingSf = toFiniteNumber(project.building_sf);
+  const packageCount = Array.isArray(packages) ? packages.length : 0;
 
   const totals = (packages || []).reduce(
     (acc, pkg) => {
       const selectedAmount = toFiniteNumber(pkg.selected_amount) || 0;
       const lowBid = toFiniteNumber(pkg.low_bid);
       const medianBid = toFiniteNumber(pkg.median_bid);
+      const bidCount = toFiniteNumber(pkg.bid_count);
 
       acc.selected_total += selectedAmount;
       acc.low_bid_total += lowBid != null ? lowBid : selectedAmount;
       acc.median_bid_total += medianBid != null ? medianBid : selectedAmount;
+      acc.bid_count_total += bidCount != null ? bidCount : 0;
 
       return acc;
     },
-    { selected_total: 0, low_bid_total: 0, median_bid_total: 0 }
+    { selected_total: 0, low_bid_total: 0, median_bid_total: 0, bid_count_total: 0 }
   );
 
   const metrics = {
@@ -300,7 +306,10 @@ function computeProjectMetrics(project, packages) {
     low_bid_total: totals.low_bid_total,
     low_bid_cost_per_sf: buildingSf ? totals.low_bid_total / buildingSf : null,
     median_bid_total: totals.median_bid_total,
-    median_bid_cost_per_sf: buildingSf ? totals.median_bid_total / buildingSf : null
+    median_bid_cost_per_sf: buildingSf ? totals.median_bid_total / buildingSf : null,
+    total_bid_count: totals.bid_count_total,
+    package_count: packageCount,
+    bids_per_package: packageCount > 0 ? totals.bid_count_total / packageCount : null
   };
 
   return normalizeValidationMetrics(metrics);
@@ -334,7 +343,8 @@ function getLatestValidation(db, projectId) {
 
 function getProjectPackagesForMetrics(db, projectId) {
   const query = db.exec(
-    `SELECT selected_amount, low_bid, median_bid
+    `SELECT selected_amount, low_bid, median_bid,
+            (SELECT COUNT(*) FROM bids b WHERE b.package_id = packages.id) AS bid_count
      FROM packages
      WHERE project_id = ?`,
     [projectId]
@@ -580,6 +590,7 @@ app.get('/api/projects/:id', (req, res) => {
       p.high_bid,
       p.average_bid,
       p.cost_per_sf,
+      (SELECT COUNT(*) FROM bids b WHERE b.package_id = p.id) AS bid_count,
       p.override_flag,
       p.notes,
       p.created_at,
@@ -608,10 +619,11 @@ app.get('/api/projects/:id', (req, res) => {
       high_bid: row[12],
       average_bid: row[13],
       cost_per_sf: row[14],
-      override_flag: row[15],
-      notes: row[16],
-      created_at: row[17],
-      bidder_name: row[18]
+      bid_count: row[15],
+      override_flag: row[16],
+      notes: row[17],
+      created_at: row[18],
+      bidder_name: row[19]
     }));
   }
 
