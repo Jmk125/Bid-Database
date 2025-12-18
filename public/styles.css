@@ -1476,25 +1476,27 @@ tr:hover {
 .map-mode-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
-    background: #f6f8fb;
-    padding: 0.75rem 1rem;
-    border: 1px solid #e1e8f0;
-    border-radius: 8px;
-    width: fit-content;
+    gap: 0.5rem;
+    margin-bottom: -0.25rem;
+    padding: 0.25rem 0;
+    color: #34495e;
 }
 
 .map-mode-toggle__text {
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    line-height: 1.2;
+    gap: 0.1rem;
 }
 
-.map-mode-toggle__label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
+.map-mode-toggle__title {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.map-mode-toggle__hint {
+    font-size: 0.75rem;
+    color: #7f8c8d;
 }
 
 .map-view[data-map-mode="heat"] .map-controls .form-group,
@@ -1505,8 +1507,8 @@ tr:hover {
 .switch {
     position: relative;
     display: inline-block;
-    width: 46px;
-    height: 26px;
+    width: 38px;
+    height: 22px;
 }
 
 .switch input {
@@ -1520,32 +1522,32 @@ tr:hover {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #dfe6ed;
+    background-color: #e8ecf2;
     transition: 0.2s;
-    border-radius: 26px;
-    border: 1px solid #c8d4df;
+    border-radius: 22px;
+    border: 1px solid #cfd8e3;
 }
 
 .switch-slider:before {
     position: absolute;
     content: "";
-    height: 20px;
-    width: 20px;
+    height: 16px;
+    width: 16px;
     left: 3px;
     bottom: 2px;
     background-color: white;
     transition: 0.2s;
     border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .switch input:checked + .switch-slider {
-    background-color: #1f78b4;
-    border-color: #1f78b4;
+    background-color: #d94a4a;
+    border-color: #d94a4a;
 }
 
 .switch input:checked + .switch-slider:before {
-    transform: translateX(18px);
+    transform: translateX(16px);
 }
 
 .map-layout {

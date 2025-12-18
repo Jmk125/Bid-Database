@@ -1352,9 +1352,11 @@ async function renderCountyBidDensity() {
         paintCountyData(data, {
             valueAccessor: entry => entry.bids_per_project,
             legendTitle: 'Avg bids / project',
-            minLabel: 'Fewer bids',
-            maxLabel: 'More bids',
-            mode: 'heat'
+            minLabel: 'Fewer bids per project',
+            maxLabel: 'More bids per project',
+            mode: 'heat',
+            relativeRange: true,
+            palette: 'heat'
         });
     } catch (error) {
         console.error('Error loading bid density data:', error);
@@ -1420,10 +1422,17 @@ function paintCountyData(data, options = {}) {
         valueAccessor = entry => entry.package_count,
         legendTitle = 'Coverage',
         minLabel = 'Few',
-        maxLabel = 'More'
+        maxLabel = 'More',
+        relativeRange = false,
+        palette = 'blue'
     } = options;
 
-    const maxPackages = data.reduce((max, entry) => Math.max(max, Number(valueAccessor(entry)) || 0), 0);
+    const values = data
+        .map(entry => Number(valueAccessor(entry)) || 0)
+        .filter(value => Number.isFinite(value) && value > 0);
+
+    const maxValue = values.length ? Math.max(...values) : 0;
+    const minValue = relativeRange && values.length ? Math.min(...values) : 0;
     const unmatched = [];
     activeCountyData = new Map();
 
@@ -1446,14 +1455,22 @@ function paintCountyData(data, options = {}) {
     countyPathSelection
         .style('fill', feature => {
             const entry = activeCountyData.get(String(feature.id).padStart(5, '0'));
-            if (!entry || !maxPackages) {
+            const value = entry ? Number(valueAccessor(entry)) || 0 : 0;
+            if (!entry || !maxValue) {
                 return '#eef2f7';
             }
-            return getChoroplethColor(valueAccessor(entry), maxPackages);
+            return getChoroplethColor(value, minValue, maxValue, palette);
         })
         .classed('has-data', feature => activeCountyData.has(String(feature.id).padStart(5, '0')));
 
-    updateMapLegend(maxPackages, { title: legendTitle, minLabel, maxLabel });
+    updateMapLegend({
+        minValue,
+        maxValue,
+        title: legendTitle,
+        minLabel,
+        maxLabel,
+        palette
+    });
     updateMapCountyList(data, unmatched, options);
     applyCountySelections();
 }
@@ -1587,20 +1604,21 @@ function updateMapBidderSummary(bidderIds, data) {
     `;
 }
 
-function updateMapLegend(maxPackages, { title = 'Coverage', minLabel = 'Few', maxLabel = 'More' } = {}) {
+function updateMapLegend({ minValue = 0, maxValue = 0, title = 'Coverage', minLabel = 'Few', maxLabel = 'More', palette = 'blue' } = {}) {
     const legend = document.getElementById('mapLegend');
     if (!legend) {
         return;
     }
 
-    if (!maxPackages) {
+    if (!maxValue) {
         legend.setAttribute('aria-hidden', 'true');
         legend.innerHTML = '';
         return;
     }
 
-    const minColor = getChoroplethColor(1, maxPackages);
-    const maxColor = getChoroplethColor(maxPackages, maxPackages);
+    const startValue = minValue > 0 ? minValue : Math.min(1, maxValue);
+    const minColor = getChoroplethColor(startValue, minValue, maxValue, palette);
+    const maxColor = getChoroplethColor(maxValue, minValue, maxValue, palette);
     legend.setAttribute('aria-hidden', 'false');
     legend.innerHTML = `
         <span style="font-weight: 600; color: #2c3e50;">${escapeHtml(title)}</span>
@@ -1937,13 +1955,31 @@ async function openFullCountyList() {
     `);
     popup.document.close();
 }
-function getChoroplethColor(value, max) {
+function getChoroplethColor(value, min, max, palette = 'blue') {
     if (!value || !max) {
         return '#eef2f7';
     }
-    const ratio = Math.min(1, value / max);
-    const start = [221, 235, 247];
-    const end = [31, 120, 180];
+
+    const effectiveMin = Math.max(0, Number(min) || 0);
+    const effectiveMax = Number(max) || 0;
+    const clampedValue = Math.max(effectiveMin, Math.min(value, effectiveMax));
+    const range = Math.max(0, effectiveMax - effectiveMin);
+    const ratio = range === 0
+        ? 1
+        : Math.min(1, Math.max(0, (clampedValue - effectiveMin) / range));
+
+    const palettes = {
+        blue: {
+            start: [221, 235, 247],
+            end: [31, 120, 180]
+        },
+        heat: {
+            start: [255, 229, 229],
+            end: [183, 28, 28]
+        }
+    };
+
+    const { start, end } = palettes[palette] || palettes.blue;
     const channels = start.map((channel, index) => {
         const delta = end[index] - channel;
         return Math.round(channel + delta * ratio);
