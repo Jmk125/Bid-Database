@@ -213,6 +213,20 @@
 
         <div id="biddersMapContent" class="tab-content" role="tabpanel" aria-hidden="true" aria-labelledby="mapViewTab" data-tab-panel="map">
             <div class="table-container map-view">
+                <div class="map-mode-toggle" title="Toggle a heat map showing average bids per project for each county.">
+                    <label class="switch" aria-label="Toggle bids per project heat map">
+                        <input type="checkbox" id="mapHeatToggle">
+                        <span class="switch-slider" aria-hidden="true"></span>
+                    </label>
+                    <div class="map-mode-toggle__text">
+                        <p class="eyebrow" style="margin: 0 0 0.1rem 0;">Map mode</p>
+                        <div class="map-mode-toggle__label">
+                            <strong>Bids per project heat map</strong>
+                            <span class="badge" aria-hidden="true">New</span>
+                        </div>
+                        <p class="input-hint" style="margin: 0;">See how many bids each county averages per project.</p>
+                    </div>
+                </div>
                 <div class="map-controls">
                     <div class="form-group" style="min-width: 280px; flex: 1;">
                         <label for="mapBidderSelect">Select bidders</label>
