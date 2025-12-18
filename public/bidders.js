@@ -44,6 +44,7 @@ let countyPathSelection = null;
 let stateBorderSelection = null;
 let mapTooltip = null;
 let mapContainerElement = null;
+let mapViewMode = 'coverage';
 let countyLookup = new Map();
 let countyMetadata = new Map();
 let countyActivityCache = new Map();
@@ -54,6 +55,8 @@ let packageBidderLookup = new Map();
 let selectedCountyFips = new Set();
 let activeCountyFocus = null;
 let countyBidderCache = new Map();
+let countyBidDensityCache = null;
+let countyBidDensityPromise = null;
 
 function getSelectedCountyMetas() {
     return Array.from(selectedCountyFips)
@@ -975,11 +978,15 @@ function setBiddersTab(tab) {
 
     if (tab === 'map') {
         initializeMapView();
-        const mapSelect = document.getElementById('mapBidderSelect');
-        if (mapSelect) {
-            const combined = getCombinedMapBidderIds();
-            if (combined.length) {
-                renderSelectedBiddersCountyActivity(combined);
+        if (mapViewMode === 'heat') {
+            renderCountyBidDensity();
+        } else {
+            const mapSelect = document.getElementById('mapBidderSelect');
+            if (mapSelect) {
+                const combined = getCombinedMapBidderIds();
+                if (combined.length) {
+                    renderSelectedBiddersCountyActivity(combined);
+                }
             }
         }
     } else if (tab === 'activity') {
@@ -1237,6 +1244,10 @@ async function buildCountyMap() {
 }
 
 async function renderSelectedBiddersCountyActivity(bidderIds) {
+    if (mapViewMode !== 'coverage') {
+        return;
+    }
+
     const summary = document.getElementById('mapBidderSummary');
     const emptyState = document.getElementById('mapEmptyState');
     const legend = document.getElementById('mapLegend');
@@ -1255,6 +1266,7 @@ async function renderSelectedBiddersCountyActivity(bidderIds) {
         if (emptyState) {
             emptyState.style.display = 'none';
         }
+        updateMapCountyList([], []);
         resetMapColors();
         return;
     }
@@ -1294,6 +1306,61 @@ async function renderSelectedBiddersCountyActivity(bidderIds) {
     }
 }
 
+async function renderCountyBidDensity() {
+    if (mapViewMode !== 'heat') {
+        return;
+    }
+
+    const summary = document.getElementById('mapBidderSummary');
+    const emptyState = document.getElementById('mapEmptyState');
+    const legend = document.getElementById('mapLegend');
+    const mapMessage = document.getElementById('mapUnavailableMessage');
+
+    if (mapMessage && mapMessage.style.display === 'block') {
+        return;
+    }
+
+    try {
+        if (countyMapPromise) {
+            await countyMapPromise;
+        }
+
+        const data = await loadCountyBidDensity();
+
+        if (summary) {
+            summary.innerHTML = `
+                <h4>Heat map: bids per project</h4>
+                <p>Showing counties with recorded bids across projects.</p>
+            `;
+        }
+
+        if (!data.length) {
+            resetMapColors();
+            if (emptyState) emptyState.style.display = 'block';
+            if (legend) {
+                legend.setAttribute('aria-hidden', 'true');
+                legend.innerHTML = '';
+            }
+            updateMapCountyList([], []);
+            return;
+        }
+
+        if (emptyState) {
+            emptyState.style.display = 'none';
+        }
+
+        paintCountyData(data, {
+            valueAccessor: entry => entry.bids_per_project,
+            legendTitle: 'Avg bids / project',
+            minLabel: 'Fewer bids',
+            maxLabel: 'More bids',
+            mode: 'heat'
+        });
+    } catch (error) {
+        console.error('Error loading bid density data:', error);
+    }
+}
+
 async function loadBidderCountyActivity(bidderId) {
     const cacheKey = String(bidderId);
     if (countyActivityCache.has(cacheKey)) {
@@ -1315,12 +1382,48 @@ async function loadBidderCountyActivity(bidderId) {
     return sanitized;
 }
 
-function paintCountyData(data) {
+async function loadCountyBidDensity() {
+    if (countyBidDensityCache) {
+        return countyBidDensityCache;
+    }
+
+    if (!countyBidDensityPromise) {
+        countyBidDensityPromise = apiFetch(`${API_BASE}/counties/bid-density`)
+            .then(response => response.json())
+            .then(payload => Array.isArray(payload)
+                ? payload.map(entry => ({
+                    ...entry,
+                    bid_submissions: Number(entry.bid_submissions) || 0,
+                    project_count: Number(entry.project_count) || 0,
+                    bids_per_project: Number(entry.bids_per_project) || 0
+                }))
+                : []
+            )
+            .then(data => {
+                countyBidDensityCache = data;
+                return data;
+            })
+            .finally(() => {
+                countyBidDensityPromise = null;
+            });
+    }
+
+    return countyBidDensityPromise;
+}
+
+function paintCountyData(data, options = {}) {
     if (!countyPathSelection) {
         return;
     }
 
-    const maxPackages = data.reduce((max, entry) => Math.max(max, Number(entry.package_count) || 0), 0);
+    const {
+        valueAccessor = entry => entry.package_count,
+        legendTitle = 'Coverage',
+        minLabel = 'Few',
+        maxLabel = 'More'
+    } = options;
+
+    const maxPackages = data.reduce((max, entry) => Math.max(max, Number(valueAccessor(entry)) || 0), 0);
     const unmatched = [];
     activeCountyData = new Map();
 
@@ -1346,12 +1449,12 @@ function paintCountyData(data) {
             if (!entry || !maxPackages) {
                 return '#eef2f7';
             }
-            return getChoroplethColor(entry.package_count, maxPackages);
+            return getChoroplethColor(valueAccessor(entry), maxPackages);
         })
         .classed('has-data', feature => activeCountyData.has(String(feature.id).padStart(5, '0')));
 
-    updateMapLegend(maxPackages);
-    updateMapCountyList(data, unmatched);
+    updateMapLegend(maxPackages, { title: legendTitle, minLabel, maxLabel });
+    updateMapCountyList(data, unmatched, options);
     applyCountySelections();
 }
 
@@ -1413,6 +1516,38 @@ function resetMapColors() {
     applyCountySelections();
 }
 
+function updateMapModeUI() {
+    const mapView = document.querySelector('.map-view');
+    if (mapView) {
+        mapView.setAttribute('data-map-mode', mapViewMode);
+    }
+
+    const heatToggle = document.getElementById('mapHeatToggle');
+    if (heatToggle) {
+        heatToggle.checked = mapViewMode === 'heat';
+        heatToggle.setAttribute('aria-pressed', mapViewMode === 'heat');
+    }
+}
+
+function setMapMode(mode) {
+    if (!mode || (mode !== 'coverage' && mode !== 'heat')) {
+        return;
+    }
+
+    if (mapViewMode === mode) {
+        return;
+    }
+
+    mapViewMode = mode;
+    updateMapModeUI();
+
+    if (mode === 'heat') {
+        renderCountyBidDensity();
+    } else {
+        renderSelectedBiddersCountyActivity(getCombinedMapBidderIds());
+    }
+}
+
 function updateMapBidderSummary(bidderIds, data) {
     const summary = document.getElementById('mapBidderSummary');
     if (!summary) {
@@ -1452,7 +1587,7 @@ function updateMapBidderSummary(bidderIds, data) {
     `;
 }
 
-function updateMapLegend(maxPackages) {
+function updateMapLegend(maxPackages, { title = 'Coverage', minLabel = 'Few', maxLabel = 'More' } = {}) {
     const legend = document.getElementById('mapLegend');
     if (!legend) {
         return;
@@ -1468,16 +1603,16 @@ function updateMapLegend(maxPackages) {
     const maxColor = getChoroplethColor(maxPackages, maxPackages);
     legend.setAttribute('aria-hidden', 'false');
     legend.innerHTML = `
-        <span style="font-weight: 600; color: #2c3e50;">Coverage</span>
+        <span style="font-weight: 600; color: #2c3e50;">${escapeHtml(title)}</span>
         <div class="legend-scale" style="background: linear-gradient(90deg, ${minColor}, ${maxColor});"></div>
         <div class="legend-labels">
-            <span>Few</span>
-            <span>More</span>
+            <span>${escapeHtml(minLabel)}</span>
+            <span>${escapeHtml(maxLabel)}</span>
         </div>
     `;
 }
 
-function updateMapCountyList(data, unmatched) {
+function updateMapCountyList(data, unmatched, options = {}) {
     const container = document.getElementById('mapCountyList');
     if (!container) {
         return;
@@ -1488,8 +1623,11 @@ function updateMapCountyList(data, unmatched) {
         return;
     }
 
+    const mode = options.mode || mapViewMode;
     const sorted = data.slice().sort((a, b) => {
-        const diff = (Number(b.package_count) || 0) - (Number(a.package_count) || 0);
+        const metricA = mode === 'heat' ? (Number(a.bids_per_project) || 0) : (Number(a.package_count) || 0);
+        const metricB = mode === 'heat' ? (Number(b.bids_per_project) || 0) : (Number(b.package_count) || 0);
+        const diff = metricB - metricA;
         if (diff !== 0) {
             return diff;
         }
@@ -1501,6 +1639,20 @@ function updateMapCountyList(data, unmatched) {
         const projectCount = Number(entry.project_count) || 0;
         const bidderCount = Number(entry.bidder_count || entry.bidders?.size || 0);
         const latestDate = entry.latest_project_date ? formatDate(entry.latest_project_date) : '—';
+        const bidsPerProject = entry.bids_per_project != null ? Number(entry.bids_per_project).toFixed(2) : '0.00';
+
+        if (mode === 'heat') {
+            return `
+                <tr>
+                    <td><strong>${escapeHtml(entry.county_name)}</strong>, ${escapeHtml(entry.state_code)}</td>
+                    <td>${bidsPerProject}</td>
+                    <td>${projectCount}</td>
+                    <td>${entry.bid_submissions || 0}</td>
+                    <td>${latestDate}</td>
+                </tr>
+            `;
+        }
+
         return `
             <tr>
                 <td><strong>${escapeHtml(entry.county_name)}</strong>, ${escapeHtml(entry.state_code)}</td>
@@ -1512,7 +1664,7 @@ function updateMapCountyList(data, unmatched) {
         `;
     }).join('');
 
-    const unmatchedMessage = unmatched.length
+    const unmatchedMessage = unmatched && unmatched.length
         ? `<div style="padding: 0.75rem 1rem; font-size: 0.85rem; color: #a94442; background: #fff6f6;">
                 ${unmatched.length} location${unmatched.length === 1 ? '' : 's'} could not be mapped. Check county + state spelling.
            </div>`
@@ -1555,6 +1707,14 @@ function handleCountyHover(event, feature) {
 
     if (!hasActiveCountyData) {
         mapTooltip.innerHTML = `<strong>${escapeHtml(meta.county_name)}</strong>, ${escapeHtml(meta.state_code)}`;
+    } else if (mapViewMode === 'heat') {
+        const projectCount = entry ? Number(entry.project_count) || 0 : 0;
+        const bidCount = entry ? Number(entry.bid_submissions) || 0 : 0;
+        const bidsPerProject = entry?.bids_per_project != null ? Number(entry.bids_per_project).toFixed(2) : '0.00';
+        mapTooltip.innerHTML = `
+            <strong>${escapeHtml(meta.county_name)}</strong>, ${escapeHtml(meta.state_code)}<br>
+            ${bidsPerProject} bids per project • ${bidCount} total bids • ${projectCount} project${projectCount === 1 ? '' : 's'}
+        `;
     } else {
         const pkgCount = entry ? Number(entry.package_count) || 0 : 0;
         const projectCount = entry ? Number(entry.project_count) || 0 : 0;
@@ -1910,6 +2070,15 @@ document.addEventListener('DOMContentLoaded', function() {
     if (mapSelect) {
         mapSelect.addEventListener('change', handleMapBidderSelectChange);
     }
+
+    const heatToggle = document.getElementById('mapHeatToggle');
+    if (heatToggle) {
+        heatToggle.addEventListener('change', event => {
+            setMapMode(event.target.checked ? 'heat' : 'coverage');
+        });
+    }
+
+    updateMapModeUI();
 
     const clearCountySelectionBtn = document.getElementById('clearCountySelection');
     clearCountySelectionBtn?.addEventListener('click', () => {

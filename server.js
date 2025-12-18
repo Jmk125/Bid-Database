@@ -2922,6 +2922,79 @@ app.get('/api/counties/bidders', (req, res) => {
   res.json(rows);
 });
 
+app.get('/api/counties/bid-density', (req, res) => {
+  const db = getDatabase();
+
+  const query = db.exec(`
+    SELECT
+      proj.county_name,
+      UPPER(COALESCE(NULLIF(TRIM(proj.county_state), ''), 'OH')) AS county_state,
+      proj.id AS project_id,
+      proj.project_date,
+      b.bidder_id,
+      bd.canonical_name
+    FROM bids b
+    JOIN bidders bd ON bd.id = b.bidder_id
+    JOIN packages pkg ON pkg.id = b.package_id
+    JOIN projects proj ON proj.id = pkg.project_id
+    WHERE proj.county_name IS NOT NULL
+  `);
+
+  if (query.length === 0) {
+    return res.json([]);
+  }
+
+  const rows = query[0].values;
+  const counties = new Map();
+
+  rows.forEach((row) => {
+    const [countyName, stateCode, projectId, projectDate, bidderId, canonicalName] = row;
+
+    if (!countyName || !stateCode || isBidderExcluded(canonicalName) || isBidderIdExcluded(db, bidderId)) {
+      return;
+    }
+
+    const key = `${countyName}||${stateCode}`;
+    if (!counties.has(key)) {
+      counties.set(key, {
+        county_name: countyName,
+        state_code: stateCode,
+        bid_submissions: 0,
+        project_ids: new Set(),
+        latest_project_date: null,
+      });
+    }
+
+    const county = counties.get(key);
+    county.bid_submissions += 1;
+    if (Number.isInteger(projectId)) {
+      county.project_ids.add(projectId);
+    }
+
+    if (projectDate && (!county.latest_project_date || projectDate > county.latest_project_date)) {
+      county.latest_project_date = projectDate;
+    }
+  });
+
+  const results = Array.from(counties.values()).map((county) => {
+    const projectCount = county.project_ids.size;
+    const bidsPerProject = projectCount > 0
+      ? roundToTwo(county.bid_submissions / projectCount)
+      : 0;
+
+    return {
+      county_name: county.county_name,
+      state_code: county.state_code,
+      bid_submissions: county.bid_submissions,
+      project_count: projectCount,
+      bids_per_project: bidsPerProject,
+      latest_project_date: county.latest_project_date,
+    };
+  });
+
+  res.json(results);
+});
+
 // Merge bidders
 app.post('/api/bidders/merge', (req, res) => {
   const db = getDatabase();
