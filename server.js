@@ -1420,7 +1420,7 @@ app.post('/api/bid-events/:bidEventId/bidder-review', (req, res) => {
     }
 
     const bidQuery = db.exec(
-      `SELECT b.id, b.package_id, b.was_selected, pkg.bid_event_id
+      `SELECT b.id, b.package_id, b.was_selected, b.bidder_id, pkg.bid_event_id
        FROM bids b
        JOIN packages pkg ON pkg.id = b.package_id
        WHERE b.id = ?
@@ -1435,7 +1435,8 @@ app.post('/api/bid-events/:bidEventId/bidder-review', (req, res) => {
     const bidRow = bidQuery[0].values[0];
     const packageId = bidRow[1];
     const wasSelected = bidRow[2] ? true : false;
-    const bidEventForBid = bidRow[3];
+    const originalBidderId = bidRow[3];
+    const bidEventForBid = bidRow[4];
 
     if (bidEventForBid !== bidEventId) {
       return;
@@ -1449,15 +1450,22 @@ app.post('/api/bid-events/:bidEventId/bidder-review', (req, res) => {
       return;
     }
 
-    db.run('UPDATE bids SET bidder_id = ? WHERE id = ?', [bidderId, bidId]);
-
     const stagingQuery = db.exec(
-      'SELECT id, raw_bidder_name FROM bid_event_bidders WHERE bid_id = ? LIMIT 1',
+      'SELECT id, raw_bidder_name, was_auto_created FROM bid_event_bidders WHERE bid_id = ? LIMIT 1',
       [bidId]
     );
 
-    const rawName = (stagingQuery.length > 0 && stagingQuery[0].values.length > 0)
-      ? stagingQuery[0].values[0][1]
+    const stagingRow = (stagingQuery.length > 0 && stagingQuery[0].values.length > 0)
+      ? stagingQuery[0].values[0]
+      : null;
+    const stagingId = stagingRow ? stagingRow[0] : null;
+    const stagingRawName = stagingRow ? stagingRow[1] : null;
+    const stagingWasAutoCreated = stagingRow ? Boolean(stagingRow[2]) : false;
+
+    db.run('UPDATE bids SET bidder_id = ? WHERE id = ?', [bidderId, bidId]);
+
+    const rawName = stagingRawName != null
+      ? stagingRawName
       : (typeof decision.raw_bidder_name === 'string' ? decision.raw_bidder_name : '') || newName;
 
     const canonicalRow = db.exec('SELECT canonical_name FROM bidders WHERE id = ? LIMIT 1', [bidderId]);
@@ -1472,8 +1480,7 @@ app.post('/api/bid-events/:bidEventId/bidder-review', (req, res) => {
       : 1;
     const matchType = newName ? 'manual-new' : 'manual-existing';
 
-    if (stagingQuery.length > 0 && stagingQuery[0].values.length > 0) {
-      const stagingId = stagingQuery[0].values[0][0];
+    if (stagingId) {
       db.run(
         `UPDATE bid_event_bidders
          SET assigned_bidder_id = ?, match_confidence = ?, match_type = ?, was_auto_created = 0,
@@ -1497,6 +1504,10 @@ app.post('/api/bid-events/:bidEventId/bidder-review', (req, res) => {
 
     if (wasSelected) {
       db.run('UPDATE packages SET selected_bidder_id = ? WHERE id = ?', [bidderId, packageId]);
+    }
+
+    if (originalBidderId && originalBidderId !== bidderId && stagingWasAutoCreated) {
+      removeBidderIfUnused(db, originalBidderId);
     }
 
     applied += 1;
@@ -1718,6 +1729,24 @@ function createBidderRecord(db, canonicalName) {
   db.run('INSERT INTO bidders (canonical_name) VALUES (?)', [name]);
   const result = db.exec('SELECT last_insert_rowid()');
   return result[0].values[0][0];
+}
+
+function removeBidderIfUnused(db, bidderId) {
+  if (!Number.isFinite(bidderId)) {
+    return;
+  }
+
+  const usageQuery = db.exec('SELECT COUNT(*) FROM bids WHERE bidder_id = ?', [bidderId]);
+  const usageCount = usageQuery.length > 0 && usageQuery[0].values.length > 0
+    ? usageQuery[0].values[0][0]
+    : 0;
+
+  if (usageCount > 0) {
+    return;
+  }
+
+  db.run('DELETE FROM bidder_aliases WHERE bidder_id = ?', [bidderId]);
+  db.run('DELETE FROM bidders WHERE id = ?', [bidderId]);
 }
 
 function resolveBidderMatch(db, directory, rawName) {
