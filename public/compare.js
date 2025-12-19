@@ -1024,15 +1024,12 @@ function expandTimelineDatasets(chartData, timelineEntries, metricConfig) {
 
     const labels = timelineEntries.map((entry) => entry.monthLabel);
     const projectsInTimeline = timelineEntries.filter((entry) => entry.project);
-    const projectIndexMap = new Map();
-    projectsInTimeline.forEach((entry, index) => {
-        projectIndexMap.set(entry.project.id ?? entry.project.name ?? index, index);
-    });
 
     const expandedDatasets = chartData.datasets.map((dataset) => {
         const expandedData = [];
         const expandedTotals = dataset.projectTotals ? [] : null;
         const expandedProjectNames = [];
+        let timelineIndex = 0;
         timelineEntries.forEach((entry) => {
             if (!entry.project) {
                 expandedData.push(null);
@@ -1042,15 +1039,14 @@ function expandTimelineDatasets(chartData, timelineEntries, metricConfig) {
                 expandedProjectNames.push('');
                 return;
             }
-            const key = entry.project.id ?? entry.project.name;
-            const projectIndex = projectIndexMap.get(key);
-            const value = projectIndex != null ? dataset.data[projectIndex] : null;
+            const value = dataset.data?.[timelineIndex] ?? null;
             const numericValue = toFiniteNumber(value);
             expandedData.push(numericValue == null ? null : numericValue);
             if (expandedTotals) {
-                expandedTotals.push(projectIndex != null ? dataset.projectTotals?.[projectIndex] ?? null : null);
+                expandedTotals.push(dataset.projectTotals?.[timelineIndex] ?? null);
             }
             expandedProjectNames.push(entry.projectName || '');
+            timelineIndex += 1;
         });
 
         return {
@@ -1413,8 +1409,9 @@ function buildComparisonChartOptions(metricConfig, viewMode = CHART_VIEW_MODES.P
                 },
                 anchor: 'end',
                 align: 'end',
-                rotation: -60,
-                clamp: true
+                rotation: -90,
+                clamp: true,
+                offset: 6
             }
         },
         scales: {
