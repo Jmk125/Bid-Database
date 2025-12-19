@@ -7,6 +7,8 @@ const comparisonResults = document.getElementById('comparisonResults');
 const chartTitleEl = document.getElementById('compareChartTitle');
 const chartSubtitleEl = document.getElementById('compareChartSubtitle');
 const metricDescriptionEl = document.getElementById('metricDescription');
+const chartViewSelect = document.getElementById('compareChartView');
+const chartViewHintEl = document.getElementById('chartViewHint');
 let comparisonChart = null;
 const projectPieCharts = new Map();
 let currentProjects = [];
@@ -38,6 +40,11 @@ const METRIC_SCOPES = {
     CATEGORY: 'category'
 };
 
+const CHART_VIEW_MODES = {
+    PROJECT: 'project',
+    MONTH: 'month'
+};
+
 const PROJECT_COLORS = ['#3498db', '#e67e22', '#2ecc71', '#9b59b6', '#1abc9c', '#f1c40f', '#e74c3c', '#34495e'];
 const GMP_BASE_COLOR = '#95a5a6';
 const GMP_OVERAGE_COLOR = '#e74c3c';
@@ -49,6 +56,7 @@ const METRIC_OPTIONS = {
         description: 'Total value of the selected bidders.',
         format: formatCurrency,
         getValue: (metrics) => metrics?.selected_total ?? 0,
+        monthAggregate: 'sum',
         scope: METRIC_SCOPES.PROJECT
     },
     selected_cost_per_sf: {
@@ -56,6 +64,7 @@ const METRIC_OPTIONS = {
         description: 'Cost per square foot for the selected bidders.',
         format: formatCurrency,
         getValue: (metrics) => metrics?.selected_cost_per_sf ?? 0,
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     gmp_to_selected_total_delta_percentage: {
@@ -69,6 +78,7 @@ const METRIC_OPTIONS = {
             }
             return (totals.selectedTotal - totals.gmpTotal) / totals.gmpTotal;
         },
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     median_cost_per_sf: {
@@ -76,6 +86,7 @@ const METRIC_OPTIONS = {
         description: 'Median bid cost per square foot.',
         format: formatCurrency,
         getValue: (metrics) => metrics?.median_bid_cost_per_sf ?? metrics?.median_cost_per_sf ?? 0,
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     gmp_to_median_total_delta_percentage: {
@@ -89,6 +100,7 @@ const METRIC_OPTIONS = {
             }
             return (totals.medianTotal - totals.gmpTotal) / totals.gmpTotal;
         },
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     low_bid_cost_per_sf: {
@@ -96,6 +108,7 @@ const METRIC_OPTIONS = {
         description: 'Lowest bid cost per square foot for each project.',
         format: formatCurrency,
         getValue: (metrics) => metrics?.low_bid_cost_per_sf ?? 0,
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     low_to_median_total_delta: {
@@ -109,6 +122,7 @@ const METRIC_OPTIONS = {
             }
             return totals.medianTotal - totals.lowTotal;
         },
+        monthAggregate: 'sum',
         scope: METRIC_SCOPES.PROJECT
     },
     low_to_median_total_delta_percentage: {
@@ -122,6 +136,7 @@ const METRIC_OPTIONS = {
             }
             return (totals.medianTotal - totals.lowTotal) / totals.medianTotal;
         },
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     gmp_median_overlay: {
@@ -168,6 +183,7 @@ const METRIC_OPTIONS = {
         label: 'Total bids',
         description: 'Total number of bids submitted across all packages.',
         format: formatInteger,
+        monthAggregate: 'sum',
         scope: METRIC_SCOPES.PROJECT,
         getValue: (metrics, project) => {
             if (!project) {
@@ -191,6 +207,7 @@ const METRIC_OPTIONS = {
         label: 'Bids per package',
         description: 'Average number of bids received per package.',
         format: formatAverage,
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT,
         getValue: (metrics, project) => {
             if (!project) {
@@ -655,11 +672,21 @@ function initComparisonPage() {
     loadProjects();
     projectSelector.addEventListener('change', () => fetchComparison());
     compareMetricSelect.addEventListener('change', () => {
-        updateMetricMetadata(compareMetricSelect.value);
         if (currentProjects.length) {
             renderComparison(currentProjects);
+        } else {
+            updateMetricMetadata(compareMetricSelect.value);
         }
     });
+    if (chartViewSelect) {
+        chartViewSelect.addEventListener('change', () => {
+            if (currentProjects.length) {
+                renderComparison(currentProjects);
+            } else {
+                updateMetricMetadata(compareMetricSelect.value);
+            }
+        });
+    }
     pieDatasetSelect.addEventListener('change', () => {
         if (currentProjects.length) {
             renderComparison(currentProjects);
@@ -703,11 +730,40 @@ function populateMetricDropdown() {
     }
 }
 
+function isMonthlyViewAvailable(metricConfig) {
+    return metricConfig.scope === METRIC_SCOPES.PROJECT && typeof metricConfig.buildChartData !== 'function';
+}
+
+function updateChartViewControl(metricKey) {
+    const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
+    if (!chartViewSelect) {
+        return CHART_VIEW_MODES.PROJECT;
+    }
+
+    const monthlyAvailable = isMonthlyViewAvailable(metricConfig);
+    chartViewSelect.disabled = !monthlyAvailable;
+    if (!monthlyAvailable) {
+        chartViewSelect.value = CHART_VIEW_MODES.PROJECT;
+    }
+    if (chartViewHintEl) {
+        chartViewHintEl.textContent = monthlyAvailable
+            ? 'Switch between per-project and per-month bars.'
+            : 'Monthly view is available for project-level metrics.';
+    }
+    return chartViewSelect.value || CHART_VIEW_MODES.PROJECT;
+}
+
 function updateMetricMetadata(metricKey) {
     const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
+    const viewMode = updateChartViewControl(metricKey);
     chartTitleEl.textContent = metricConfig.label;
-    chartSubtitleEl.textContent = metricConfig.description;
     metricDescriptionEl.textContent = metricConfig.description;
+    if (viewMode === CHART_VIEW_MODES.MONTH) {
+        chartSubtitleEl.textContent = `${metricConfig.description} (Grouped by bid month.)`;
+    } else {
+        chartSubtitleEl.textContent = metricConfig.description;
+    }
+    return viewMode;
 }
 
 async function loadProjects() {
@@ -774,25 +830,29 @@ function renderComparison(projects) {
 
     const metricKey = compareMetricSelect.value;
     const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
+    const viewMode = updateMetricMetadata(metricKey);
+    const chartProjects = sortProjectsByDate(projects);
     let chartData;
     if (typeof metricConfig.buildChartData === 'function') {
-        chartData = metricConfig.buildChartData(projects);
+        chartData = metricConfig.buildChartData(chartProjects);
     } else {
         switch (metricConfig.scope) {
             case METRIC_SCOPES.PACKAGE:
-                chartData = buildPackageMetricData(projects, metricConfig);
+                chartData = buildPackageMetricData(chartProjects, metricConfig);
                 break;
             case METRIC_SCOPES.CATEGORY:
-                chartData = buildCategoryMetricData(projects, metricConfig);
+                chartData = buildCategoryMetricData(chartProjects, metricConfig);
                 break;
             case METRIC_SCOPES.PROJECT:
             default:
-                chartData = buildProjectMetricData(projects, metricConfig);
+                if (viewMode === CHART_VIEW_MODES.MONTH && isMonthlyViewAvailable(metricConfig)) {
+                    chartData = buildMonthlyMetricData(chartProjects, metricConfig);
+                } else {
+                    chartData = buildProjectMetricData(chartProjects, metricConfig);
+                }
                 break;
         }
     }
-
-    updateMetricMetadata(metricKey);
 
     if (comparisonChart) {
         comparisonChart.destroy();
@@ -831,6 +891,72 @@ function buildProjectMetricData(projects, metricConfig) {
             {
                 label: metricConfig.label,
                 data: projects.map((project) => metricConfig.getValue(project.metrics || {}, project)),
+                borderRadius: 6,
+                backgroundColor: '#3498db'
+            }
+        ]
+    };
+}
+
+function sortProjectsByDate(projects) {
+    return [...projects].sort((a, b) => {
+        const dateA = getProjectDateValue(a);
+        const dateB = getProjectDateValue(b);
+        if (dateA && dateB) {
+            return dateB - dateA;
+        }
+        if (dateA) {
+            return -1;
+        }
+        if (dateB) {
+            return 1;
+        }
+        return (a.name || '').localeCompare(b.name || '');
+    });
+}
+
+function buildMonthlyMetricData(projects, metricConfig) {
+    const monthMap = new Map();
+    const aggregate = metricConfig.monthAggregate || 'sum';
+
+    projects.forEach((project) => {
+        const date = getProjectDateValue(project);
+        if (!date) {
+            return;
+        }
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (!monthMap.has(monthKey)) {
+            monthMap.set(monthKey, {
+                label: formatMonthLabel(date),
+                date: new Date(date.getFullYear(), date.getMonth(), 1),
+                sum: 0,
+                count: 0
+            });
+        }
+        const rawValue = metricConfig.getValue(project.metrics || {}, project);
+        const numericValue = toFiniteNumber(rawValue);
+        if (numericValue == null) {
+            return;
+        }
+        const entry = monthMap.get(monthKey);
+        entry.sum += numericValue;
+        entry.count += 1;
+    });
+
+    const months = Array.from(monthMap.values()).sort((a, b) => a.date - b.date);
+    const data = months.map((entry) => {
+        if (!entry.count) {
+            return null;
+        }
+        return aggregate === 'average' ? entry.sum / entry.count : entry.sum;
+    });
+
+    return {
+        labels: months.map((entry) => entry.label),
+        datasets: [
+            {
+                label: metricConfig.label,
+                data,
                 borderRadius: 6,
                 backgroundColor: '#3498db'
             }
@@ -1477,6 +1603,21 @@ function formatNumber(value) {
         return '—';
     }
     return new Intl.NumberFormat().format(value);
+}
+
+function getProjectDateValue(project) {
+    if (!project?.project_date) {
+        return null;
+    }
+    const date = new Date(project.project_date);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+    return date;
+}
+
+function formatMonthLabel(date) {
+    return date.toLocaleString(undefined, { month: 'short', year: 'numeric' });
 }
 
 function formatDate(value) {
