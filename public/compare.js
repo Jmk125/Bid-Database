@@ -747,7 +747,7 @@ function updateChartViewControl(metricKey) {
     }
     if (chartViewHintEl) {
         chartViewHintEl.textContent = monthlyAvailable
-            ? 'Switch between per-project and per-month bars.'
+            ? 'Switch between per-project bars and a month-by-month timeline.'
             : 'Monthly view is available for project-level metrics.';
     }
     return chartViewSelect.value || CHART_VIEW_MODES.PROJECT;
@@ -759,7 +759,7 @@ function updateMetricMetadata(metricKey) {
     chartTitleEl.textContent = metricConfig.label;
     metricDescriptionEl.textContent = metricConfig.description;
     if (viewMode === CHART_VIEW_MODES.MONTH) {
-        chartSubtitleEl.textContent = `${metricConfig.description} (Grouped by bid month.)`;
+        chartSubtitleEl.textContent = `${metricConfig.description} (Timeline by bid month.)`;
     } else {
         chartSubtitleEl.textContent = metricConfig.description;
     }
@@ -877,7 +877,7 @@ function renderComparison(projects) {
     comparisonChart = new Chart(ctx, {
         type: 'bar',
         data: chartData,
-        options: buildComparisonChartOptions(metricConfig)
+        options: buildComparisonChartOptions(metricConfig, viewMode)
     });
 
     comparisonResults.innerHTML = projects.map(createProjectCard).join('');
@@ -916,43 +916,60 @@ function sortProjectsByDate(projects) {
 }
 
 function buildMonthlyMetricData(projects, metricConfig) {
-    const monthMap = new Map();
-    const aggregate = metricConfig.monthAggregate || 'sum';
+    const datedProjects = projects
+        .map((project) => ({ project, date: getProjectDateValue(project) }))
+        .filter((entry) => entry.date);
 
-    projects.forEach((project) => {
-        const date = getProjectDateValue(project);
-        if (!date) {
-            return;
-        }
+    if (!datedProjects.length) {
+        return buildProjectMetricData(projects, metricConfig);
+    }
+
+    const monthMap = new Map();
+    datedProjects.forEach(({ project, date }) => {
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         if (!monthMap.has(monthKey)) {
             monthMap.set(monthKey, {
-                label: formatMonthLabel(date),
                 date: new Date(date.getFullYear(), date.getMonth(), 1),
-                sum: 0,
-                count: 0
+                projects: []
             });
         }
-        const rawValue = metricConfig.getValue(project.metrics || {}, project);
-        const numericValue = toFiniteNumber(rawValue);
-        if (numericValue == null) {
-            return;
-        }
-        const entry = monthMap.get(monthKey);
-        entry.sum += numericValue;
-        entry.count += 1;
+        monthMap.get(monthKey).projects.push({ project, date });
     });
 
-    const months = Array.from(monthMap.values()).sort((a, b) => a.date - b.date);
-    const data = months.map((entry) => {
-        if (!entry.count) {
-            return null;
+    const monthDates = Array.from(monthMap.values())
+        .map((entry) => entry.date)
+        .sort((a, b) => b - a);
+    const newestMonth = monthDates[0];
+    const oldestMonth = monthDates[monthDates.length - 1];
+
+    const labels = [];
+    const data = [];
+
+    const cursor = new Date(newestMonth.getFullYear(), newestMonth.getMonth(), 1);
+    while (cursor >= oldestMonth) {
+        const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+        const monthLabel = formatMonthLabel(cursor);
+        const monthEntry = monthMap.get(monthKey);
+        if (monthEntry && monthEntry.projects.length) {
+            monthEntry.projects
+                .sort((a, b) => b.date - a.date)
+                .forEach((entry) => {
+                    const projectName = entry.project.name || 'Untitled project';
+                    labels.push([monthLabel, projectName]);
+                    const rawValue = metricConfig.getValue(entry.project.metrics || {}, entry.project);
+                    const numericValue = toFiniteNumber(rawValue);
+                    data.push(numericValue == null ? null : numericValue);
+                });
+        } else {
+            labels.push([monthLabel, '']);
+            data.push(null);
         }
-        return aggregate === 'average' ? entry.sum / entry.count : entry.sum;
-    });
+
+        cursor.setMonth(cursor.getMonth() - 1);
+    }
 
     return {
-        labels: months.map((entry) => entry.label),
+        labels,
         datasets: [
             {
                 label: metricConfig.label,
@@ -1254,12 +1271,18 @@ function getProjectColor(index) {
     return PROJECT_COLORS[index % PROJECT_COLORS.length];
 }
 
-function buildComparisonChartOptions(metricConfig) {
+function buildComparisonChartOptions(metricConfig, viewMode = CHART_VIEW_MODES.PROJECT) {
     const scope = metricConfig.scope || METRIC_SCOPES.PROJECT;
     const isMultiEntryScope = scope === METRIC_SCOPES.PACKAGE || scope === METRIC_SCOPES.CATEGORY;
-    const xAxisConfig = isMultiEntryScope
-        ? { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } }
-        : { ticks: { autoSkip: true } };
+    const xAxisConfig = (() => {
+        if (isMultiEntryScope) {
+            return { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } };
+        }
+        if (viewMode === CHART_VIEW_MODES.MONTH) {
+            return { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } };
+        }
+        return { ticks: { autoSkip: true } };
+    })();
     const stacked = metricConfig.stacked === true;
     return {
         responsive: true,
