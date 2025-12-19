@@ -56,6 +56,7 @@ const METRIC_OPTIONS = {
         description: 'Total value of the selected bidders.',
         format: formatCurrency,
         getValue: (metrics) => metrics?.selected_total ?? 0,
+        monthAggregate: 'sum',
         scope: METRIC_SCOPES.PROJECT
     },
     selected_cost_per_sf: {
@@ -63,6 +64,7 @@ const METRIC_OPTIONS = {
         description: 'Cost per square foot for the selected bidders.',
         format: formatCurrency,
         getValue: (metrics) => metrics?.selected_cost_per_sf ?? 0,
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     gmp_to_selected_total_delta_percentage: {
@@ -76,6 +78,7 @@ const METRIC_OPTIONS = {
             }
             return (totals.selectedTotal - totals.gmpTotal) / totals.gmpTotal;
         },
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     median_cost_per_sf: {
@@ -83,6 +86,7 @@ const METRIC_OPTIONS = {
         description: 'Median bid cost per square foot.',
         format: formatCurrency,
         getValue: (metrics) => metrics?.median_bid_cost_per_sf ?? metrics?.median_cost_per_sf ?? 0,
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     gmp_to_median_total_delta_percentage: {
@@ -96,6 +100,7 @@ const METRIC_OPTIONS = {
             }
             return (totals.medianTotal - totals.gmpTotal) / totals.gmpTotal;
         },
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     low_bid_cost_per_sf: {
@@ -103,6 +108,7 @@ const METRIC_OPTIONS = {
         description: 'Lowest bid cost per square foot for each project.',
         format: formatCurrency,
         getValue: (metrics) => metrics?.low_bid_cost_per_sf ?? 0,
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     low_to_median_total_delta: {
@@ -116,6 +122,7 @@ const METRIC_OPTIONS = {
             }
             return totals.medianTotal - totals.lowTotal;
         },
+        monthAggregate: 'sum',
         scope: METRIC_SCOPES.PROJECT
     },
     low_to_median_total_delta_percentage: {
@@ -129,6 +136,7 @@ const METRIC_OPTIONS = {
             }
             return (totals.medianTotal - totals.lowTotal) / totals.medianTotal;
         },
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
     },
     gmp_median_overlay: {
@@ -179,6 +187,7 @@ const METRIC_OPTIONS = {
         label: 'Total bids',
         description: 'Total number of bids submitted across all packages.',
         format: formatInteger,
+        monthAggregate: 'sum',
         scope: METRIC_SCOPES.PROJECT,
         getValue: (metrics, project) => {
             if (!project) {
@@ -202,6 +211,7 @@ const METRIC_OPTIONS = {
         label: 'Bids per package',
         description: 'Average number of bids received per package.',
         format: formatAverage,
+        monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT,
         getValue: (metrics, project) => {
             if (!project) {
