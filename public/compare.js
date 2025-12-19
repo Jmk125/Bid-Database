@@ -7,6 +7,8 @@ const comparisonResults = document.getElementById('comparisonResults');
 const chartTitleEl = document.getElementById('compareChartTitle');
 const chartSubtitleEl = document.getElementById('compareChartSubtitle');
 const metricDescriptionEl = document.getElementById('metricDescription');
+const chartViewSelect = document.getElementById('compareChartView');
+const chartViewHintEl = document.getElementById('chartViewHint');
 let comparisonChart = null;
 const projectPieCharts = new Map();
 let currentProjects = [];
@@ -36,6 +38,11 @@ const METRIC_SCOPES = {
     PROJECT: 'project',
     PACKAGE: 'package',
     CATEGORY: 'category'
+};
+
+const CHART_VIEW_MODES = {
+    PROJECT: 'project',
+    MONTH: 'month'
 };
 
 const PROJECT_COLORS = ['#3498db', '#e67e22', '#2ecc71', '#9b59b6', '#1abc9c', '#f1c40f', '#e74c3c', '#34495e'];
@@ -655,11 +662,21 @@ function initComparisonPage() {
     loadProjects();
     projectSelector.addEventListener('change', () => fetchComparison());
     compareMetricSelect.addEventListener('change', () => {
-        updateMetricMetadata(compareMetricSelect.value);
         if (currentProjects.length) {
             renderComparison(currentProjects);
+        } else {
+            updateMetricMetadata(compareMetricSelect.value);
         }
     });
+    if (chartViewSelect) {
+        chartViewSelect.addEventListener('change', () => {
+            if (currentProjects.length) {
+                renderComparison(currentProjects);
+            } else {
+                updateMetricMetadata(compareMetricSelect.value);
+            }
+        });
+    }
     pieDatasetSelect.addEventListener('change', () => {
         if (currentProjects.length) {
             renderComparison(currentProjects);
@@ -703,11 +720,40 @@ function populateMetricDropdown() {
     }
 }
 
+function isMonthlyViewAvailable(metricConfig) {
+    return metricConfig.scope === METRIC_SCOPES.PROJECT && typeof metricConfig.buildChartData !== 'function';
+}
+
+function updateChartViewControl(metricKey) {
+    const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
+    if (!chartViewSelect) {
+        return CHART_VIEW_MODES.PROJECT;
+    }
+
+    const monthlyAvailable = isMonthlyViewAvailable(metricConfig);
+    chartViewSelect.disabled = !monthlyAvailable;
+    if (!monthlyAvailable) {
+        chartViewSelect.value = CHART_VIEW_MODES.PROJECT;
+    }
+    if (chartViewHintEl) {
+        chartViewHintEl.textContent = monthlyAvailable
+            ? 'Switch between per-project bars and a month-by-month timeline.'
+            : 'Monthly view is available for project-level metrics.';
+    }
+    return chartViewSelect.value || CHART_VIEW_MODES.PROJECT;
+}
+
 function updateMetricMetadata(metricKey) {
     const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
+    const viewMode = updateChartViewControl(metricKey);
     chartTitleEl.textContent = metricConfig.label;
-    chartSubtitleEl.textContent = metricConfig.description;
     metricDescriptionEl.textContent = metricConfig.description;
+    if (viewMode === CHART_VIEW_MODES.MONTH) {
+        chartSubtitleEl.textContent = `${metricConfig.description} (Timeline by bid month.)`;
+    } else {
+        chartSubtitleEl.textContent = metricConfig.description;
+    }
+    return viewMode;
 }
 
 async function loadProjects() {
@@ -774,25 +820,29 @@ function renderComparison(projects) {
 
     const metricKey = compareMetricSelect.value;
     const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
+    const viewMode = updateMetricMetadata(metricKey);
+    const chartProjects = sortProjectsByDate(projects);
     let chartData;
     if (typeof metricConfig.buildChartData === 'function') {
-        chartData = metricConfig.buildChartData(projects);
+        chartData = metricConfig.buildChartData(chartProjects);
     } else {
         switch (metricConfig.scope) {
             case METRIC_SCOPES.PACKAGE:
-                chartData = buildPackageMetricData(projects, metricConfig);
+                chartData = buildPackageMetricData(chartProjects, metricConfig);
                 break;
             case METRIC_SCOPES.CATEGORY:
-                chartData = buildCategoryMetricData(projects, metricConfig);
+                chartData = buildCategoryMetricData(chartProjects, metricConfig);
                 break;
             case METRIC_SCOPES.PROJECT:
             default:
-                chartData = buildProjectMetricData(projects, metricConfig);
+                if (viewMode === CHART_VIEW_MODES.MONTH && isMonthlyViewAvailable(metricConfig)) {
+                    chartData = buildMonthlyMetricData(chartProjects, metricConfig);
+                } else {
+                    chartData = buildProjectMetricData(chartProjects, metricConfig);
+                }
                 break;
         }
     }
-
-    updateMetricMetadata(metricKey);
 
     if (comparisonChart) {
         comparisonChart.destroy();
@@ -817,7 +867,7 @@ function renderComparison(projects) {
     comparisonChart = new Chart(ctx, {
         type: 'bar',
         data: chartData,
-        options: buildComparisonChartOptions(metricConfig)
+        options: buildComparisonChartOptions(metricConfig, viewMode)
     });
 
     comparisonResults.innerHTML = projects.map(createProjectCard).join('');
@@ -831,6 +881,89 @@ function buildProjectMetricData(projects, metricConfig) {
             {
                 label: metricConfig.label,
                 data: projects.map((project) => metricConfig.getValue(project.metrics || {}, project)),
+                borderRadius: 6,
+                backgroundColor: '#3498db'
+            }
+        ]
+    };
+}
+
+function sortProjectsByDate(projects) {
+    return [...projects].sort((a, b) => {
+        const dateA = getProjectDateValue(a);
+        const dateB = getProjectDateValue(b);
+        if (dateA && dateB) {
+            return dateB - dateA;
+        }
+        if (dateA) {
+            return -1;
+        }
+        if (dateB) {
+            return 1;
+        }
+        return (a.name || '').localeCompare(b.name || '');
+    });
+}
+
+function buildMonthlyMetricData(projects, metricConfig) {
+    const datedProjects = projects
+        .map((project) => ({ project, date: getProjectDateValue(project) }))
+        .filter((entry) => entry.date);
+
+    if (!datedProjects.length) {
+        return buildProjectMetricData(projects, metricConfig);
+    }
+
+    const monthMap = new Map();
+    datedProjects.forEach(({ project, date }) => {
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (!monthMap.has(monthKey)) {
+            monthMap.set(monthKey, {
+                date: new Date(date.getFullYear(), date.getMonth(), 1),
+                projects: []
+            });
+        }
+        monthMap.get(monthKey).projects.push({ project, date });
+    });
+
+    const monthDates = Array.from(monthMap.values())
+        .map((entry) => entry.date)
+        .sort((a, b) => b - a);
+    const newestMonth = monthDates[0];
+    const oldestMonth = monthDates[monthDates.length - 1];
+
+    const labels = [];
+    const data = [];
+
+    const cursor = new Date(newestMonth.getFullYear(), newestMonth.getMonth(), 1);
+    while (cursor >= oldestMonth) {
+        const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+        const monthLabel = formatMonthLabel(cursor);
+        const monthEntry = monthMap.get(monthKey);
+        if (monthEntry && monthEntry.projects.length) {
+            monthEntry.projects
+                .sort((a, b) => b.date - a.date)
+                .forEach((entry) => {
+                    const projectName = entry.project.name || 'Untitled project';
+                    labels.push([monthLabel, projectName]);
+                    const rawValue = metricConfig.getValue(entry.project.metrics || {}, entry.project);
+                    const numericValue = toFiniteNumber(rawValue);
+                    data.push(numericValue == null ? null : numericValue);
+                });
+        } else {
+            labels.push([monthLabel, '']);
+            data.push(null);
+        }
+
+        cursor.setMonth(cursor.getMonth() - 1);
+    }
+
+    return {
+        labels,
+        datasets: [
+            {
+                label: metricConfig.label,
+                data,
                 borderRadius: 6,
                 backgroundColor: '#3498db'
             }
@@ -1128,12 +1261,18 @@ function getProjectColor(index) {
     return PROJECT_COLORS[index % PROJECT_COLORS.length];
 }
 
-function buildComparisonChartOptions(metricConfig) {
+function buildComparisonChartOptions(metricConfig, viewMode = CHART_VIEW_MODES.PROJECT) {
     const scope = metricConfig.scope || METRIC_SCOPES.PROJECT;
     const isMultiEntryScope = scope === METRIC_SCOPES.PACKAGE || scope === METRIC_SCOPES.CATEGORY;
-    const xAxisConfig = isMultiEntryScope
-        ? { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } }
-        : { ticks: { autoSkip: true } };
+    const xAxisConfig = (() => {
+        if (isMultiEntryScope) {
+            return { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } };
+        }
+        if (viewMode === CHART_VIEW_MODES.MONTH) {
+            return { ticks: { autoSkip: false, maxRotation: 60, minRotation: 40 } };
+        }
+        return { ticks: { autoSkip: true } };
+    })();
     const stacked = metricConfig.stacked === true;
     return {
         responsive: true,
@@ -1477,6 +1616,21 @@ function formatNumber(value) {
         return '—';
     }
     return new Intl.NumberFormat().format(value);
+}
+
+function getProjectDateValue(project) {
+    if (!project?.project_date) {
+        return null;
+    }
+    const date = new Date(project.project_date);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+    return date;
+}
+
+function formatMonthLabel(date) {
+    return date.toLocaleString(undefined, { month: 'short', year: 'numeric' });
 }
 
 function formatDate(value) {
