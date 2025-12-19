@@ -44,6 +44,14 @@
                 <small class="form-hint" id="metricDescription">Total value of the selected bidders.</small>
             </div>
             <div class="form-group">
+                <label for="compareChartView">Bar chart view</label>
+                <select id="compareChartView">
+                    <option value="project" selected>By project (recent to oldest)</option>
+                    <option value="month">By month (newest to oldest)</option>
+                </select>
+                <small class="form-hint" id="chartViewHint">Switch between per-project and per-month bars.</small>
+            </div>
+            <div class="form-group">
                 <label for="pieDataset">Pie chart data</label>
                 <select id="pieDataset">
                     <option value="median">Median bids</option>
