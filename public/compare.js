@@ -943,13 +943,14 @@ function buildMonthlyMetricData(projects, metricConfig) {
     }
 
     const labels = timelineEntries.map((entry) => entry.monthLabel);
+    const projectNames = timelineEntries.map((entry) => entry.projectName || '');
     const data = timelineEntries.map((entry) => {
         if (!entry.project) {
             return null;
         }
         const rawValue = metricConfig.getValue(entry.project.metrics || {}, entry.project);
         const numericValue = toFiniteNumber(rawValue);
-        return numericValue == null ? null : { y: numericValue, projectName: entry.projectName };
+        return numericValue == null ? null : numericValue;
     });
 
     return {
@@ -959,7 +960,8 @@ function buildMonthlyMetricData(projects, metricConfig) {
                 label: metricConfig.label,
                 data,
                 borderRadius: 6,
-                backgroundColor: '#3498db'
+                backgroundColor: '#3498db',
+                projectNames
             }
         ]
     };
@@ -1030,36 +1032,32 @@ function expandTimelineDatasets(chartData, timelineEntries, metricConfig) {
     const expandedDatasets = chartData.datasets.map((dataset) => {
         const expandedData = [];
         const expandedTotals = dataset.projectTotals ? [] : null;
+        const expandedProjectNames = [];
         timelineEntries.forEach((entry) => {
             if (!entry.project) {
                 expandedData.push(null);
                 if (expandedTotals) {
                     expandedTotals.push(null);
                 }
+                expandedProjectNames.push('');
                 return;
             }
             const key = entry.project.id ?? entry.project.name;
             const projectIndex = projectIndexMap.get(key);
             const value = projectIndex != null ? dataset.data[projectIndex] : null;
-            if (value == null) {
-                expandedData.push(null);
-            } else {
-                const numericValue = toFiniteNumber(value);
-                expandedData.push(
-                    numericValue == null
-                        ? null
-                        : { y: numericValue, projectName: entry.projectName }
-                );
-            }
+            const numericValue = toFiniteNumber(value);
+            expandedData.push(numericValue == null ? null : numericValue);
             if (expandedTotals) {
                 expandedTotals.push(projectIndex != null ? dataset.projectTotals?.[projectIndex] ?? null : null);
             }
+            expandedProjectNames.push(entry.projectName || '');
         });
 
         return {
             ...dataset,
             data: expandedData,
-            projectTotals: expandedTotals || dataset.projectTotals
+            projectTotals: expandedTotals || dataset.projectTotals,
+            projectNames: expandedProjectNames
         };
     });
 
@@ -1406,11 +1404,12 @@ function buildComparisonChartOptions(metricConfig, viewMode = CHART_VIEW_MODES.P
                     }
                     return context.datasetIndex === 0;
                 },
-                formatter: (value) => {
-                    if (!value || typeof value !== 'object') {
+                formatter: (_value, context) => {
+                    const projectNames = context.dataset?.projectNames;
+                    if (!projectNames) {
                         return '';
                     }
-                    return value.projectName || '';
+                    return projectNames[context.dataIndex] || '';
                 },
                 anchor: 'end',
                 align: 'end',
