@@ -144,6 +144,7 @@ const METRIC_OPTIONS = {
         description: 'Shows GMP totals with green savings (GMP above median) or red overages (median above GMP).',
         format: formatCurrency,
         scope: METRIC_SCOPES.PROJECT,
+        allowMonthlyTimeline: true,
         stacked: true,
         overlayTarget: 'median',
         buildChartData: (projects) => buildGmpOverlayChartData(projects, 'median', 'Median'),
@@ -154,6 +155,7 @@ const METRIC_OPTIONS = {
         description: 'Shows GMP totals with green savings (GMP above selected low) or red overages (selected low above GMP).',
         format: formatCurrency,
         scope: METRIC_SCOPES.PROJECT,
+        allowMonthlyTimeline: true,
         stacked: true,
         overlayTarget: 'low',
         buildChartData: (projects) => buildGmpOverlayChartData(projects, 'low', 'Selected low'),
@@ -164,6 +166,7 @@ const METRIC_OPTIONS = {
         description: 'Shows GMP versus median totals as stacked percentages, highlighting overages and savings.',
         format: formatPercentage,
         scope: METRIC_SCOPES.PROJECT,
+        allowMonthlyTimeline: true,
         stacked: true,
         overlayTarget: 'median',
         buildChartData: (projects) => buildGmpOverlayChartData(projects, 'median', 'Median', true),
@@ -174,6 +177,7 @@ const METRIC_OPTIONS = {
         description: 'Shows GMP versus selected low totals as stacked percentages, highlighting overages and savings.',
         format: formatPercentage,
         scope: METRIC_SCOPES.PROJECT,
+        allowMonthlyTimeline: true,
         stacked: true,
         overlayTarget: 'low',
         buildChartData: (projects) => buildGmpOverlayChartData(projects, 'low', 'Selected low', true),
@@ -731,7 +735,13 @@ function populateMetricDropdown() {
 }
 
 function isMonthlyViewAvailable(metricConfig) {
-    return metricConfig.scope === METRIC_SCOPES.PROJECT && typeof metricConfig.buildChartData !== 'function';
+    if (metricConfig.scope !== METRIC_SCOPES.PROJECT) {
+        return false;
+    }
+    if (typeof metricConfig.buildChartData !== 'function') {
+        return true;
+    }
+    return metricConfig.allowMonthlyTimeline === true;
 }
 
 function updateChartViewControl(metricKey) {
@@ -924,6 +934,38 @@ function buildMonthlyMetricData(projects, metricConfig) {
         return buildProjectMetricData(projects, metricConfig);
     }
 
+    const timelineEntries = buildMonthlyTimelineEntries(datedProjects);
+
+    if (typeof metricConfig.buildChartData === 'function') {
+        const projectsInTimeline = timelineEntries.filter((entry) => entry.project).map((entry) => entry.project);
+        const chartData = metricConfig.buildChartData(projectsInTimeline);
+        return expandTimelineDatasets(chartData, timelineEntries, metricConfig);
+    }
+
+    const labels = timelineEntries.map((entry) => entry.monthLabel);
+    const data = timelineEntries.map((entry) => {
+        if (!entry.project) {
+            return null;
+        }
+        const rawValue = metricConfig.getValue(entry.project.metrics || {}, entry.project);
+        const numericValue = toFiniteNumber(rawValue);
+        return numericValue == null ? null : { y: numericValue, projectName: entry.projectName };
+    });
+
+    return {
+        labels,
+        datasets: [
+            {
+                label: metricConfig.label,
+                data,
+                borderRadius: 6,
+                backgroundColor: '#3498db'
+            }
+        ]
+    };
+}
+
+function buildMonthlyTimelineEntries(datedProjects) {
     const monthMap = new Map();
     datedProjects.forEach(({ project, date }) => {
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -942,9 +984,7 @@ function buildMonthlyMetricData(projects, metricConfig) {
     const newestMonth = monthDates[0];
     const oldestMonth = monthDates[monthDates.length - 1];
 
-    const labels = [];
-    const data = [];
-
+    const timelineEntries = [];
     const cursor = new Date(newestMonth.getFullYear(), newestMonth.getMonth(), 1);
     while (cursor >= oldestMonth) {
         const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
@@ -955,29 +995,78 @@ function buildMonthlyMetricData(projects, metricConfig) {
                 .sort((a, b) => b.date - a.date)
                 .forEach((entry) => {
                     const projectName = entry.project.name || 'Untitled project';
-                    labels.push([monthLabel, projectName]);
-                    const rawValue = metricConfig.getValue(entry.project.metrics || {}, entry.project);
-                    const numericValue = toFiniteNumber(rawValue);
-                    data.push(numericValue == null ? null : numericValue);
+                    timelineEntries.push({
+                        monthKey,
+                        monthLabel,
+                        project: entry.project,
+                        projectName
+                    });
                 });
         } else {
-            labels.push([monthLabel, '']);
-            data.push(null);
+            timelineEntries.push({
+                monthKey,
+                monthLabel,
+                project: null,
+                projectName: ''
+            });
         }
-
         cursor.setMonth(cursor.getMonth() - 1);
     }
+    return timelineEntries;
+}
+
+function expandTimelineDatasets(chartData, timelineEntries, metricConfig) {
+    if (!chartData?.datasets?.length) {
+        return chartData;
+    }
+
+    const labels = timelineEntries.map((entry) => entry.monthLabel);
+    const projectsInTimeline = timelineEntries.filter((entry) => entry.project);
+    const projectIndexMap = new Map();
+    projectsInTimeline.forEach((entry, index) => {
+        projectIndexMap.set(entry.project.id ?? entry.project.name ?? index, index);
+    });
+
+    const expandedDatasets = chartData.datasets.map((dataset) => {
+        const expandedData = [];
+        const expandedTotals = dataset.projectTotals ? [] : null;
+        timelineEntries.forEach((entry) => {
+            if (!entry.project) {
+                expandedData.push(null);
+                if (expandedTotals) {
+                    expandedTotals.push(null);
+                }
+                return;
+            }
+            const key = entry.project.id ?? entry.project.name;
+            const projectIndex = projectIndexMap.get(key);
+            const value = projectIndex != null ? dataset.data[projectIndex] : null;
+            if (value == null) {
+                expandedData.push(null);
+            } else {
+                const numericValue = toFiniteNumber(value);
+                expandedData.push(
+                    numericValue == null
+                        ? null
+                        : { y: numericValue, projectName: entry.projectName }
+                );
+            }
+            if (expandedTotals) {
+                expandedTotals.push(projectIndex != null ? dataset.projectTotals?.[projectIndex] ?? null : null);
+            }
+        });
+
+        return {
+            ...dataset,
+            data: expandedData,
+            projectTotals: expandedTotals || dataset.projectTotals
+        };
+    });
 
     return {
+        ...chartData,
         labels,
-        datasets: [
-            {
-                label: metricConfig.label,
-                data,
-                borderRadius: 6,
-                backgroundColor: '#3498db'
-            }
-        ]
+        datasets: expandedDatasets
     };
 }
 
@@ -1311,7 +1400,22 @@ function buildComparisonChartOptions(metricConfig, viewMode = CHART_VIEW_MODES.P
                 }
             },
             datalabels: {
-                display: false
+                display: (context) => {
+                    if (viewMode !== CHART_VIEW_MODES.MONTH || isMultiEntryScope) {
+                        return false;
+                    }
+                    return context.datasetIndex === 0;
+                },
+                formatter: (value) => {
+                    if (!value || typeof value !== 'object') {
+                        return '';
+                    }
+                    return value.projectName || '';
+                },
+                anchor: 'end',
+                align: 'end',
+                rotation: -60,
+                clamp: true
             }
         },
         scales: {
