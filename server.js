@@ -2802,14 +2802,18 @@ app.get('/api/bidders/:id/history', (req, res) => {
         bid.bidder_id,
         bid.bid_amount,
         bid.was_selected,
+        pkg.selected_amount,
         COUNT(*) OVER (PARTITION BY bid.package_id) AS total_bids,
         RANK() OVER (
           PARTITION BY bid.package_id
           ORDER BY
             CASE WHEN bid.bid_amount IS NULL THEN 1 ELSE 0 END,
-            bid.bid_amount ASC
+            CASE WHEN pkg.selected_amount IS NULL THEN 999999999
+                 ELSE ABS(bid.bid_amount - pkg.selected_amount)
+            END ASC
         ) AS bid_rank
       FROM bids bid
+      JOIN packages pkg ON bid.package_id = pkg.id
     )
     SELECT
       proj.name,
@@ -2822,8 +2826,8 @@ app.get('/api/bidders/:id/history', (req, res) => {
       stats.total_bids,
       stats.bid_rank,
       CASE
-        WHEN pkg.selected_amount IS NOT NULL AND pkg.selected_amount > 0
-          THEN ((stats.bid_amount - pkg.selected_amount) * 100.0) / pkg.selected_amount
+        WHEN stats.selected_amount IS NOT NULL AND stats.selected_amount > 0
+          THEN ((stats.bid_amount - stats.selected_amount) * 100.0) / stats.selected_amount
         ELSE NULL
       END AS percent_from_selected
     FROM bidder_stats stats
