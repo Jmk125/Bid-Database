@@ -474,6 +474,13 @@ function renderPlacementCell(bid) {
         pieces.push(`<span class="placement-diff ${diffClass}">${formatPercentDifference(percentValue)}</span>`);
     }
 
+    // Add "See bids" button if we have a package_id and there are multiple bids
+    if (bid.package_id && total > 1) {
+        const packageName = escapeHtml(`${bid.package_code} ${bid.package_name}`).replace(/'/g, "\\'");
+        const projectName = escapeHtml(bid.project_name).replace(/'/g, "\\'");
+        pieces.push(`<button type="button" class="btn-link see-bids-btn" onclick="openSeeBidsModal(${bid.package_id}, '${packageName}', '${projectName}')" title="See all bids for this package">See bids</button>`);
+    }
+
     pieces.push('</div>');
     return pieces.join('');
 }
@@ -2204,3 +2211,74 @@ document.addEventListener('DOMContentLoaded', function() {
     loadBidders();
     ensureBidderActivityLoaded();
 });
+
+// See Bids Modal Functions
+async function openSeeBidsModal(packageId, packageName, projectName) {
+    const modal = document.getElementById('seeBidsModal');
+    const title = document.getElementById('seeBidsModalTitle');
+    const subtitle = document.getElementById('seeBidsModalSubtitle');
+    const content = document.getElementById('seeBidsContent');
+
+    if (!modal || !title || !subtitle || !content) return;
+
+    // Set modal title and subtitle
+    title.textContent = `All Bids for ${packageName}`;
+    subtitle.textContent = `Project: ${projectName}`;
+
+    // Show loading state
+    content.innerHTML = '<div class="loading">Loading bids...</div>';
+
+    // Show modal
+    modal.style.display = 'block';
+
+    try {
+        // Fetch bids for this package
+        const response = await fetch(`${API_BASE}/packages/${packageId}/bids`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch bids');
+        }
+
+        const bids = await response.json();
+
+        if (bids.length === 0) {
+            content.innerHTML = '<div class="empty-state">No bids found for this package</div>';
+            return;
+        }
+
+        // Render bids table
+        content.innerHTML = `
+            <table class="bids-table">
+                <thead>
+                    <tr>
+                        <th>Bidder</th>
+                        <th>Bid Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${bids.map(bid => `
+                        <tr>
+                            <td>${escapeHtml(bid.bidder_name)}</td>
+                            <td>${bid.bid_amount != null ? formatCurrency(bid.bid_amount) : '—'}</td>
+                            <td>
+                                ${bid.was_selected === 1
+                                    ? '<span class="status-badge status-bid">Selected</span>'
+                                    : '<span class="status-badge status-estimated">Not Selected</span>'}
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } catch (error) {
+        console.error('Error loading bids:', error);
+        content.innerHTML = '<div class="error-state">Error loading bids. Please try again.</div>';
+    }
+}
+
+function closeSeeBidsModal() {
+    const modal = document.getElementById('seeBidsModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
