@@ -464,15 +464,19 @@ function renderPlacementCell(bid) {
     }
 
     const pieces = ['<div class="placement-indicator">'];
+    const infoPieces = [];
 
     if (hasRank) {
-        pieces.push(`<span class="placement-rank">${rank}/${total}</span>`);
+        infoPieces.push(`<span class="placement-rank">${rank}/${total}</span>`);
     }
 
     if (hasPercent) {
         const diffClass = percentValue > 0 ? 'is-higher' : percentValue < 0 ? 'is-lower' : 'is-even';
-        pieces.push(`<span class="placement-diff ${diffClass}">${formatPercentDifference(percentValue)}</span>`);
+        infoPieces.push(`<span class="placement-diff ${diffClass}">${formatPercentDifference(percentValue)}</span>`);
     }
+
+    // Wrap rank and diff in a container
+    pieces.push(`<div class="placement-info">${infoPieces.join('')}</div>`);
 
     // Add "See bids" button if we have a package_id and there are multiple bids
     if (bid.package_id && total > 1) {
