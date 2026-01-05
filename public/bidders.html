@@ -285,6 +285,18 @@
         </div>
     </div>
 
+    <!-- See Bids Modal -->
+    <div id="seeBidsModal" class="modal">
+        <div class="modal-content modal-wide">
+            <span class="close" onclick="closeSeeBidsModal()">&times;</span>
+            <h3 id="seeBidsModalTitle">All Bids</h3>
+            <p class="modal-subtitle" id="seeBidsModalSubtitle">Viewing all bids for this package.</p>
+            <div id="seeBidsContent">
+                <div class="loading">Loading bids...</div>
+            </div>
+        </div>
+    </div>
+
     <script src="edit-key.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>

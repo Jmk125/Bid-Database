@@ -1888,6 +1888,22 @@ tr:hover {
     color: #7f8c8d;
 }
 
+.placement-indicator .see-bids-btn {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    padding: 0.125rem 0.375rem;
+    background: none;
+    border: none;
+    color: #3498db;
+    cursor: pointer;
+    text-decoration: underline;
+    font-weight: 500;
+}
+
+.placement-indicator .see-bids-btn:hover {
+    color: #2980b9;
+}
+
 .bidder-review-modal {
     max-height: 90vh;
     overflow: hidden;

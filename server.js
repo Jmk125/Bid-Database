@@ -2829,7 +2829,8 @@ app.get('/api/bidders/:id/history', (req, res) => {
         WHEN stats.selected_amount IS NOT NULL AND stats.selected_amount > 0
           THEN ((stats.bid_amount - stats.selected_amount) * 100.0) / stats.selected_amount
         ELSE NULL
-      END AS percent_from_selected
+      END AS percent_from_selected,
+      pkg.id AS package_id
     FROM bidder_stats stats
     JOIN packages pkg ON stats.package_id = pkg.id
     JOIN projects proj ON pkg.project_id = proj.id
@@ -2860,7 +2861,8 @@ app.get('/api/bidders/:id/history', (req, res) => {
       was_selected: row[6] === 1,
       placement_rank: bidRank,
       placement_total: totalBids,
-      percent_from_selected: percentFromSelected
+      percent_from_selected: percentFromSelected,
+      package_id: row[10]
     };
   });
 
