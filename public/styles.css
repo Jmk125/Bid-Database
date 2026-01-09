@@ -471,6 +471,7 @@ body {
 .bids-overview {
     display: grid;
     gap: 2rem;
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .bidder-metrics {
@@ -564,13 +565,13 @@ body {
 
 @media (min-width: 992px) {
     .bids-overview {
-        grid-template-columns: minmax(0, 5fr) minmax(0, 2fr);
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
 @media (min-width: 1400px) {
     .bids-overview {
-        grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
