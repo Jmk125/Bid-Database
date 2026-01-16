@@ -26,7 +26,7 @@
         <div class="header">
             <div>
                 <h2>Project Comparison</h2>
-                <p style="color: #7f8c8d; margin-top: 0.5rem; max-width: 720px;">Pick two or more projects to see their totals, cost per SF, and bid mix side-by-side. Use this view to spot trends and benchmark upcoming work.</p>
+                <p style="color: #7f8c8d; margin-top: 0.5rem; max-width: 720px;">Pick one or more projects to see their totals, cost per SF, and bid mix side-by-side. Use this view to spot trends and benchmark upcoming work.</p>
             </div>
         </div>
 
@@ -42,6 +42,21 @@
                     <option disabled selected>Loading metrics...</option>
                 </select>
                 <small class="form-hint" id="metricDescription">Total value of the selected bidders.</small>
+            </div>
+            <div class="form-group package-filter-group" id="packageFilterGroup" hidden>
+                <label>Bid package filter</label>
+                <details class="package-filter-dropdown">
+                    <summary class="package-filter-summary" id="packageFilterSummary">Showing 0 of 0 packages</summary>
+                    <div class="package-filter-toolbar">
+                        <span class="package-filter-helper">Select packages to include.</span>
+                        <div class="package-filter-actions">
+                            <button type="button" class="btn btn-secondary btn-small" id="packageFilterAll">All</button>
+                            <button type="button" class="btn btn-secondary btn-small" id="packageFilterNone">None</button>
+                        </div>
+                    </div>
+                    <div class="package-filter-list" id="packageFilterList"></div>
+                </details>
+                <small class="form-hint">Expand to filter packages included in the bar chart.</small>
             </div>
             <div class="form-group">
                 <label for="compareChartView">Bar chart view</label>
@@ -83,7 +98,7 @@
         <section id="comparisonResults" class="comparison-grid">
             <div class="empty-state">
                 <h3>Select projects to compare</h3>
-                <p>Pick at least two projects from the list above to see their metrics and bid mix.</p>
+                <p>Pick at least one project from the list above to see their metrics and bid mix.</p>
             </div>
         </section>
     </div>
