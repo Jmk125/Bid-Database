@@ -9,11 +9,11 @@ const chartSubtitleEl = document.getElementById('compareChartSubtitle');
 const metricDescriptionEl = document.getElementById('metricDescription');
 const chartViewSelect = document.getElementById('compareChartView');
 const chartViewHintEl = document.getElementById('chartViewHint');
-const packageFilterGroup = document.getElementById('packageFilterGroup');
-const packageFilterList = document.getElementById('packageFilterList');
-const packageFilterSummary = document.getElementById('packageFilterSummary');
-const packageFilterAllButton = document.getElementById('packageFilterAll');
-const packageFilterNoneButton = document.getElementById('packageFilterNone');
+let packageFilterGroup = null;
+let packageFilterList = null;
+let packageFilterSummary = null;
+let packageFilterAllButton = null;
+let packageFilterNoneButton = null;
 let comparisonChart = null;
 const projectPieCharts = new Map();
 let currentProjects = [];
@@ -678,6 +678,7 @@ function registerChartPlugins() {
 }
 
 function initComparisonPage() {
+    refreshPackageFilterElements();
     populateMetricDropdown();
     updateMetricMetadata(compareMetricSelect.value);
     loadProjects();
@@ -738,6 +739,19 @@ function initComparisonPage() {
             setAllPackageFilters(false);
         });
     }
+}
+
+function refreshPackageFilterElements() {
+    const groups = Array.from(document.querySelectorAll('#packageFilterGroup'));
+    if (groups.length > 1) {
+        groups.slice(0, -1).forEach((group) => group.remove());
+    }
+    const activeGroup = groups[groups.length - 1] || null;
+    packageFilterGroup = activeGroup;
+    packageFilterList = activeGroup?.querySelector('#packageFilterList') || null;
+    packageFilterSummary = activeGroup?.querySelector('#packageFilterSummary') || null;
+    packageFilterAllButton = activeGroup?.querySelector('#packageFilterAll') || null;
+    packageFilterNoneButton = activeGroup?.querySelector('#packageFilterNone') || null;
 }
 
 function populateMetricDropdown() {
