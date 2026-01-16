@@ -9,9 +9,16 @@ const chartSubtitleEl = document.getElementById('compareChartSubtitle');
 const metricDescriptionEl = document.getElementById('metricDescription');
 const chartViewSelect = document.getElementById('compareChartView');
 const chartViewHintEl = document.getElementById('chartViewHint');
+let packageFilterGroup = null;
+let packageFilterList = null;
+let packageFilterSummary = null;
+let packageFilterAllButton = null;
+let packageFilterNoneButton = null;
 let comparisonChart = null;
 const projectPieCharts = new Map();
 let currentProjects = [];
+let packageFilterEntries = [];
+let packageFilterState = new Map();
 
 const CATEGORY_DEFINITIONS = [
     { key: 'structure', name: 'Structure', divisions: ['03', '04', '05'], color: '#2c3e50' },
@@ -671,6 +678,7 @@ function registerChartPlugins() {
 }
 
 function initComparisonPage() {
+    refreshPackageFilterElements();
     populateMetricDropdown();
     updateMetricMetadata(compareMetricSelect.value);
     loadProjects();
@@ -701,6 +709,49 @@ function initComparisonPage() {
             renderComparison(currentProjects);
         }
     });
+    if (packageFilterList) {
+        packageFilterList.addEventListener('change', (event) => {
+            const checkbox = event.target;
+            if (!(checkbox instanceof HTMLInputElement) || checkbox.type !== 'checkbox') {
+                return;
+            }
+            const key = checkbox.dataset.packageKey;
+            if (!key) {
+                return;
+            }
+            const entry = packageFilterState.get(key);
+            if (entry) {
+                entry.selected = checkbox.checked;
+            }
+            updatePackageFilterSummary();
+            if (currentProjects.length) {
+                renderComparison(currentProjects);
+            }
+        });
+    }
+    if (packageFilterAllButton) {
+        packageFilterAllButton.addEventListener('click', () => {
+            setAllPackageFilters(true);
+        });
+    }
+    if (packageFilterNoneButton) {
+        packageFilterNoneButton.addEventListener('click', () => {
+            setAllPackageFilters(false);
+        });
+    }
+}
+
+function refreshPackageFilterElements() {
+    const groups = Array.from(document.querySelectorAll('#packageFilterGroup'));
+    if (groups.length > 1) {
+        groups.slice(0, -1).forEach((group) => group.remove());
+    }
+    const activeGroup = groups[groups.length - 1] || null;
+    packageFilterGroup = activeGroup;
+    packageFilterList = activeGroup?.querySelector('#packageFilterList') || null;
+    packageFilterSummary = activeGroup?.querySelector('#packageFilterSummary') || null;
+    packageFilterAllButton = activeGroup?.querySelector('#packageFilterAll') || null;
+    packageFilterNoneButton = activeGroup?.querySelector('#packageFilterNone') || null;
 }
 
 function populateMetricDropdown() {
@@ -799,13 +850,16 @@ async function loadProjects() {
 async function fetchComparison() {
     const ids = Array.from(projectSelector.selectedOptions).map((option) => option.value);
 
-    if (ids.length < 2) {
+    if (ids.length < 1) {
         currentProjects = [];
         resetCharts();
+        if (packageFilterGroup) {
+            packageFilterGroup.hidden = true;
+        }
         comparisonResults.innerHTML = `
             <div class="empty-state">
-                <h3>Select more projects</h3>
-                <p>Pick at least two projects to see side-by-side metrics.</p>
+                <h3>Select a project</h3>
+                <p>Pick at least one project to see metrics and bid mix.</p>
             </div>`;
         return;
     }
@@ -842,13 +896,15 @@ function renderComparison(projects) {
     const metricConfig = METRIC_OPTIONS[metricKey] || METRIC_OPTIONS.selected_total;
     const viewMode = updateMetricMetadata(metricKey);
     const chartProjects = sortProjectsByDate(projects);
+    const usesPackageScope = metricConfig.scope === METRIC_SCOPES.PACKAGE;
+    updatePackageFilterVisibility(usesPackageScope, chartProjects);
     let chartData;
     if (typeof metricConfig.buildChartData === 'function') {
         chartData = metricConfig.buildChartData(chartProjects);
     } else {
         switch (metricConfig.scope) {
             case METRIC_SCOPES.PACKAGE:
-                chartData = buildPackageMetricData(chartProjects, metricConfig);
+                chartData = buildPackageMetricData(chartProjects, metricConfig, getSelectedPackageKeys());
                 break;
             case METRIC_SCOPES.CATEGORY:
                 chartData = buildCategoryMetricData(chartProjects, metricConfig);
@@ -1189,9 +1245,12 @@ function buildGmpOverlayTooltip(context, targetKey, asPercentage = false) {
     return lines.length ? lines : null;
 }
 
-function buildPackageMetricData(projects, metricConfig) {
+function buildPackageMetricData(projects, metricConfig, selectedKeys) {
     const packageEntries = collectPackageEntries(projects);
-    const labels = packageEntries.map((entry) => entry.label);
+    const filteredEntries = selectedKeys && selectedKeys.size
+        ? packageEntries.filter((entry) => selectedKeys.has(entry.key))
+        : packageEntries;
+    const labels = filteredEntries.map((entry) => entry.label);
 
     const datasets = projects.map((project, index) => {
         const pkgMap = new Map();
@@ -1209,7 +1268,7 @@ function buildPackageMetricData(projects, metricConfig) {
             label: project.name,
             borderRadius: 4,
             backgroundColor: getProjectColor(index),
-            data: packageEntries.map((entry) => {
+            data: filteredEntries.map((entry) => {
                 const pkg = pkgMap.get(entry.key);
                 const rawValue = metricConfig.getValue(pkg, normalizedProject);
                 const numeric = toFiniteNumber(rawValue);
@@ -1219,6 +1278,90 @@ function buildPackageMetricData(projects, metricConfig) {
     });
 
     return { labels, datasets };
+}
+
+function updatePackageFilterVisibility(isPackageScope, projects) {
+    if (!packageFilterGroup) {
+        return;
+    }
+    if (!isPackageScope) {
+        packageFilterGroup.hidden = true;
+        return;
+    }
+
+    const entries = collectPackageEntries(projects || []);
+    syncPackageFilterState(entries);
+    renderPackageFilterList();
+    updatePackageFilterSummary();
+    packageFilterGroup.hidden = false;
+}
+
+function syncPackageFilterState(entries) {
+    packageFilterEntries = entries;
+    const nextState = new Map();
+    entries.forEach((entry) => {
+        const previous = packageFilterState.get(entry.key);
+        nextState.set(entry.key, {
+            label: entry.label,
+            selected: previous ? previous.selected : true
+        });
+    });
+    packageFilterState = nextState;
+}
+
+function renderPackageFilterList() {
+    if (!packageFilterList) {
+        return;
+    }
+    if (!packageFilterEntries.length) {
+        packageFilterList.innerHTML = '<p class="form-hint">No bid packages available for the selected projects.</p>';
+        return;
+    }
+    packageFilterList.innerHTML = packageFilterEntries
+        .map((entry) => {
+            const state = packageFilterState.get(entry.key);
+            const isChecked = state?.selected ? 'checked' : '';
+            return `
+                <label class="package-filter-item">
+                    <input type="checkbox" data-package-key="${escapeHtml(entry.key)}" ${isChecked}>
+                    <span>${escapeHtml(entry.label)}</span>
+                </label>
+            `;
+        })
+        .join('');
+}
+
+function updatePackageFilterSummary() {
+    if (!packageFilterSummary) {
+        return;
+    }
+    const total = packageFilterEntries.length;
+    const selected = getSelectedPackageKeys().size;
+    packageFilterSummary.textContent = `Showing ${selected} of ${total} packages`;
+}
+
+function getSelectedPackageKeys() {
+    const selectedKeys = new Set();
+    packageFilterState.forEach((entry, key) => {
+        if (entry.selected) {
+            selectedKeys.add(key);
+        }
+    });
+    return selectedKeys;
+}
+
+function setAllPackageFilters(isSelected) {
+    if (!packageFilterEntries.length) {
+        return;
+    }
+    packageFilterState.forEach((entry) => {
+        entry.selected = isSelected;
+    });
+    renderPackageFilterList();
+    updatePackageFilterSummary();
+    if (currentProjects.length) {
+        renderComparison(currentProjects);
+    }
 }
 
 function buildCategoryMetricData(projects, metricConfig) {
