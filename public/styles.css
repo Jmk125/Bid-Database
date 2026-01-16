@@ -159,6 +159,54 @@ body {
     gap: 0.5rem;
 }
 
+.package-filter-group {
+    grid-column: 1 / -1;
+}
+
+.package-filter-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.package-filter-summary {
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.package-filter-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.package-filter-list {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid #ecf0f1;
+    border-radius: 8px;
+    padding: 0.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.5rem;
+}
+
+.package-filter-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    border: 1px solid #edf1f5;
+    background: #fbfcfd;
+    font-size: 0.9rem;
+}
+
+.package-filter-item input[type="checkbox"] {
+    margin-top: 0.2rem;
+}
+
 .form-hint {
     color: #7f8c8d;
     font-size: 0.85rem;
