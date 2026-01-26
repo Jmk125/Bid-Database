@@ -2190,3 +2190,150 @@ tr:hover {
     outline-offset: 2px;
     border-radius: 2px;
 }
+
+.page-subtitle {
+    color: #7f8c8d;
+    margin-top: 0.5rem;
+    max-width: 720px;
+}
+
+.tool-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    margin-bottom: 2rem;
+    overflow: hidden;
+}
+
+.tool-card summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 1.5rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.tool-card summary::-webkit-details-marker {
+    display: none;
+}
+
+.tool-card summary::after {
+    content: '▾';
+    margin-left: auto;
+    font-size: 1.25rem;
+    color: #7f8c8d;
+    transition: transform 0.2s ease;
+}
+
+.tool-card[open] summary::after {
+    transform: rotate(180deg);
+}
+
+.tool-card summary h3 {
+    font-size: 1.25rem;
+    margin-bottom: 0.35rem;
+    color: #2c3e50;
+}
+
+.tool-card summary p {
+    color: #7f8c8d;
+    font-size: 0.95rem;
+}
+
+.tool-body {
+    padding: 1.5rem 2rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.tool-config {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+    align-items: end;
+}
+
+.segmented-control {
+    display: flex;
+    gap: 1rem;
+    background: #f4f6f7;
+    padding: 0.5rem 0.75rem;
+    border-radius: 999px;
+}
+
+.segmented-control label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 600;
+    color: #2c3e50;
+    cursor: pointer;
+}
+
+.tool-output {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.tool-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 2rem;
+    align-items: start;
+}
+
+.tool-table-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+    margin-bottom: 0.75rem;
+}
+
+.table-subtitle {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
+.value-small {
+    font-size: 1rem;
+}
+
+.editable-field {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.editable-input {
+    border: 1px solid transparent;
+    background: transparent;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    font-weight: 600;
+    color: #2c3e50;
+    min-width: 110px;
+    max-width: 160px;
+}
+
+.editable-input.is-editing {
+    border-color: #dce1e7;
+    background: #fff;
+}
+
+.editable-input:focus {
+    outline: 2px solid rgba(52, 152, 219, 0.35);
+    outline-offset: 1px;
+}
+
+.legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
