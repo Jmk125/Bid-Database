@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Other Tools - Bid Database</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+</head>
+<body>
+    <nav class="main-nav">
+        <div class="nav-left">
+            <h1>Bid Database <span style="font-size: 0.75rem; font-weight: normal; color: #95a5a6;">v3.0</span></h1>
+            <ul>
+                <li><a href="index.html">Projects</a></li>
+                <li><a href="compare.html">Compare</a></li>
+                <li><a href="dashboard.html">Dashboard</a></li>
+                <li><a href="bidders.html">Bidders</a></li>
+                <li><a href="other-tools.html" class="active">Other Tools</a></li>
+            </ul>
+        </div>
+        <button type="button" class="edit-lock-toggle" data-edit-lock-toggle aria-pressed="false">🔒 Locked</button>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <div>
+                <h2>Other Tools</h2>
+                <p class="page-subtitle">Quick calculators and planning aids powered by your project data.</p>
+            </div>
+        </div>
+
+        <details class="tool-card" open>
+            <summary>
+                <div>
+                    <h3>Expected Budget Breakdown Tool</h3>
+                    <p>Allocate a design budget by CSI division using one project or an average of multiple projects, then fine-tune the results.</p>
+                </div>
+            </summary>
+            <div class="tool-body">
+                <section class="tool-config">
+                    <div class="form-group">
+                        <label for="designBudgetInput">Design budget (Bricks &amp; Sticks)</label>
+                        <input type="number" id="designBudgetInput" min="0" step="0.01" placeholder="e.g. 4500000">
+                    </div>
+                    <div class="form-group">
+                        <label for="buildingSfInput">Building SF</label>
+                        <input type="number" id="buildingSfInput" min="0" step="0.01" placeholder="e.g. 68000">
+                        <small class="form-hint">Used to calculate cost per SF metrics.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Breakdown source</label>
+                        <div class="segmented-control">
+                            <label><input type="radio" name="breakdownMode" value="single" checked> Single project</label>
+                            <label><input type="radio" name="breakdownMode" value="average"> Average multiple projects</label>
+                        </div>
+                    </div>
+                    <div class="form-group" id="singleProjectGroup">
+                        <label for="singleProjectSelect">Reference project</label>
+                        <select id="singleProjectSelect"></select>
+                    </div>
+                    <div class="form-group" id="multiProjectGroup" hidden>
+                        <label for="multiProjectSelect">Projects to average</label>
+                        <select id="multiProjectSelect" multiple size="6"></select>
+                        <small class="form-hint">Hold Ctrl/⌘ to select multiple projects.</small>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-primary" id="generateBreakdownBtn">Generate breakdown</button>
+                        <span class="form-hint" id="breakdownStatus">Select a project to begin.</span>
+                    </div>
+                </section>
+
+                <section class="metrics-grid" id="breakdownMetrics" hidden>
+                    <div class="metric-card">
+                        <h4>Total design budget</h4>
+                        <div class="value" id="totalBudgetMetric">—</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Cost per SF</h4>
+                        <div class="value" id="costPerSfMetric">—</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Source</h4>
+                        <div class="value value-small" id="breakdownSourceMetric">—</div>
+                    </div>
+                </section>
+
+                <section class="tool-output" id="breakdownOutput" hidden>
+                    <div class="table-container">
+                        <div class="table-header tool-table-header">
+                            <h4>Division breakdown</h4>
+                            <p class="table-subtitle">Edit the percentage or dollar amount to refine the split.</p>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Division</th>
+                                    <th>Percent</th>
+                                    <th>Amount</th>
+                                    <th>Cost / SF</th>
+                                </tr>
+                            </thead>
+                            <tbody id="divisionBreakdownBody"></tbody>
+                            <tfoot>
+                                <tr>
+                                    <th>Total</th>
+                                    <th id="divisionTotalPercent">—</th>
+                                    <th id="divisionTotalAmount">—</th>
+                                    <th id="divisionTotalCostPerSf">—</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <div class="tool-charts">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Category breakdown</h3>
+                                <p class="chart-subtitle">Category allocation derived from the division split.</p>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="categoryBreakdownChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="table-container">
+                            <div class="table-header tool-table-header">
+                                <h4>Category cost / SF</h4>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <th>Percent</th>
+                                        <th>Amount</th>
+                                        <th>Cost / SF</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="categoryBreakdownBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </details>
+    </div>
+
+    <script src="edit-key.js"></script>
+    <script src="other-tools.js"></script>
+</body>
+</html>
