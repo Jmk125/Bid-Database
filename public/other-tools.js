@@ -76,6 +76,20 @@ function formatPercentage(value) {
     return `${value.toFixed(1)}%`;
 }
 
+function formatPercentInput(value) {
+    if (!Number.isFinite(value)) {
+        return '';
+    }
+    return `${value.toFixed(1)}%`;
+}
+
+function formatAmountInput(value) {
+    if (!Number.isFinite(value)) {
+        return '';
+    }
+    return formatCurrencyWithCents(value);
+}
+
 function toFiniteNumber(value) {
     if (value == null) {
         return null;
@@ -308,10 +322,16 @@ function renderDivisionTable() {
                         ${escapeHtml(entry.label)}
                     </td>
                     <td>
-                        <input type="number" class="percent-input" data-division="${entry.division}" min="0" step="0.1" value="${entry.percent.toFixed(1)}">
+                        <div class="editable-field">
+                            <input type="text" class="editable-input percent-input" data-division="${entry.division}" data-field="percent" value="${formatPercentInput(entry.percent)}" readonly>
+                            <button type="button" class="btn btn-secondary btn-small edit-field-button" data-division="${entry.division}" data-field="percent">Edit</button>
+                        </div>
                     </td>
                     <td>
-                        <input type="number" class="amount-input" data-division="${entry.division}" min="0" step="0.01" value="${entry.amount.toFixed(2)}">
+                        <div class="editable-field">
+                            <input type="text" class="editable-input amount-input" data-division="${entry.division}" data-field="amount" value="${formatAmountInput(entry.amount)}" readonly>
+                            <button type="button" class="btn btn-secondary btn-small edit-field-button" data-division="${entry.division}" data-field="amount">Edit</button>
+                        </div>
                     </td>
                     <td class="cost-cell" data-division="${entry.division}">${costPerSf != null ? formatCurrencyWithCents(costPerSf) : '—'}</td>
                 </tr>
@@ -481,50 +501,110 @@ async function generateBreakdown() {
     }
 }
 
-divisionBreakdownBody?.addEventListener('input', (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement)) {
+function parseEditableValue(rawValue) {
+    if (!rawValue) {
+        return null;
+    }
+    const cleaned = rawValue.replace(/[%$,]/g, '').trim();
+    return toFiniteNumber(cleaned);
+}
+
+function syncRowValues(row, entry) {
+    const percentInput = row.querySelector('.percent-input');
+    const amountInput = row.querySelector('.amount-input');
+    const costCell = row.querySelector('.cost-cell');
+    if (percentInput) {
+        percentInput.value = formatPercentInput(entry.percent);
+    }
+    if (amountInput) {
+        amountInput.value = formatAmountInput(entry.amount);
+    }
+    if (costCell) {
+        const costPerSf = currentBuildingSf > 0 ? entry.amount / currentBuildingSf : null;
+        costCell.textContent = costPerSf != null ? formatCurrencyWithCents(costPerSf) : '—';
+    }
+}
+
+divisionBreakdownBody?.addEventListener('click', (event) => {
+    const button = event.target.closest('.edit-field-button');
+    if (!button) {
         return;
     }
-
-    const division = target.dataset.division;
-    if (!division) {
+    const division = button.dataset.division;
+    const field = button.dataset.field;
+    const row = button.closest('tr');
+    if (!division || !field || !row) {
         return;
     }
-
     const entry = currentDivisionEntries.find((item) => item.division === division);
     if (!entry) {
         return;
     }
-
-    if (target.classList.contains('percent-input')) {
-        const percentValue = toFiniteNumber(target.value);
-        entry.percent = percentValue != null ? Math.max(percentValue, 0) : 0;
-        entry.amount = currentBudget * (entry.percent / 100);
-    } else if (target.classList.contains('amount-input')) {
-        const amountValue = toFiniteNumber(target.value);
-        entry.amount = amountValue != null ? Math.max(amountValue, 0) : 0;
-        entry.percent = currentBudget > 0 ? (entry.amount / currentBudget) * 100 : 0;
+    const input = row.querySelector(`.editable-input[data-field="${field}"]`);
+    if (!input) {
+        return;
     }
-
-    const row = target.closest('tr');
-    if (row) {
-        const percentInput = row.querySelector('.percent-input');
-        const amountInput = row.querySelector('.amount-input');
-        const costCell = row.querySelector('.cost-cell');
-        if (percentInput) {
-            percentInput.value = entry.percent.toFixed(1);
-        }
-        if (amountInput) {
-            amountInput.value = entry.amount.toFixed(2);
-        }
-        if (costCell) {
-            const costPerSf = currentBuildingSf > 0 ? entry.amount / currentBuildingSf : null;
-            costCell.textContent = costPerSf != null ? formatCurrencyWithCents(costPerSf) : '—';
-        }
+    input.readOnly = false;
+    input.classList.add('is-editing');
+    if (field === 'percent') {
+        input.value = Number.isFinite(entry?.percent) ? entry.percent.toFixed(1) : input.value;
+    } else if (field === 'amount') {
+        input.value = Number.isFinite(entry?.amount) ? entry.amount.toFixed(2) : input.value;
     }
+    input.focus();
+    input.select();
+});
 
-    updateMetricsAndCategories();
+divisionBreakdownBody?.addEventListener(
+    'blur',
+    (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) {
+            return;
+        }
+        if (!target.classList.contains('editable-input')) {
+            return;
+        }
+        const division = target.dataset.division;
+        const field = target.dataset.field;
+        if (!division || !field) {
+            return;
+        }
+        const entry = currentDivisionEntries.find((item) => item.division === division);
+        if (!entry) {
+            return;
+        }
+        const parsedValue = parseEditableValue(target.value);
+        if (field === 'percent') {
+            entry.percent = parsedValue != null ? Math.max(parsedValue, 0) : 0;
+            entry.amount = currentBudget * (entry.percent / 100);
+        } else if (field === 'amount') {
+            entry.amount = parsedValue != null ? Math.max(parsedValue, 0) : 0;
+            entry.percent = currentBudget > 0 ? (entry.amount / currentBudget) * 100 : 0;
+        }
+        target.readOnly = true;
+        target.classList.remove('is-editing');
+        const row = target.closest('tr');
+        if (row) {
+            syncRowValues(row, entry);
+        }
+        updateMetricsAndCategories();
+    },
+    true
+);
+
+divisionBreakdownBody?.addEventListener('keydown', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) {
+        return;
+    }
+    if (!target.classList.contains('editable-input')) {
+        return;
+    }
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        target.blur();
+    }
 });
 
 document.querySelectorAll('input[name="breakdownMode"]').forEach((input) => {
