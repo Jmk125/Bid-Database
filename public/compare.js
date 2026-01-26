@@ -1590,7 +1590,7 @@ function renderProjectPieCharts(projects) {
 
     const datasetKey = pieDatasetSelect.value;
     const datasetConfig = PIE_DATA_OPTIONS[datasetKey] || PIE_DATA_OPTIONS.median;
-    const grouping = pieGroupingSelect.value || 'division';
+    const grouping = pieGroupingSelect.value || 'category';
 
     projects.forEach((project) => {
         const canvas = document.getElementById(`comparisonPie-${project.id}`);
