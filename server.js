@@ -1565,7 +1565,7 @@ function normalizeBidderName(name) {
   // Remove common suffixes and normalize
   return raw
     .replace(/\*/g, '') // Remove asterisks
-    .replace(/,?\s*(Inc\.?|LLC\.?|Co\.?|Corporation|Corp\.?|Company|Ltd\.?)$/i, '')
+    .replace(/,?\s*(Inc\.?|LLC\.?|Co\.?|Corporation|Corp\.?|Ltd\.?)$/i, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
