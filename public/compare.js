@@ -2014,11 +2014,16 @@ function parseEstimateText(text) {
     return lines.map((line) => {
         const parts = line.split('\t');
         if (parts.length >= 2) {
-            const label = parts[0].trim();
+            const rawCode = parts[0]?.trim() || '';
+            const rawName = parts.length >= 3 ? parts[1]?.trim() || '' : '';
+            const label = rawCode && rawName ? `${rawCode} - ${rawName}` : rawCode || rawName;
             const rawAmount = parts[parts.length - 1].trim();
             const amount = parseEstimateAmount(rawAmount);
+            const codeMatch = rawCode.match(/^[A-Za-z0-9]{2,6}$/);
             return {
                 label,
+                package_code: parts.length >= 3 && rawCode ? rawCode : codeMatch ? rawCode : '',
+                package_name: rawName,
                 rawAmount,
                 amount,
                 error: !label ? 'Missing label' : amount == null ? 'Invalid amount' : null
@@ -2144,7 +2149,7 @@ function buildEstimatedProject(name, buildingSf, entries) {
     const projectId = `est-${nextEstimateId++}`;
 
     const packages = entries.map((entry, index) => {
-        const parsed = parseEstimatePackageLabel(entry.label);
+        const parsed = parseEstimatePackageLabel(entry.label, entry.package_code, entry.package_name);
         return {
             id: `${projectId}-pkg-${index}`,
             project_id: projectId,
@@ -2190,7 +2195,18 @@ function buildEstimatedProject(name, buildingSf, entries) {
     };
 }
 
-function parseEstimatePackageLabel(label) {
+function parseEstimatePackageLabel(label, codeHint, nameHint) {
+    const hintCode = (codeHint || '').trim();
+    const hintName = (nameHint || '').trim();
+    if (hintCode) {
+        const divMatch = hintCode.match(/^(\d{2})/);
+        return {
+            package_code: hintCode,
+            package_name: hintName,
+            csi_division: divMatch ? divMatch[1] : null
+        };
+    }
+
     const trimmed = (label || '').trim();
     if (!trimmed) return { package_code: '', package_name: '', csi_division: null };
 
@@ -2211,6 +2227,14 @@ function parseEstimatePackageLabel(label) {
             package_name: match[2].trim(),
             csi_division: match[1].substring(0, 2)
         };
+    }
+
+    // "03A" or "23"
+    match = trimmed.match(/^([A-Za-z0-9]{2,6})$/);
+    if (match) {
+        const code = match[1];
+        const divMatch = code.match(/^(\d{2})/);
+        return { package_code: code, package_name: '', csi_division: divMatch ? divMatch[1] : null };
     }
 
     // Full label as name
