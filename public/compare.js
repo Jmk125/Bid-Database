@@ -1379,6 +1379,7 @@ function setAllPackageFilters(isSelected) {
 
 function buildCategoryMetricData(projects, metricConfig) {
     const categories = CATEGORY_DEFINITIONS.map((category) => ({ key: category.key, label: category.name }));
+    categories.push({ key: 'remaining', label: 'Remaining' });
     const labels = categories.map((category) => category.label);
 
     const datasets = projects.map((project, index) => {
@@ -1436,19 +1437,23 @@ function aggregateCategoriesByProject(packages) {
             }
         ])
     );
+    categoryMap.set('remaining', {
+        key: 'remaining',
+        label: 'Remaining',
+        color: REMAINING_CATEGORY_COLOR,
+        selected_total: 0,
+        median_total: 0,
+        low_total: 0,
+        high_total: 0,
+        gmp_total: 0
+    });
 
     (packages || []).forEach((pkg) => {
         const divisionKey = formatDivisionKey(pkg?.csi_division);
-        if (!divisionKey) {
-            return;
-        }
-
-        const category = findCategoryByDivision(divisionKey);
-        if (!category) {
-            return;
-        }
-
-        const totals = categoryMap.get(category.key);
+        const category = divisionKey ? findCategoryByDivision(divisionKey) : null;
+        const totals = category
+            ? categoryMap.get(category.key)
+            : categoryMap.get('remaining');
         if (!totals) {
             return;
         }
