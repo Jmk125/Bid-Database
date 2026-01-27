@@ -1810,7 +1810,7 @@ function createProjectCard(project) {
     const metrics = project.metrics || {};
     const isEstimate = !!project._isEstimate;
     const selectedTotal = formatCurrency(metrics.selected_total);
-    const medianTotal = formatCurrency(metrics.median_total);
+    const medianTotal = formatCurrency(metrics.median_bid_total ?? metrics.median_total);
     const selectedPerSf = formatCurrency(metrics.selected_cost_per_sf);
     const medianPerSf = formatCurrency(metrics.median_bid_cost_per_sf ?? metrics.median_cost_per_sf);
     const lowPerSf = formatCurrency(metrics.low_bid_cost_per_sf);
