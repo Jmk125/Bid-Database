@@ -2337,3 +2337,115 @@ tr:hover {
     margin-right: 0.5rem;
     vertical-align: middle;
 }
+
+/* ── Estimated Project Feature ── */
+
+.estimate-add-btn {
+    margin-top: 0.5rem;
+    background-color: #f39c12;
+    color: #fff;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.estimate-add-btn:hover {
+    background-color: #d68910;
+}
+
+.estimated-project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+}
+
+.estimated-project-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    background: rgba(243, 156, 18, 0.08);
+    border: 1px solid rgba(243, 156, 18, 0.25);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #2c3e50;
+}
+
+.estimated-project-info {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.estimated-project-remove {
+    background: none;
+    border: none;
+    color: #95a5a6;
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 0 0.25rem;
+    line-height: 1;
+}
+
+.estimated-project-remove:hover {
+    color: #c0392b;
+}
+
+.comparison-card.is-estimate {
+    border: 2px dashed rgba(243, 156, 18, 0.4);
+    background: linear-gradient(135deg, #fffdf5, #fff);
+}
+
+.estimate-remove-card-btn {
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}
+
+.estimate-preview {
+    margin-bottom: 1rem;
+}
+
+.estimate-preview > label {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.estimate-preview-table-wrap {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid #ecf0f1;
+    border-radius: 6px;
+}
+
+.estimate-preview-table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.estimate-preview-table-wrap th,
+.estimate-preview-table-wrap td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.estimate-preview-table-wrap th {
+    background: #f8f9fa;
+    position: sticky;
+    top: 0;
+}
+
+.estimate-row-error {
+    background: #fff8e6;
+}
+
+.estimate-error {
+    color: #c0392b;
+    font-size: 0.85rem;
+}

@@ -19,6 +19,8 @@ const projectPieCharts = new Map();
 let currentProjects = [];
 let packageFilterEntries = [];
 let packageFilterState = new Map();
+let estimatedProjects = [];
+let nextEstimateId = 1;
 
 const CATEGORY_DEFINITIONS = [
     { key: 'structure', name: 'Structure', divisions: ['03', '04', '05'], color: '#2c3e50' },
@@ -739,6 +741,13 @@ function initComparisonPage() {
             setAllPackageFilters(false);
         });
     }
+    initEstimateFeature();
+    comparisonResults.addEventListener('click', (event) => {
+        const removeBtn = event.target.closest('.estimate-remove-card-btn');
+        if (removeBtn) {
+            removeEstimatedProject(removeBtn.dataset.estimateId);
+        }
+    });
 }
 
 function refreshPackageFilterElements() {
@@ -849,8 +858,9 @@ async function loadProjects() {
 
 async function fetchComparison() {
     const ids = Array.from(projectSelector.selectedOptions).map((option) => option.value);
+    const hasEstimates = estimatedProjects.length > 0;
 
-    if (ids.length < 1) {
+    if (ids.length < 1 && !hasEstimates) {
         currentProjects = [];
         resetCharts();
         if (packageFilterGroup) {
@@ -867,10 +877,13 @@ async function fetchComparison() {
     comparisonResults.innerHTML = '<div class="loading">Comparing projects...</div>';
 
     try {
-        const response = await apiFetch(`${API_BASE}/projects/compare?ids=${ids.join(',')}`);
-        const projects = await response.json();
-        currentProjects = projects;
-        renderComparison(projects);
+        let projects = [];
+        if (ids.length > 0) {
+            const response = await apiFetch(`${API_BASE}/projects/compare?ids=${ids.join(',')}`);
+            projects = await response.json();
+        }
+        currentProjects = [...projects, ...estimatedProjects];
+        renderComparison(currentProjects);
     } catch (error) {
         console.error('Failed to compare projects', error);
         comparisonResults.innerHTML = `
@@ -1790,16 +1803,25 @@ function toFiniteNumber(value) {
 
 function createProjectCard(project) {
     const metrics = project.metrics || {};
+    const isEstimate = !!project._isEstimate;
     const selectedTotal = formatCurrency(metrics.selected_total);
     const selectedPerSf = formatCurrency(metrics.selected_cost_per_sf);
     const medianPerSf = formatCurrency(metrics.median_bid_cost_per_sf ?? metrics.median_cost_per_sf);
     const lowPerSf = formatCurrency(metrics.low_bid_cost_per_sf);
 
+    const estimateBadge = isEstimate
+        ? ' <span class="estimate-indicator"><span class="symbol">&#9670;</span> Estimate</span>'
+        : '';
+    const removeBtn = isEstimate
+        ? ` <button type="button" class="btn btn-tiny btn-secondary estimate-remove-card-btn" data-estimate-id="${project.id}">Remove</button>`
+        : '';
+    const cardClass = isEstimate ? 'comparison-card is-estimate' : 'comparison-card';
+
     return `
-        <article class="comparison-card">
+        <article class="${cardClass}">
             <header>
-                <h4>${escapeHtml(project.name)}</h4>
-                <p class="card-subtitle">${project.project_date ? formatDate(project.project_date) : 'No bid date'} · ${project.building_sf ? formatNumber(project.building_sf) + ' SF' : 'SF unknown'}</p>
+                <h4>${escapeHtml(project.name)}${estimateBadge}</h4>
+                <p class="card-subtitle">${project.project_date ? formatDate(project.project_date) : 'No bid date'} · ${project.building_sf ? formatNumber(project.building_sf) + ' SF' : 'SF unknown'}${removeBtn}</p>
             </header>
             <dl class="comparison-metrics">
                 <div>
@@ -1904,4 +1926,318 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+// ── Estimated Project Feature ──────────────────────────────────────────
+
+function initEstimateFeature() {
+    const addBtn = document.getElementById('addEstimateBtn');
+    const modal = document.getElementById('estimateModal');
+    const closeBtn = document.getElementById('closeEstimateModal');
+    const cancelBtn = document.getElementById('cancelEstimateBtn');
+    const confirmBtn = document.getElementById('confirmEstimateBtn');
+    const pasteArea = document.getElementById('estimatePasteArea');
+    const nameInput = document.getElementById('estimateName');
+    const sfInput = document.getElementById('estimateSf');
+    const listContainer = document.getElementById('estimatedProjectList');
+
+    if (!addBtn || !modal) return;
+
+    addBtn.addEventListener('click', () => openEstimateModal());
+    closeBtn?.addEventListener('click', () => closeEstimateModal());
+    cancelBtn?.addEventListener('click', () => closeEstimateModal());
+    confirmBtn?.addEventListener('click', () => addEstimatedProject());
+
+    pasteArea?.addEventListener('input', () => {
+        handleEstimateInput();
+    });
+    nameInput?.addEventListener('input', () => updateEstimateConfirmState());
+    sfInput?.addEventListener('input', () => updateEstimateConfirmState());
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeEstimateModal();
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && modal.style.display === 'block') {
+            closeEstimateModal();
+        }
+    });
+
+    listContainer?.addEventListener('click', (event) => {
+        const removeBtn = event.target.closest('.estimated-project-remove');
+        if (removeBtn) {
+            removeEstimatedProject(removeBtn.dataset.estimateId);
+        }
+    });
+}
+
+function openEstimateModal() {
+    const modal = document.getElementById('estimateModal');
+    if (!modal) return;
+
+    const nameInput = document.getElementById('estimateName');
+    const sfInput = document.getElementById('estimateSf');
+    const pasteArea = document.getElementById('estimatePasteArea');
+    const preview = document.getElementById('estimatePreview');
+    const confirmBtn = document.getElementById('confirmEstimateBtn');
+
+    if (nameInput) nameInput.value = '';
+    if (sfInput) sfInput.value = '';
+    if (pasteArea) pasteArea.value = '';
+    if (preview) preview.hidden = true;
+    if (confirmBtn) confirmBtn.disabled = true;
+
+    modal.style.display = 'block';
+    nameInput?.focus();
+}
+
+function closeEstimateModal() {
+    const modal = document.getElementById('estimateModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function handleEstimateInput() {
+    const pasteArea = document.getElementById('estimatePasteArea');
+    const text = pasteArea?.value || '';
+    const entries = parseEstimateText(text);
+    renderEstimatePreview(entries);
+    updateEstimateConfirmState();
+}
+
+function parseEstimateText(text) {
+    if (!text || !text.trim()) return [];
+
+    const lines = text.split(/\r?\n/).filter((line) => line.trim());
+    return lines.map((line) => {
+        const parts = line.split('\t');
+        if (parts.length >= 2) {
+            const label = parts[0].trim();
+            const rawAmount = parts[parts.length - 1].trim();
+            const amount = parseEstimateAmount(rawAmount);
+            return {
+                label,
+                rawAmount,
+                amount,
+                error: !label ? 'Missing label' : amount == null ? 'Invalid amount' : null
+            };
+        }
+        const trimmed = line.trim();
+        return { label: trimmed, rawAmount: '', amount: null, error: 'Missing amount' };
+    });
+}
+
+function parseEstimateAmount(raw) {
+    if (raw == null || raw === '') return null;
+    const cleaned = String(raw).trim().replace(/[$,\s]/g, '');
+    if (!cleaned) return null;
+    const isParenthesized = cleaned.startsWith('(') && cleaned.endsWith(')');
+    const numStr = isParenthesized ? cleaned.slice(1, -1) : cleaned;
+    const num = Number(numStr);
+    return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function renderEstimatePreview(entries) {
+    const preview = document.getElementById('estimatePreview');
+    const table = document.getElementById('estimatePreviewTable');
+    const summary = document.getElementById('estimatePreviewSummary');
+
+    if (!preview || !table) return;
+
+    if (!entries.length) {
+        preview.hidden = true;
+        return;
+    }
+
+    const validEntries = entries.filter((e) => e.label && e.amount != null);
+    const total = validEntries.reduce((sum, e) => sum + e.amount, 0);
+
+    table.innerHTML = `
+        <thead>
+            <tr><th>#</th><th>Package Label</th><th style="text-align:right">Amount</th></tr>
+        </thead>
+        <tbody>
+            ${entries
+                .map(
+                    (entry, i) => `
+                <tr${entry.error ? ' class="estimate-row-error"' : ''}>
+                    <td>${i + 1}</td>
+                    <td>${escapeHtml(entry.label || '\u2014')}</td>
+                    <td style="text-align:right">${
+                        entry.amount != null
+                            ? formatCurrency(entry.amount)
+                            : `<span class="estimate-error">${escapeHtml(entry.error || 'Error')}</span>`
+                    }</td>
+                </tr>
+            `
+                )
+                .join('')}
+            ${
+                validEntries.length > 0
+                    ? `
+                <tr class="totals-row">
+                    <td></td>
+                    <td><strong>Total (${validEntries.length} packages)</strong></td>
+                    <td style="text-align:right"><strong>${formatCurrency(total)}</strong></td>
+                </tr>
+            `
+                    : ''
+            }
+        </tbody>
+    `;
+
+    if (summary) {
+        const errorCount = entries.filter((e) => e.error).length;
+        if (errorCount > 0) {
+            summary.textContent = `${validEntries.length} valid package(s) found. ${errorCount} row(s) have errors and will be skipped.`;
+        } else {
+            summary.textContent = `${validEntries.length} package(s) found.`;
+        }
+    }
+
+    preview.hidden = false;
+}
+
+function updateEstimateConfirmState() {
+    const confirmBtn = document.getElementById('confirmEstimateBtn');
+    const nameInput = document.getElementById('estimateName');
+    const pasteArea = document.getElementById('estimatePasteArea');
+
+    if (!confirmBtn) return;
+
+    const hasName = (nameInput?.value || '').trim().length > 0;
+    const entries = parseEstimateText(pasteArea?.value || '');
+    const validEntries = entries.filter((e) => e.label && e.amount != null);
+
+    confirmBtn.disabled = !hasName || validEntries.length === 0;
+}
+
+function addEstimatedProject() {
+    const nameInput = document.getElementById('estimateName');
+    const sfInput = document.getElementById('estimateSf');
+    const pasteArea = document.getElementById('estimatePasteArea');
+
+    const name = (nameInput?.value || '').trim();
+    const sf = Number(sfInput?.value) || 0;
+    const entries = parseEstimateText(pasteArea?.value || '');
+    const validEntries = entries.filter((e) => e.label && e.amount != null);
+
+    if (!name || !validEntries.length) return;
+
+    const project = buildEstimatedProject(name, sf, validEntries);
+    estimatedProjects.push(project);
+
+    closeEstimateModal();
+    renderEstimatedProjectList();
+    fetchComparison();
+}
+
+function removeEstimatedProject(id) {
+    estimatedProjects = estimatedProjects.filter((p) => p.id !== id);
+    renderEstimatedProjectList();
+    fetchComparison();
+}
+
+function buildEstimatedProject(name, buildingSf, entries) {
+    const projectId = `est-${nextEstimateId++}`;
+
+    const packages = entries.map((entry, index) => {
+        const parsed = parseEstimatePackageLabel(entry.label);
+        return {
+            id: `${projectId}-pkg-${index}`,
+            project_id: projectId,
+            package_code: parsed.package_code,
+            package_name: parsed.package_name || entry.label,
+            csi_division: parsed.csi_division,
+            status: 'estimated',
+            selected_bidder_id: null,
+            selected_amount: entry.amount,
+            gmp_amount: entry.amount,
+            low_bid: entry.amount,
+            median_bid: entry.amount,
+            high_bid: entry.amount,
+            average_bid: entry.amount,
+            bid_count: 0,
+            cost_per_sf: buildingSf > 0 ? entry.amount / buildingSf : null
+        };
+    });
+
+    const total = packages.reduce((sum, pkg) => sum + (pkg.selected_amount || 0), 0);
+    const costPerSf = buildingSf > 0 ? total / buildingSf : 0;
+
+    return {
+        id: projectId,
+        name: name,
+        building_sf: buildingSf || null,
+        project_date: null,
+        package_count: packages.length,
+        _isEstimate: true,
+        metrics: {
+            selected_total: total,
+            selected_cost_per_sf: costPerSf,
+            low_bid_total: total,
+            low_bid_cost_per_sf: costPerSf,
+            median_bid_total: total,
+            median_bid_cost_per_sf: costPerSf,
+            median_cost_per_sf: costPerSf,
+            total_bid_count: 0,
+            package_count: packages.length,
+            bids_per_package: 0
+        },
+        packages: packages
+    };
+}
+
+function parseEstimatePackageLabel(label) {
+    const trimmed = (label || '').trim();
+    if (!trimmed) return { package_code: '', package_name: '', csi_division: null };
+
+    // "03A - Concrete" or "03A – Concrete"
+    let match = trimmed.match(/^([A-Za-z0-9]{2,6})\s*[-\u2013\u2014]\s*(.+)/);
+    if (match) {
+        const code = match[1];
+        const name = match[2].trim();
+        const divMatch = code.match(/^(\d{2})/);
+        return { package_code: code, package_name: name, csi_division: divMatch ? divMatch[1] : null };
+    }
+
+    // "03A Concrete" or "03 Concrete"
+    match = trimmed.match(/^(\d{2}[A-Za-z]?)\s+(.+)/);
+    if (match) {
+        return {
+            package_code: match[1],
+            package_name: match[2].trim(),
+            csi_division: match[1].substring(0, 2)
+        };
+    }
+
+    // Full label as name
+    return { package_code: '', package_name: trimmed, csi_division: null };
+}
+
+function renderEstimatedProjectList() {
+    const container = document.getElementById('estimatedProjectList');
+    if (!container) return;
+
+    if (!estimatedProjects.length) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = estimatedProjects
+        .map((project) => {
+            const sf = project.building_sf ? formatNumber(project.building_sf) + ' SF' : 'No SF';
+            return `
+            <div class="estimated-project-item">
+                <span class="estimated-project-info">
+                    <span class="estimate-indicator"><span class="symbol">&#9670;</span> Est</span>
+                    ${escapeHtml(project.name)} \u00B7 ${sf} \u00B7 ${project.package_count} pkg
+                </span>
+                <button type="button" class="estimated-project-remove" data-estimate-id="${project.id}" title="Remove estimated project">&times;</button>
+            </div>
+        `;
+        })
+        .join('');
 }

@@ -36,6 +36,8 @@
                 <label for="projectSelector">Projects to compare</label>
                 <select id="projectSelector" multiple size="6"></select>
                 <small class="form-hint">Hold Ctrl/⌘ to select multiple projects.</small>
+                <button type="button" class="btn btn-small estimate-add-btn" id="addEstimateBtn">+ Estimated Project</button>
+                <div id="estimatedProjectList" class="estimated-project-list"></div>
             </div>
             <div class="form-group">
                 <label for="compareMetric">Bar chart metric</label>
@@ -117,6 +119,38 @@
                 <p>Pick at least one project from the list above to see their metrics and bid mix.</p>
             </div>
         </section>
+    </div>
+
+    <div id="estimateModal" class="modal">
+        <div class="modal-content modal-wide">
+            <span class="close" id="closeEstimateModal">&times;</span>
+            <h3>Add Estimated Project</h3>
+            <p class="modal-subtitle">Paste bid package labels and amounts from an open spreadsheet.</p>
+            <div class="form-group">
+                <label for="estimateName">Project name</label>
+                <input type="text" id="estimateName" placeholder="e.g. New School Estimate">
+            </div>
+            <div class="form-group">
+                <label for="estimateSf">Building square footage</label>
+                <input type="number" id="estimateSf" placeholder="e.g. 45000" min="0">
+            </div>
+            <div class="form-group">
+                <label for="estimatePasteArea">Package data</label>
+                <textarea id="estimatePasteArea" rows="6" placeholder="Select two columns in your spreadsheet (labels + amounts), copy, and paste here."></textarea>
+                <small class="form-hint">Each row: a package label and dollar amount separated by a tab. Tip: select both columns in Excel, copy, then paste.</small>
+            </div>
+            <div id="estimatePreview" class="estimate-preview" hidden>
+                <label>Preview</label>
+                <div class="estimate-preview-table-wrap">
+                    <table id="estimatePreviewTable"></table>
+                </div>
+                <p id="estimatePreviewSummary" class="form-hint"></p>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" id="cancelEstimateBtn">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmEstimateBtn" disabled>Add to Comparison</button>
+            </div>
+        </div>
     </div>
 
     <script src="edit-key.js"></script>
