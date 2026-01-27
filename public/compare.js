@@ -2213,6 +2213,12 @@ function parseEstimatePackageLabel(label) {
         };
     }
 
+    // Code-only labels like "03A", "04A", "26", "05A1"
+    match = trimmed.match(/^(\d{2}[A-Za-z]?\d?)$/);
+    if (match) {
+        return { package_code: match[1], package_name: '', csi_division: match[1].substring(0, 2) };
+    }
+
     // Full label as name
     return { package_code: '', package_name: trimmed, csi_division: null };
 }
