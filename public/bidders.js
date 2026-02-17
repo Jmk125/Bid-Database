@@ -1837,13 +1837,22 @@ async function renderCountySelectionDetail(selectedMetas, selectionSignature) {
         const bidders = await aggregateSelectedCountyBidders(selectedMetas, selectionSignature);
         if (!bidders) return; // selection changed while loading
 
-        if (!Array.isArray(bidders) || bidders.length === 0) {
+        const combinedFilterIds = new Set(getCombinedMapBidderIds());
+        const isFilterActive = combinedFilterIds.size > 0;
+        const filteredBidders = isFilterActive
+            ? bidders.filter(entry => combinedFilterIds.has(String(entry.bidder_id)))
+            : bidders;
+
+        if (!Array.isArray(filteredBidders) || filteredBidders.length === 0) {
             tbody.innerHTML = '<tr><td colspan="2">No bids recorded in these counties yet.</td></tr>';
+            if (isFilterActive) {
+                tbody.innerHTML = '<tr><td colspan="2">No bidders match the current bidder/package filters in these counties.</td></tr>';
+            }
             summary.textContent = `0 bidders across ${selectedMetas.length} county${selectedMetas.length === 1 ? '' : 'ies'}`;
             return;
         }
 
-        const sorted = bidders.slice().sort((a, b) => {
+        const sorted = filteredBidders.slice().sort((a, b) => {
             const diff = (Number(b.bid_count) || 0) - (Number(a.bid_count) || 0);
             if (diff !== 0) return diff;
             return (a.canonical_name || '').localeCompare(b.canonical_name || '');
@@ -1929,7 +1938,13 @@ async function openFullCountyList() {
     const bidders = await aggregateSelectedCountyBidders(selectedMetas, selectionSignature);
     if (!bidders) return;
 
-    const sorted = bidders.slice().sort((a, b) => (Number(b.bid_count) || 0) - (Number(a.bid_count) || 0));
+    const combinedFilterIds = new Set(getCombinedMapBidderIds());
+    const isFilterActive = combinedFilterIds.size > 0;
+    const visibleBidders = isFilterActive
+        ? bidders.filter(entry => combinedFilterIds.has(String(entry.bidder_id)))
+        : bidders;
+
+    const sorted = visibleBidders.slice().sort((a, b) => (Number(b.bid_count) || 0) - (Number(a.bid_count) || 0));
     const popup = window.open('', '_blank');
     if (!popup) {
         alert('Popup blocked. Allow popups to view the full list.');
