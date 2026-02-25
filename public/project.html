@@ -130,6 +130,34 @@
         </div>
 
         <div id="gmpContent" class="tab-content" role="tabpanel" aria-labelledby="gmpTabBtn" aria-hidden="true">
+            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem; margin: 1rem 0; flex-wrap: wrap;">
+                <label for="gmpChartGrouping" style="font-weight: 600;">Group By:</label>
+                <select id="gmpChartGrouping" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; min-width: 160px;">
+                    <option value="package">Package</option>
+                    <option value="category">Category</option>
+                </select>
+                <label for="gmpChartMode" style="font-weight: 600;">Chart Units:</label>
+                <select id="gmpChartMode" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; min-width: 160px;">
+                    <option value="dollar">Dollar Δ</option>
+                    <option value="percent">Percent Δ</option>
+                </select>
+                <details id="gmpPackageFilter" class="gmp-package-filter">
+                    <summary>Filter Packages</summary>
+                    <div class="gmp-package-filter-menu">
+                        <div class="gmp-package-filter-actions">
+                            <button type="button" id="gmpFilterSelectAll" class="btn btn-tiny btn-secondary">All</button>
+                            <button type="button" id="gmpFilterClearAll" class="btn btn-tiny btn-secondary">None</button>
+                        </div>
+                        <div id="gmpPackageFilterList" class="gmp-package-filter-list"></div>
+                    </div>
+                </details>
+            </div>
+
+            <div class="chart-container" style="height: 420px;">
+                <canvas id="gmpDeltaChart"></canvas>
+                <div id="gmpChartEmpty" class="chart-empty-state">GMP delta chart will appear when estimates and bids are available.</div>
+            </div>
+
             <div class="table-container">
                 <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 1rem;">
                     <div>
@@ -176,19 +204,6 @@
                     <h3>No GMP data yet</h3>
                     <p>Upload a bid tab with a GMP summary or add estimated packages to compare values.</p>
                 </div>
-            </div>
-
-            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem; margin: 1rem 0; flex-wrap: wrap;">
-                <label for="gmpChartMode" style="font-weight: 600;">Chart Units:</label>
-                <select id="gmpChartMode" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; min-width: 160px;">
-                    <option value="dollar">Dollar Δ</option>
-                    <option value="percent">Percent Δ</option>
-                </select>
-            </div>
-
-            <div class="chart-container" style="height: 420px;">
-                <canvas id="gmpDeltaChart"></canvas>
-                <div id="gmpChartEmpty" class="chart-empty-state">GMP delta chart will appear when estimates and bids are available.</div>
             </div>
         </div>
 

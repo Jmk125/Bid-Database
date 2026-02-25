@@ -2449,3 +2449,58 @@ tr:hover {
     color: #c0392b;
     font-size: 0.85rem;
 }
+
+.gmp-package-filter {
+    position: relative;
+}
+
+.gmp-package-filter summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-width: 160px;
+    background: #fff;
+    font-weight: 600;
+}
+
+.gmp-package-filter summary::-webkit-details-marker {
+    display: none;
+}
+
+.gmp-package-filter-menu {
+    position: absolute;
+    right: 0;
+    z-index: 20;
+    width: min(360px, 80vw);
+    margin-top: 0.4rem;
+    background: #fff;
+    border: 1px solid #dce1e7;
+    border-radius: 8px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+    padding: 0.75rem;
+}
+
+.gmp-package-filter-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+}
+
+.gmp-package-filter-list {
+    max-height: 260px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.gmp-package-filter-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: #2c3e50;
+}

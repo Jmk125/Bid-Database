@@ -19,6 +19,8 @@ let gmpDeltaChart = null;
 let gmpChartNeedsUpdate = false;
 let latestGmpChartData = null;
 let gmpChartMode = 'dollar';
+let gmpChartGrouping = 'package';
+let selectedGmpPackageCodes = new Set();
 let latestComputedMetrics = null;
 let validationHistory = [];
 let validationHistoryLoaded = false;
@@ -59,6 +61,69 @@ const CATEGORY_DEFINITIONS = [
 ];
 
 const REMAINING_CATEGORY_COLOR = '#bdc3c7';
+
+
+function getGmpCategoryDefinitionForDivision(division) {
+    if (!division) {
+        return null;
+    }
+    return CATEGORY_DEFINITIONS.find(cat => cat.divisions.includes(division)) || null;
+}
+
+function syncSelectedGmpPackages(packages) {
+    const allCodes = packages
+        .map(pkg => pkg.package_code)
+        .filter(code => typeof code === 'string' && code.trim() !== '');
+
+    const allCodesSet = new Set(allCodes);
+    selectedGmpPackageCodes = new Set(
+        [...selectedGmpPackageCodes].filter(code => allCodesSet.has(code))
+    );
+
+    if (selectedGmpPackageCodes.size === 0) {
+        allCodes.forEach(code => selectedGmpPackageCodes.add(code));
+    }
+}
+
+function renderGmpPackageFilter(packages) {
+    const listEl = document.getElementById('gmpPackageFilterList');
+    if (!listEl) {
+        return;
+    }
+
+    if (!packages.length) {
+        listEl.innerHTML = '<div class="empty-state">No packages available.</div>';
+        return;
+    }
+
+    listEl.innerHTML = packages.map(pkg => {
+        const code = pkg.package_code || '—';
+        const name = pkg.package_name || '';
+        const checked = pkg.package_code && selectedGmpPackageCodes.has(pkg.package_code) ? 'checked' : '';
+        const labelText = name ? `${escapeHtml(code)} - ${escapeHtml(name)}` : escapeHtml(code);
+        return `
+            <label class="gmp-package-filter-item">
+                <input type="checkbox" class="gmp-package-filter-checkbox" data-package-code="${escapeHtml(code)}" ${checked}>
+                <span>${labelText}</span>
+            </label>
+        `;
+    }).join('');
+
+    listEl.querySelectorAll('.gmp-package-filter-checkbox').forEach(input => {
+        input.addEventListener('change', (event) => {
+            const packageCode = event.target.dataset.packageCode;
+            if (!packageCode || packageCode === '—') {
+                return;
+            }
+            if (event.target.checked) {
+                selectedGmpPackageCodes.add(packageCode);
+            } else {
+                selectedGmpPackageCodes.delete(packageCode);
+            }
+            renderGmpDeltaChart();
+        });
+    });
+}
 
 // Load project data
 async function loadProject() {
@@ -810,6 +875,8 @@ function renderGmpSummary() {
             if (heading) heading.textContent = 'No packages yet';
             if (paragraph) paragraph.textContent = 'Upload a bid tab with GMP information or add an estimated package to calculate comparisons.';
         }
+        selectedGmpPackageCodes = new Set();
+        renderGmpPackageFilter([]);
         latestGmpChartData = null;
         if (currentTab === 'gmp') {
             renderGmpDeltaChart();
@@ -823,13 +890,10 @@ function renderGmpSummary() {
         return;
     }
 
-    const chartLabels = [];
-    const selectedVsGmp = [];
-    const medianVsGmp = [];
-    const medianVsLow = [];
-    const selectedVsGmpPercent = [];
-    const medianVsGmpPercent = [];
-    const medianVsLowPercent = [];
+    syncSelectedGmpPackages(packages);
+    renderGmpPackageFilter(packages);
+
+    const chartPoints = [];
 
     const totals = {
         gmp: 0,
@@ -886,13 +950,22 @@ function renderGmpSummary() {
             : null;
 
         const label = name && name !== '—' ? `${code} – ${name}` : code;
-        chartLabels.push(label);
-        selectedVsGmp.push(gmpSelectedDelta != null ? gmpSelectedDelta : null);
-        medianVsGmp.push(gmpMedianDelta != null ? gmpMedianDelta : null);
-        medianVsLow.push(medianLowDelta != null ? medianLowDelta : null);
-        selectedVsGmpPercent.push(gmpSelectedPercent != null ? gmpSelectedPercent : null);
-        medianVsGmpPercent.push(gmpMedianPercent != null ? gmpMedianPercent : null);
-        medianVsLowPercent.push(medianLowPercent != null ? medianLowPercent : null);
+        const category = getGmpCategoryDefinitionForDivision(pkg.csi_division);
+
+        chartPoints.push({
+            packageCode: code,
+            packageName: name,
+            label,
+            division: pkg.csi_division || null,
+            categoryKey: category ? category.key : 'remaining',
+            categoryLabel: category ? category.name : 'Other',
+            selectedVsGmp: gmpSelectedDelta != null ? gmpSelectedDelta : null,
+            medianVsGmp: gmpMedianDelta != null ? gmpMedianDelta : null,
+            medianVsLow: medianLowDelta != null ? medianLowDelta : null,
+            selectedVsGmpPercent: gmpSelectedPercent != null ? gmpSelectedPercent : null,
+            medianVsGmpPercent: gmpMedianPercent != null ? gmpMedianPercent : null,
+            medianVsLowPercent: medianLowPercent != null ? medianLowPercent : null
+        });
 
         const gmpSelectedClass = getBudgetDeltaClass(gmpSelectedDelta);
         const gmpMedianClass = getBudgetDeltaClass(gmpMedianDelta);
@@ -978,13 +1051,7 @@ function renderGmpSummary() {
     }
 
     latestGmpChartData = {
-        labels: chartLabels,
-        selectedVsGmp,
-        medianVsGmp,
-        medianVsLow,
-        selectedVsGmpPercent,
-        medianVsGmpPercent,
-        medianVsLowPercent
+        points: chartPoints
     };
 
     if (currentTab === 'gmp') {
@@ -1018,12 +1085,122 @@ function renderGmpDeltaChart() {
     }
 
     const chartData = latestGmpChartData;
-    const hasData = chartData ? hasChartSeriesData(chartData) : false;
+    const isPercentMode = gmpChartMode === 'percent';
+    const allPoints = chartData?.points || [];
+    const filteredPoints = allPoints.filter(point => selectedGmpPackageCodes.has(point.packageCode));
+
+    let chartEntries = [];
+    if (gmpChartGrouping === 'category') {
+        const categoryOrder = [...CATEGORY_DEFINITIONS.map(cat => cat.key), 'remaining'];
+        const categoryMap = new Map();
+
+        filteredPoints.forEach(point => {
+            const key = point.categoryKey || 'remaining';
+            if (!categoryMap.has(key)) {
+                const definition = CATEGORY_DEFINITIONS.find(cat => cat.key === key);
+                categoryMap.set(key, {
+                    key,
+                    label: definition ? definition.name : 'Other',
+                    selectedVsGmp: 0,
+                    medianVsGmp: 0,
+                    medianVsLow: 0,
+                    selectedVsGmpPercentNumerator: 0,
+                    selectedVsGmpPercentDenominator: 0,
+                    medianVsGmpPercentNumerator: 0,
+                    medianVsGmpPercentDenominator: 0,
+                    medianVsLowPercentNumerator: 0,
+                    medianVsLowPercentDenominator: 0,
+                    hasSelectedVsGmp: false,
+                    hasMedianVsGmp: false,
+                    hasMedianVsLow: false
+                });
+            }
+
+            const entry = categoryMap.get(key);
+
+            if (point.selectedVsGmp != null) {
+                entry.selectedVsGmp += point.selectedVsGmp;
+                entry.hasSelectedVsGmp = true;
+            }
+            if (point.medianVsGmp != null) {
+                entry.medianVsGmp += point.medianVsGmp;
+                entry.hasMedianVsGmp = true;
+            }
+            if (point.medianVsLow != null) {
+                entry.medianVsLow += point.medianVsLow;
+                entry.hasMedianVsLow = true;
+            }
+
+            if (point.selectedVsGmp != null && point.selectedVsGmpPercent != null && Math.abs(point.selectedVsGmpPercent) < Infinity) {
+                const denominator = point.selectedVsGmp / (point.selectedVsGmpPercent / 100);
+                if (Number.isFinite(denominator) && Math.abs(denominator) > 0.0001) {
+                    entry.selectedVsGmpPercentNumerator += point.selectedVsGmp;
+                    entry.selectedVsGmpPercentDenominator += denominator;
+                }
+            }
+            if (point.medianVsGmp != null && point.medianVsGmpPercent != null && Math.abs(point.medianVsGmpPercent) < Infinity) {
+                const denominator = point.medianVsGmp / (point.medianVsGmpPercent / 100);
+                if (Number.isFinite(denominator) && Math.abs(denominator) > 0.0001) {
+                    entry.medianVsGmpPercentNumerator += point.medianVsGmp;
+                    entry.medianVsGmpPercentDenominator += denominator;
+                }
+            }
+            if (point.medianVsLow != null && point.medianVsLowPercent != null && Math.abs(point.medianVsLowPercent) < Infinity) {
+                const denominator = point.medianVsLow / (point.medianVsLowPercent / 100);
+                if (Number.isFinite(denominator) && Math.abs(denominator) > 0.0001) {
+                    entry.medianVsLowPercentNumerator += point.medianVsLow;
+                    entry.medianVsLowPercentDenominator += denominator;
+                }
+            }
+        });
+
+        chartEntries = categoryOrder
+            .filter(key => categoryMap.has(key))
+            .map(key => {
+                const entry = categoryMap.get(key);
+                return {
+                    label: entry.label,
+                    selectedVsGmp: entry.hasSelectedVsGmp ? entry.selectedVsGmp : null,
+                    medianVsGmp: entry.hasMedianVsGmp ? entry.medianVsGmp : null,
+                    medianVsLow: entry.hasMedianVsLow ? entry.medianVsLow : null,
+                    selectedVsGmpPercent: entry.selectedVsGmpPercentDenominator !== 0
+                        ? (entry.selectedVsGmpPercentNumerator / entry.selectedVsGmpPercentDenominator) * 100
+                        : null,
+                    medianVsGmpPercent: entry.medianVsGmpPercentDenominator !== 0
+                        ? (entry.medianVsGmpPercentNumerator / entry.medianVsGmpPercentDenominator) * 100
+                        : null,
+                    medianVsLowPercent: entry.medianVsLowPercentDenominator !== 0
+                        ? (entry.medianVsLowPercentNumerator / entry.medianVsLowPercentDenominator) * 100
+                        : null
+                };
+            });
+    } else {
+        chartEntries = filteredPoints.map(point => ({
+            label: point.label,
+            selectedVsGmp: point.selectedVsGmp,
+            medianVsGmp: point.medianVsGmp,
+            medianVsLow: point.medianVsLow,
+            selectedVsGmpPercent: point.selectedVsGmpPercent,
+            medianVsGmpPercent: point.medianVsGmpPercent,
+            medianVsLowPercent: point.medianVsLowPercent
+        }));
+    }
+
+    const hasData = chartEntries.some(entry => [
+        entry.selectedVsGmp,
+        entry.medianVsGmp,
+        entry.medianVsLow,
+        entry.selectedVsGmpPercent,
+        entry.medianVsGmpPercent,
+        entry.medianVsLowPercent
+    ].some(value => value != null));
 
     if (!chartData || !hasData) {
         canvas.style.display = 'none';
         emptyState.style.display = 'flex';
-        emptyState.textContent = 'GMP delta chart will appear when estimates and bids are available.';
+        emptyState.textContent = selectedGmpPackageCodes.size === 0
+            ? 'Select at least one package to display chart data.'
+            : 'GMP delta chart will appear when estimates and bids are available.';
         return;
     }
 
@@ -1035,12 +1212,10 @@ function renderGmpDeltaChart() {
     canvas.style.display = 'block';
 
     const context = canvas.getContext('2d');
-
-    const isPercentMode = gmpChartMode === 'percent';
     const chartDatasets = [
         {
             label: 'Selected vs GMP',
-            data: isPercentMode ? (chartData.selectedVsGmpPercent || []) : (chartData.selectedVsGmp || []),
+            data: chartEntries.map(entry => isPercentMode ? entry.selectedVsGmpPercent : entry.selectedVsGmp),
             backgroundColor: 'rgba(192, 57, 43, 0.35)',
             borderColor: '#c0392b',
             borderWidth: 1.5,
@@ -1048,7 +1223,7 @@ function renderGmpDeltaChart() {
         },
         {
             label: 'Median vs GMP',
-            data: isPercentMode ? (chartData.medianVsGmpPercent || []) : (chartData.medianVsGmp || []),
+            data: chartEntries.map(entry => isPercentMode ? entry.medianVsGmpPercent : entry.medianVsGmp),
             backgroundColor: 'rgba(243, 156, 18, 0.35)',
             borderColor: '#f39c12',
             borderWidth: 1.5,
@@ -1056,7 +1231,7 @@ function renderGmpDeltaChart() {
         },
         {
             label: 'Median vs Low',
-            data: isPercentMode ? (chartData.medianVsLowPercent || []) : (chartData.medianVsLow || []),
+            data: chartEntries.map(entry => isPercentMode ? entry.medianVsLowPercent : entry.medianVsLow),
             backgroundColor: 'rgba(41, 128, 185, 0.35)',
             borderColor: '#2980b9',
             borderWidth: 1.5,
@@ -1097,7 +1272,7 @@ function renderGmpDeltaChart() {
     gmpDeltaChart = new Chart(context, {
         type: 'bar',
         data: {
-            labels: chartData.labels,
+            labels: chartEntries.map(entry => entry.label),
             datasets: chartDatasets
         },
         options: {
@@ -1153,21 +1328,55 @@ function renderGmpDeltaChart() {
 }
 
 function setupGmpChartControls() {
-    const select = document.getElementById('gmpChartMode');
-    if (!select) {
-        return;
+    const modeSelect = document.getElementById('gmpChartMode');
+    const groupingSelect = document.getElementById('gmpChartGrouping');
+    const selectAllBtn = document.getElementById('gmpFilterSelectAll');
+    const clearAllBtn = document.getElementById('gmpFilterClearAll');
+
+    if (modeSelect) {
+        modeSelect.value = gmpChartMode;
+        modeSelect.addEventListener('change', (event) => {
+            gmpChartMode = event.target.value === 'percent' ? 'percent' : 'dollar';
+            if (currentTab === 'gmp') {
+                renderGmpDeltaChart();
+            } else {
+                gmpChartNeedsUpdate = true;
+            }
+        });
     }
 
-    select.value = gmpChartMode;
-    select.addEventListener('change', (event) => {
-        const value = event.target.value === 'percent' ? 'percent' : 'dollar';
-        gmpChartMode = value;
-        if (currentTab === 'gmp') {
+    if (groupingSelect) {
+        groupingSelect.value = gmpChartGrouping;
+        groupingSelect.addEventListener('change', (event) => {
+            gmpChartGrouping = event.target.value === 'category' ? 'category' : 'package';
+            if (currentTab === 'gmp') {
+                renderGmpDeltaChart();
+            } else {
+                gmpChartNeedsUpdate = true;
+            }
+        });
+    }
+
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', () => {
+            const packages = currentProject?.packages || [];
+            selectedGmpPackageCodes = new Set(
+                packages
+                    .map(pkg => pkg.package_code)
+                    .filter(code => typeof code === 'string' && code.trim() !== '')
+            );
+            renderGmpPackageFilter(packages);
             renderGmpDeltaChart();
-        } else {
-            gmpChartNeedsUpdate = true;
-        }
-    });
+        });
+    }
+
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', () => {
+            selectedGmpPackageCodes.clear();
+            renderGmpPackageFilter(currentProject?.packages || []);
+            renderGmpDeltaChart();
+        });
+    }
 }
 
 function setupViewTabs() {
@@ -2299,22 +2508,15 @@ function getSpreadDeltaClass(value) {
 
 function hasChartSeriesData(data) {
     if (!data) return false;
-    const {
-        lowVsGmp = [],
-        medianVsGmp = [],
-        medianVsLow = [],
-        lowVsGmpPercent = [],
-        medianVsGmpPercent = [],
-        medianVsLowPercent = []
-    } = data;
-    return [
-        ...lowVsGmp,
-        ...medianVsGmp,
-        ...medianVsLow,
-        ...lowVsGmpPercent,
-        ...medianVsGmpPercent,
-        ...medianVsLowPercent
-    ].some(value => value != null);
+    const points = data.points || [];
+    return points.some(point => [
+        point.selectedVsGmp,
+        point.medianVsGmp,
+        point.medianVsLow,
+        point.selectedVsGmpPercent,
+        point.medianVsGmpPercent,
+        point.medianVsLowPercent
+    ].some(value => value != null));
 }
 
 // Utility functions
