@@ -1174,6 +1174,75 @@ function renderGmpDeltaChart() {
                         : null
                 };
             });
+    } else if (gmpChartGrouping === 'combined') {
+        const combinedEntry = {
+            label: 'Combined',
+            selectedVsGmp: 0,
+            medianVsGmp: 0,
+            medianVsLow: 0,
+            selectedVsGmpPercentNumerator: 0,
+            selectedVsGmpPercentDenominator: 0,
+            medianVsGmpPercentNumerator: 0,
+            medianVsGmpPercentDenominator: 0,
+            medianVsLowPercentNumerator: 0,
+            medianVsLowPercentDenominator: 0,
+            hasSelectedVsGmp: false,
+            hasMedianVsGmp: false,
+            hasMedianVsLow: false
+        };
+
+        filteredPoints.forEach(point => {
+            if (point.selectedVsGmp != null) {
+                combinedEntry.selectedVsGmp += point.selectedVsGmp;
+                combinedEntry.hasSelectedVsGmp = true;
+            }
+            if (point.medianVsGmp != null) {
+                combinedEntry.medianVsGmp += point.medianVsGmp;
+                combinedEntry.hasMedianVsGmp = true;
+            }
+            if (point.medianVsLow != null) {
+                combinedEntry.medianVsLow += point.medianVsLow;
+                combinedEntry.hasMedianVsLow = true;
+            }
+
+            if (point.selectedVsGmp != null && point.selectedVsGmpPercent != null && Math.abs(point.selectedVsGmpPercent) < Infinity) {
+                const denominator = point.selectedVsGmp / (point.selectedVsGmpPercent / 100);
+                if (Number.isFinite(denominator) && Math.abs(denominator) > 0.0001) {
+                    combinedEntry.selectedVsGmpPercentNumerator += point.selectedVsGmp;
+                    combinedEntry.selectedVsGmpPercentDenominator += denominator;
+                }
+            }
+            if (point.medianVsGmp != null && point.medianVsGmpPercent != null && Math.abs(point.medianVsGmpPercent) < Infinity) {
+                const denominator = point.medianVsGmp / (point.medianVsGmpPercent / 100);
+                if (Number.isFinite(denominator) && Math.abs(denominator) > 0.0001) {
+                    combinedEntry.medianVsGmpPercentNumerator += point.medianVsGmp;
+                    combinedEntry.medianVsGmpPercentDenominator += denominator;
+                }
+            }
+            if (point.medianVsLow != null && point.medianVsLowPercent != null && Math.abs(point.medianVsLowPercent) < Infinity) {
+                const denominator = point.medianVsLow / (point.medianVsLowPercent / 100);
+                if (Number.isFinite(denominator) && Math.abs(denominator) > 0.0001) {
+                    combinedEntry.medianVsLowPercentNumerator += point.medianVsLow;
+                    combinedEntry.medianVsLowPercentDenominator += denominator;
+                }
+            }
+        });
+
+        chartEntries = [{
+            label: combinedEntry.label,
+            selectedVsGmp: combinedEntry.hasSelectedVsGmp ? combinedEntry.selectedVsGmp : null,
+            medianVsGmp: combinedEntry.hasMedianVsGmp ? combinedEntry.medianVsGmp : null,
+            medianVsLow: combinedEntry.hasMedianVsLow ? combinedEntry.medianVsLow : null,
+            selectedVsGmpPercent: combinedEntry.selectedVsGmpPercentDenominator !== 0
+                ? (combinedEntry.selectedVsGmpPercentNumerator / combinedEntry.selectedVsGmpPercentDenominator) * 100
+                : null,
+            medianVsGmpPercent: combinedEntry.medianVsGmpPercentDenominator !== 0
+                ? (combinedEntry.medianVsGmpPercentNumerator / combinedEntry.medianVsGmpPercentDenominator) * 100
+                : null,
+            medianVsLowPercent: combinedEntry.medianVsLowPercentDenominator !== 0
+                ? (combinedEntry.medianVsLowPercentNumerator / combinedEntry.medianVsLowPercentDenominator) * 100
+                : null
+        }];
     } else {
         chartEntries = filteredPoints.map(point => ({
             label: point.label,
@@ -1348,7 +1417,10 @@ function setupGmpChartControls() {
     if (groupingSelect) {
         groupingSelect.value = gmpChartGrouping;
         groupingSelect.addEventListener('change', (event) => {
-            gmpChartGrouping = event.target.value === 'category' ? 'category' : 'package';
+            const selectedGrouping = event.target.value;
+            gmpChartGrouping = selectedGrouping === 'category' || selectedGrouping === 'combined'
+                ? selectedGrouping
+                : 'package';
             if (currentTab === 'gmp') {
                 renderGmpDeltaChart();
             } else {
