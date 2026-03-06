@@ -2264,6 +2264,9 @@ async function openSeeBidsModal(packageId, packageName, projectName) {
             return;
         }
 
+        const selectedBid = bids.find(bid => Number(bid.was_selected) === 1 && bid.bid_amount != null);
+        const selectedBidAmount = selectedBid ? Number(selectedBid.bid_amount) : null;
+
         // Render bids table
         content.innerHTML = `
             <table class="bids-table">
@@ -2271,21 +2274,30 @@ async function openSeeBidsModal(packageId, packageName, projectName) {
                     <tr>
                         <th>Bidder</th>
                         <th>Bid Amount</th>
+                        <th>% from Selected</th>
                         <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${bids.map(bid => `
+                    ${bids.map(bid => {
+                        const percentDiff = calculatePercentFromSelected(bid.bid_amount, selectedBidAmount);
+                        const diffClass = percentDiff > 0 ? 'is-higher' : percentDiff < 0 ? 'is-lower' : 'is-even';
+
+                        return `
                         <tr>
                             <td>${escapeHtml(bid.bidder_name)}</td>
                             <td>${bid.bid_amount != null ? formatCurrency(bid.bid_amount) : '—'}</td>
+                            <td>${percentDiff == null
+                                ? '—'
+                                : `<span class="placement-diff ${diffClass}">${formatPercentDifference(percentDiff)}</span>`}</td>
                             <td>
-                                ${bid.was_selected === 1
+                                ${Number(bid.was_selected) === 1
                                     ? '<span class="status-badge status-bid">Selected</span>'
                                     : '<span class="status-badge status-estimated">Not Selected</span>'}
                             </td>
                         </tr>
-                    `).join('')}
+                    `;
+                    }).join('')}
                 </tbody>
             </table>
         `;
@@ -2300,4 +2312,15 @@ function closeSeeBidsModal() {
     if (modal) {
         modal.style.display = 'none';
     }
+}
+
+function calculatePercentFromSelected(bidAmount, selectedBidAmount) {
+    const bidValue = Number(bidAmount);
+    const selectedValue = Number(selectedBidAmount);
+
+    if (!Number.isFinite(bidValue) || !Number.isFinite(selectedValue) || selectedValue === 0) {
+        return null;
+    }
+
+    return ((bidValue - selectedValue) / selectedValue) * 100;
 }
