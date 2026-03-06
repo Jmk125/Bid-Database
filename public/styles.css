@@ -1964,20 +1964,20 @@ tr:hover {
     line-height: 1.1;
 }
 
-.placement-indicator .placement-diff {
+.placement-diff {
     font-size: 0.75rem;
     font-weight: 600;
 }
 
-.placement-indicator .placement-diff.is-higher {
+.placement-diff.is-higher {
     color: #c0392b;
 }
 
-.placement-indicator .placement-diff.is-lower {
+.placement-diff.is-lower {
     color: #27ae60;
 }
 
-.placement-indicator .placement-diff.is-even {
+.placement-diff.is-even {
     color: #7f8c8d;
 }
 
