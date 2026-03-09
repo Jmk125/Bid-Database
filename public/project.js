@@ -13,6 +13,7 @@ let currentProject = null;
 let projectBids = [];
 let projectBidsChart = null;
 let bidsChartNeedsUpdate = false;
+let bidderDirectory = [];
 let currentTab = 'overview';
 let projectBidsError = false;
 let gmpDeltaChart = null;
@@ -1642,7 +1643,7 @@ function renderProjectBidsList(hasError = false) {
     listEl.innerHTML = sections;
 }
 
-function openEditBidsModal(packageId) {
+async function openEditBidsModal(packageId) {
     const modal = document.getElementById('editBidsModal');
     const packageIdInput = document.getElementById('editBidsPackageId');
     const listEl = document.getElementById('editBidsList');
@@ -1670,6 +1671,8 @@ function openEditBidsModal(packageId) {
     titleEl.textContent = safeName ? `${safeCode} – ${safeName}` : safeCode;
 
     const bids = Array.isArray(pkg.bids) ? pkg.bids : [];
+    await loadBidderDirectory();
+    const bidderDatalistHtml = renderBidderDatalist();
     const rows = bids.map(bid => {
         const bidderName = bid.bidder_name || 'Unknown Bidder';
         const numericAmount = toFiniteNumber(bid.bid_amount);
@@ -1689,6 +1692,7 @@ function openEditBidsModal(packageId) {
     const placeholderRow = rows ? '' : getEditBidsEmptyRowHtml();
 
     listEl.innerHTML = `
+        ${bidderDatalistHtml}
         <table class="edit-bids-table">
             <thead>
                 <tr>
@@ -1769,7 +1773,7 @@ function createEditBidRowMarkup({ bidId, bidderName, amountValue, isSelected, is
     const selectionValue = isNew ? `new-${tempId}` : `existing-${bidId}`;
     const ariaLabelName = safeName || 'Manual bidder';
     const bidderCell = isNew
-        ? `<input type="text" data-bidder-name-input placeholder="Enter bidder name" value="${safeName}" required>`
+        ? `<input type="text" data-bidder-name-input list="editBidsBidderOptions" placeholder="Enter bidder name" value="${safeName}" required autocomplete="off">`
         : `<div class="existing-bidder-name" title="${safeName}">${safeName || 'Unknown Bidder'}</div>`;
 
     return `
@@ -1788,6 +1792,34 @@ function createEditBidRowMarkup({ bidId, bidderName, amountValue, isSelected, is
             </td>
         </tr>
     `;
+}
+
+function renderBidderDatalist() {
+    const options = bidderDirectory
+        .map(name => `<option value="${escapeHtml(name)}"></option>`)
+        .join('');
+    return `<datalist id="editBidsBidderOptions">${options}</datalist>`;
+}
+
+async function loadBidderDirectory() {
+    if (bidderDirectory.length) {
+        return;
+    }
+
+    try {
+        const response = await apiFetch(`${API_BASE}/bidders`);
+        if (!response.ok) {
+            throw new Error('Failed to load bidders');
+        }
+
+        const bidders = await response.json();
+        bidderDirectory = (Array.isArray(bidders) ? bidders : [])
+            .map(bidder => bidder?.canonical_name)
+            .filter(name => typeof name === 'string' && name.trim() !== '')
+            .sort((a, b) => a.localeCompare(b));
+    } catch (error) {
+        console.error('Error loading bidder directory:', error);
+    }
 }
 
 function handleEditBidsListClick(event) {
@@ -2397,27 +2429,7 @@ async function deletePackage(packageId, packageCode) {
 
 // View bids for a package
 async function viewBids(packageId) {
-    try {
-        const response = await apiFetch(`${API_BASE}/packages/${packageId}/bids`);
-        const bids = await response.json();
-        
-        if (bids.length === 0) {
-            alert('No bids found for this package');
-            return;
-        }
-        
-        const pkg = currentProject.packages.find(p => p.id === packageId);
-        let message = `Bids for ${pkg.package_code} - ${pkg.package_name}\n\n`;
-        
-        bids.forEach(bid => {
-            message += `${bid.bidder_name}: ${formatCurrency(bid.bid_amount)}${bid.was_selected ? ' ✓ (Selected)' : ''}\n`;
-        });
-        
-        alert(message);
-    } catch (error) {
-        console.error('Error loading bids:', error);
-        alert('Error loading bids');
-    }
+    await openEditBidsModal(packageId);
 }
 
 function toFiniteNumber(value) {
