@@ -493,13 +493,13 @@ function getLatestValidation(db, projectId) {
 
 function getProjectPackagesForValidationSnapshot(db, projectId) {
   const query = db.exec(
-    `SELECT id, package_code, package_name, status, selected_bidder_id,
+    `SELECT packages.id, packages.package_code, packages.package_name, packages.status, packages.selected_bidder_id,
             COALESCE(selected.canonical_name, '') AS selected_bidder_name,
-            selected_amount, low_bid, median_bid, high_bid,
+            packages.selected_amount, packages.low_bid, packages.median_bid, packages.high_bid,
             (SELECT COUNT(*) FROM bids b WHERE b.package_id = packages.id) AS bid_count
      FROM packages
      LEFT JOIN bidders selected ON selected.id = packages.selected_bidder_id
-     WHERE project_id = ?`,
+     WHERE packages.project_id = ?`,
     [projectId]
   );
 
