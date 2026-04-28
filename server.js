@@ -277,6 +277,151 @@ function metricsAreEqual(a, b) {
   });
 }
 
+const VALIDATION_CHANGE_FIELDS = [
+  { key: 'building_sf', label: 'Building Size', type: 'number', unit: ' SF' },
+  { key: 'project_bid_date', label: 'Project Bid Date', type: 'date' },
+  { key: 'selected_total', label: 'Selected Total', type: 'currency' },
+  { key: 'selected_cost_per_sf', label: 'Selected Cost/SF', type: 'currency' },
+  { key: 'low_bid_total', label: 'Low Bid Total', type: 'currency' },
+  { key: 'low_bid_cost_per_sf', label: 'Low Bid Cost/SF', type: 'currency' },
+  { key: 'median_bid_total', label: 'Median Bid Total', type: 'currency' },
+  { key: 'median_bid_cost_per_sf', label: 'Median Bid Cost/SF', type: 'currency' }
+];
+
+function normalizeComparableValidationValue(value, type) {
+  if (type === 'date') {
+    return normalizeDateValue(value);
+  }
+
+  const numeric = toFiniteNumber(value);
+  return numeric == null ? null : roundToTwo(numeric);
+}
+
+function buildValidationChanges(previousMetrics, currentMetrics) {
+  if (!previousMetrics || !currentMetrics) {
+    return [];
+  }
+
+  return VALIDATION_CHANGE_FIELDS.reduce((changes, field) => {
+    const previousValue = normalizeComparableValidationValue(previousMetrics[field.key], field.type);
+    const currentValue = normalizeComparableValidationValue(currentMetrics[field.key], field.type);
+
+    if (field.type === 'date') {
+      if ((previousValue || null) === (currentValue || null)) {
+        return changes;
+      }
+    } else if (previousValue == null && currentValue == null) {
+      return changes;
+    } else if (previousValue == null || currentValue == null) {
+      // keep change
+    } else if (Math.abs(previousValue - currentValue) <= 0.005) {
+      return changes;
+    }
+
+    changes.push({
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      unit: field.unit || null,
+      previous_value: previousValue,
+      current_value: currentValue
+    });
+
+    return changes;
+  }, []);
+}
+
+function buildPackageSnapshot(packages) {
+  return (packages || [])
+    .map((pkg) => ({
+      package_id: pkg.package_id != null ? Number(pkg.package_id) : null,
+      package_code: pkg.package_code || null,
+      package_name: pkg.package_name || null,
+      status: pkg.status || null,
+      selected_bidder_id: pkg.selected_bidder_id != null ? Number(pkg.selected_bidder_id) : null,
+      selected_bidder_name: pkg.selected_bidder_name || null,
+      selected_amount: roundToTwo(pkg.selected_amount),
+      low_bid: roundToTwo(pkg.low_bid),
+      median_bid: roundToTwo(pkg.median_bid),
+      high_bid: roundToTwo(pkg.high_bid),
+      bid_count: pkg.bid_count != null ? Number(pkg.bid_count) : null
+    }))
+    .sort((a, b) => String(a.package_code || '').localeCompare(String(b.package_code || '')));
+}
+
+function buildPackageValidationChanges(previousSnapshot, currentSnapshot) {
+  const previousByCode = new Map((previousSnapshot || []).map((pkg) => [pkg.package_code, pkg]));
+  const currentByCode = new Map((currentSnapshot || []).map((pkg) => [pkg.package_code, pkg]));
+  const changes = [];
+
+  currentByCode.forEach((currentPkg, packageCode) => {
+    if (!previousByCode.has(packageCode)) {
+      changes.push({
+        change_type: 'added',
+        package_code: packageCode,
+        package_name: currentPkg.package_name,
+        status: currentPkg.status
+      });
+    }
+  });
+
+  previousByCode.forEach((previousPkg, packageCode) => {
+    if (!currentByCode.has(packageCode)) {
+      changes.push({
+        change_type: 'removed',
+        package_code: packageCode,
+        package_name: previousPkg.package_name,
+        status: previousPkg.status
+      });
+      return;
+    }
+
+    const currentPkg = currentByCode.get(packageCode);
+    const fieldDefinitions = [
+      { key: 'package_name', label: 'Package Name', type: 'text' },
+      { key: 'status', label: 'Status', type: 'text' },
+      { key: 'selected_bidder_name', label: 'Selected Bidder', type: 'text' },
+      { key: 'selected_amount', label: 'Selected Amount', type: 'currency' },
+      { key: 'low_bid', label: 'Low Bid', type: 'currency' },
+      { key: 'median_bid', label: 'Median Bid', type: 'currency' },
+      { key: 'high_bid', label: 'High Bid', type: 'currency' },
+      { key: 'bid_count', label: 'Bid Count', type: 'number' }
+    ];
+
+    fieldDefinitions.forEach((field) => {
+      const previousValue = previousPkg[field.key] ?? null;
+      const currentValue = currentPkg[field.key] ?? null;
+
+      if (field.type === 'currency') {
+        const prev = toFiniteNumber(previousValue);
+        const curr = toFiniteNumber(currentValue);
+        if (prev == null && curr == null) return;
+        if (prev != null && curr != null && Math.abs(prev - curr) <= 0.005) return;
+      } else if (field.type === 'number') {
+        const prev = toFiniteNumber(previousValue);
+        const curr = toFiniteNumber(currentValue);
+        if (prev == null && curr == null) return;
+        if (prev != null && curr != null && Math.abs(prev - curr) <= 0.005) return;
+      } else if ((previousValue || null) === (currentValue || null)) {
+        return;
+      }
+
+      changes.push({
+        change_type: 'edited',
+        package_code: packageCode,
+        package_name: currentPkg.package_name || previousPkg.package_name || null,
+        field_key: field.key,
+        field_label: field.label,
+        value_type: field.type,
+        previous_value: previousValue,
+        current_value: currentValue
+      });
+    });
+  });
+
+  return changes.sort((a, b) => String(a.package_code || '').localeCompare(String(b.package_code || '')));
+}
+
 function computeProjectMetrics(project, packages) {
   const buildingSf = toFiniteNumber(project.building_sf);
   const packageCount = Array.isArray(packages) ? packages.length : 0;
@@ -317,7 +462,7 @@ function computeProjectMetrics(project, packages) {
 
 function getLatestValidation(db, projectId) {
   const latestQuery = db.exec(
-    `SELECT id, validator_initials, metrics_json, notes, created_at
+    `SELECT id, validator_initials, metrics_json, changes_json, packages_json, notes, created_at
      FROM project_validations
      WHERE project_id = ?
      ORDER BY datetime(created_at) DESC, id DESC
@@ -331,21 +476,29 @@ function getLatestValidation(db, projectId) {
 
   const row = latestQuery[0].values[0];
   const metrics = normalizeValidationMetrics(JSON.parse(row[2]));
+  const rawChanges = row[3] ? JSON.parse(row[3]) : null;
+  const changes = Array.isArray(rawChanges) ? { metrics: rawChanges, packages: [] } : (rawChanges || { metrics: [], packages: [] });
+  const packages = row[4] ? JSON.parse(row[4]) : [];
 
   return {
     id: row[0],
     validator_initials: row[1],
     metrics,
-    notes: row[3],
-    created_at: row[4]
+    packages,
+    changes,
+    notes: row[5],
+    created_at: row[6]
   };
 }
 
-function getProjectPackagesForMetrics(db, projectId) {
+function getProjectPackagesForValidationSnapshot(db, projectId) {
   const query = db.exec(
-    `SELECT selected_amount, low_bid, median_bid,
+    `SELECT id, package_code, package_name, status, selected_bidder_id,
+            COALESCE(selected.canonical_name, '') AS selected_bidder_name,
+            selected_amount, low_bid, median_bid, high_bid,
             (SELECT COUNT(*) FROM bids b WHERE b.package_id = packages.id) AS bid_count
      FROM packages
+     LEFT JOIN bidders selected ON selected.id = packages.selected_bidder_id
      WHERE project_id = ?`,
     [projectId]
   );
@@ -355,9 +508,17 @@ function getProjectPackagesForMetrics(db, projectId) {
   }
 
   return query[0].values.map((row) => ({
-    selected_amount: row[0],
-    low_bid: row[1],
-    median_bid: row[2]
+    package_id: row[0],
+    package_code: row[1],
+    package_name: row[2],
+    status: row[3],
+    selected_bidder_id: row[4],
+    selected_bidder_name: row[5] || null,
+    selected_amount: row[6],
+    low_bid: row[7],
+    median_bid: row[8],
+    high_bid: row[9],
+    bid_count: row[10]
   }));
 }
 
@@ -725,11 +886,11 @@ app.get('/api/projects/:id/validations', (req, res) => {
     project_date: projectRow[2]
   };
 
-  const packages = getProjectPackagesForMetrics(db, projectId);
+  const packages = getProjectPackagesForValidationSnapshot(db, projectId);
   const currentMetrics = computeProjectMetrics(project, packages);
 
   const historyQuery = db.exec(
-    `SELECT id, validator_initials, metrics_json, notes, created_at
+    `SELECT id, validator_initials, metrics_json, changes_json, packages_json, notes, created_at
      FROM project_validations
      WHERE project_id = ?
      ORDER BY datetime(created_at) DESC, id DESC`,
@@ -742,12 +903,17 @@ app.get('/api/projects/:id/validations', (req, res) => {
 
   const history = historyQuery[0].values.map((row) => {
     const metrics = normalizeValidationMetrics(JSON.parse(row[2]));
+    const rawChanges = row[3] ? JSON.parse(row[3]) : null;
+    const changes = Array.isArray(rawChanges) ? { metrics: rawChanges, packages: [] } : (rawChanges || { metrics: [], packages: [] });
+    const snapshotPackages = row[4] ? JSON.parse(row[4]) : [];
     return {
       id: row[0],
       validator_initials: row[1],
       metrics,
-      notes: row[3],
-      created_at: row[4],
+      packages: snapshotPackages,
+      changes,
+      notes: row[5],
+      created_at: row[6],
       is_current: metricsAreEqual(metrics, currentMetrics)
     };
   });
@@ -780,20 +946,28 @@ app.post('/api/projects/:id/validations', (req, res) => {
     project_date: projectRow[2]
   };
 
-  const packages = getProjectPackagesForMetrics(db, projectId);
+  const packages = getProjectPackagesForValidationSnapshot(db, projectId);
   const metrics = computeProjectMetrics(project, packages);
+  const currentSnapshot = buildPackageSnapshot(packages);
+  const latestValidation = getLatestValidation(db, projectId);
+  const changes = latestValidation
+    ? {
+      metrics: buildValidationChanges(latestValidation.metrics, metrics),
+      packages: buildPackageValidationChanges(latestValidation.packages, currentSnapshot)
+    }
+    : { metrics: [], packages: [] };
 
   db.run(
-    `INSERT INTO project_validations (project_id, validator_initials, metrics_json, notes)
-     VALUES (?, ?, ?, ?)`,
-    [projectId, trimmedInitials, JSON.stringify(metrics), notes || null]
+    `INSERT INTO project_validations (project_id, validator_initials, metrics_json, changes_json, packages_json, notes)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [projectId, trimmedInitials, JSON.stringify(metrics), JSON.stringify(changes), JSON.stringify(currentSnapshot), notes || null]
   );
 
   const result = db.exec('SELECT last_insert_rowid()');
   const validationId = result[0].values[0][0];
 
   const insertedQuery = db.exec(
-    `SELECT id, validator_initials, metrics_json, notes, created_at
+    `SELECT id, validator_initials, metrics_json, changes_json, packages_json, notes, created_at
      FROM project_validations
      WHERE id = ?`,
     [validationId]
@@ -807,13 +981,18 @@ app.post('/api/projects/:id/validations', (req, res) => {
 
   const row = insertedQuery[0].values[0];
   const storedMetrics = normalizeValidationMetrics(JSON.parse(row[2]));
+  const rawStoredChanges = row[3] ? JSON.parse(row[3]) : null;
+  const storedChanges = Array.isArray(rawStoredChanges) ? { metrics: rawStoredChanges, packages: [] } : (rawStoredChanges || { metrics: [], packages: [] });
+  const storedPackages = row[4] ? JSON.parse(row[4]) : [];
 
   res.json({
     id: row[0],
     validator_initials: row[1],
     metrics: storedMetrics,
-    notes: row[3],
-    created_at: row[4],
+    packages: storedPackages,
+    changes: storedChanges,
+    notes: row[5],
+    created_at: row[6],
     is_current: true
   });
 });
