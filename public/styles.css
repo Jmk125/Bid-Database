@@ -989,7 +989,7 @@ body {
 
 .project-card-content {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 112px;
+    grid-template-columns: minmax(0, 1fr) 132px;
     gap: 0.75rem;
     align-items: start;
 }
@@ -1003,8 +1003,8 @@ body {
 }
 
 .project-split-chart .split-pie {
-    width: 62px;
-    height: 62px;
+    width: 82px;
+    height: 82px;
     border-radius: 50%;
     background: conic-gradient(#4a90e2 0 var(--site-percent), #2ecc71 var(--site-percent) 100%);
     border: 1px solid rgba(44, 62, 80, 0.15);
@@ -1015,7 +1015,7 @@ body {
     flex-direction: column;
     gap: 0.15rem;
     width: 100%;
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     color: #5f6d78;
     line-height: 1.2;
 }
