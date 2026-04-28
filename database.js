@@ -75,6 +75,17 @@ function ensureSchema() {
     console.log('Added county_state column to projects table');
   }
 
+  // Ensure project validations table has change summary column
+  const validationPragma = db.exec('PRAGMA table_info(project_validations)');
+  const validationColumns = validationPragma[0]?.values || [];
+  const hasChangesJson = validationColumns.some(column => column[1] === 'changes_json');
+
+  if (!hasChangesJson) {
+    db.run('ALTER TABLE project_validations ADD COLUMN changes_json TEXT');
+    schemaUpdated = true;
+    console.log('Added changes_json column to project_validations table');
+  }
+
   return schemaUpdated;
 }
 
@@ -158,6 +169,7 @@ function createTables() {
       project_id INTEGER NOT NULL,
       validator_initials TEXT NOT NULL,
       metrics_json TEXT NOT NULL,
+      changes_json TEXT,
       notes TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE

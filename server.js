@@ -277,6 +277,60 @@ function metricsAreEqual(a, b) {
   });
 }
 
+const VALIDATION_CHANGE_FIELDS = [
+  { key: 'building_sf', label: 'Building Size', type: 'number', unit: ' SF' },
+  { key: 'project_bid_date', label: 'Project Bid Date', type: 'date' },
+  { key: 'selected_total', label: 'Selected Total', type: 'currency' },
+  { key: 'selected_cost_per_sf', label: 'Selected Cost/SF', type: 'currency' },
+  { key: 'low_bid_total', label: 'Low Bid Total', type: 'currency' },
+  { key: 'low_bid_cost_per_sf', label: 'Low Bid Cost/SF', type: 'currency' },
+  { key: 'median_bid_total', label: 'Median Bid Total', type: 'currency' },
+  { key: 'median_bid_cost_per_sf', label: 'Median Bid Cost/SF', type: 'currency' }
+];
+
+function normalizeComparableValidationValue(value, type) {
+  if (type === 'date') {
+    return normalizeDateValue(value);
+  }
+
+  const numeric = toFiniteNumber(value);
+  return numeric == null ? null : roundToTwo(numeric);
+}
+
+function buildValidationChanges(previousMetrics, currentMetrics) {
+  if (!previousMetrics || !currentMetrics) {
+    return [];
+  }
+
+  return VALIDATION_CHANGE_FIELDS.reduce((changes, field) => {
+    const previousValue = normalizeComparableValidationValue(previousMetrics[field.key], field.type);
+    const currentValue = normalizeComparableValidationValue(currentMetrics[field.key], field.type);
+
+    if (field.type === 'date') {
+      if ((previousValue || null) === (currentValue || null)) {
+        return changes;
+      }
+    } else if (previousValue == null && currentValue == null) {
+      return changes;
+    } else if (previousValue == null || currentValue == null) {
+      // keep change
+    } else if (Math.abs(previousValue - currentValue) <= 0.005) {
+      return changes;
+    }
+
+    changes.push({
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      unit: field.unit || null,
+      previous_value: previousValue,
+      current_value: currentValue
+    });
+
+    return changes;
+  }, []);
+}
+
 function computeProjectMetrics(project, packages) {
   const buildingSf = toFiniteNumber(project.building_sf);
   const packageCount = Array.isArray(packages) ? packages.length : 0;
@@ -317,7 +371,7 @@ function computeProjectMetrics(project, packages) {
 
 function getLatestValidation(db, projectId) {
   const latestQuery = db.exec(
-    `SELECT id, validator_initials, metrics_json, notes, created_at
+    `SELECT id, validator_initials, metrics_json, changes_json, notes, created_at
      FROM project_validations
      WHERE project_id = ?
      ORDER BY datetime(created_at) DESC, id DESC
@@ -331,13 +385,15 @@ function getLatestValidation(db, projectId) {
 
   const row = latestQuery[0].values[0];
   const metrics = normalizeValidationMetrics(JSON.parse(row[2]));
+  const changes = row[3] ? JSON.parse(row[3]) : [];
 
   return {
     id: row[0],
     validator_initials: row[1],
     metrics,
-    notes: row[3],
-    created_at: row[4]
+    changes,
+    notes: row[4],
+    created_at: row[5]
   };
 }
 
@@ -729,7 +785,7 @@ app.get('/api/projects/:id/validations', (req, res) => {
   const currentMetrics = computeProjectMetrics(project, packages);
 
   const historyQuery = db.exec(
-    `SELECT id, validator_initials, metrics_json, notes, created_at
+    `SELECT id, validator_initials, metrics_json, changes_json, notes, created_at
      FROM project_validations
      WHERE project_id = ?
      ORDER BY datetime(created_at) DESC, id DESC`,
@@ -742,12 +798,14 @@ app.get('/api/projects/:id/validations', (req, res) => {
 
   const history = historyQuery[0].values.map((row) => {
     const metrics = normalizeValidationMetrics(JSON.parse(row[2]));
+    const changes = row[3] ? JSON.parse(row[3]) : [];
     return {
       id: row[0],
       validator_initials: row[1],
       metrics,
-      notes: row[3],
-      created_at: row[4],
+      changes,
+      notes: row[4],
+      created_at: row[5],
       is_current: metricsAreEqual(metrics, currentMetrics)
     };
   });
@@ -782,18 +840,20 @@ app.post('/api/projects/:id/validations', (req, res) => {
 
   const packages = getProjectPackagesForMetrics(db, projectId);
   const metrics = computeProjectMetrics(project, packages);
+  const latestValidation = getLatestValidation(db, projectId);
+  const changes = latestValidation ? buildValidationChanges(latestValidation.metrics, metrics) : [];
 
   db.run(
-    `INSERT INTO project_validations (project_id, validator_initials, metrics_json, notes)
-     VALUES (?, ?, ?, ?)`,
-    [projectId, trimmedInitials, JSON.stringify(metrics), notes || null]
+    `INSERT INTO project_validations (project_id, validator_initials, metrics_json, changes_json, notes)
+     VALUES (?, ?, ?, ?, ?)`,
+    [projectId, trimmedInitials, JSON.stringify(metrics), JSON.stringify(changes), notes || null]
   );
 
   const result = db.exec('SELECT last_insert_rowid()');
   const validationId = result[0].values[0][0];
 
   const insertedQuery = db.exec(
-    `SELECT id, validator_initials, metrics_json, notes, created_at
+    `SELECT id, validator_initials, metrics_json, changes_json, notes, created_at
      FROM project_validations
      WHERE id = ?`,
     [validationId]
@@ -807,13 +867,15 @@ app.post('/api/projects/:id/validations', (req, res) => {
 
   const row = insertedQuery[0].values[0];
   const storedMetrics = normalizeValidationMetrics(JSON.parse(row[2]));
+  const storedChanges = row[3] ? JSON.parse(row[3]) : [];
 
   res.json({
     id: row[0],
     validator_initials: row[1],
     metrics: storedMetrics,
-    notes: row[3],
-    created_at: row[4],
+    changes: storedChanges,
+    notes: row[4],
+    created_at: row[5],
     is_current: true
   });
 });
