@@ -12,6 +12,7 @@ const projectPreconModal = document.getElementById('projectPreconModal');
 let activePreconProjectId = null;
 let activePreconProjectName = '';
 let isSavingProjectPrecon = false;
+const SITE_DIVISION_NUMBERS = new Set([31, 32, 33]);
 
 if (projectStateSelect) {
     projectStateSelect.value = DEFAULT_PROJECT_STATE;
@@ -38,6 +39,64 @@ window.onclick = (event) => {
         closeProjectPreconNotes();
     }
 };
+
+function toFiniteNumber(value) {
+    if (value == null || value === '') {
+        return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getDivisionNumber(value) {
+    if (value == null) {
+        return null;
+    }
+    const trimmed = String(value).trim();
+    if (!trimmed) {
+        return null;
+    }
+    const match = trimmed.match(/^(\d{1,2})/);
+    if (!match) {
+        return null;
+    }
+    const division = Number(match[1]);
+    return Number.isFinite(division) ? division : null;
+}
+
+function getProjectBuildingVsSiteCosts(projectDetails) {
+    const buildingSf = toFiniteNumber(projectDetails?.building_sf);
+    const split = (projectDetails?.packages || []).reduce((acc, pkg) => {
+        const amount = toFiniteNumber(pkg?.median_bid) ?? toFiniteNumber(pkg?.selected_amount) ?? 0;
+        if (amount <= 0) {
+            return acc;
+        }
+
+        const divisionNumber = getDivisionNumber(pkg?.csi_division);
+        if (divisionNumber != null && SITE_DIVISION_NUMBERS.has(divisionNumber)) {
+            acc.site += amount;
+        } else {
+            acc.building += amount;
+        }
+
+        return acc;
+    }, { building: 0, site: 0 });
+
+    if (!buildingSf || buildingSf <= 0 || (split.building <= 0 && split.site <= 0)) {
+        return null;
+    }
+
+    const buildingPerSf = split.building / buildingSf;
+    const sitePerSf = split.site / buildingSf;
+    const totalPerSf = buildingPerSf + sitePerSf;
+    const sitePercent = totalPerSf > 0 ? (sitePerSf / totalPerSf) * 100 : 0;
+
+    return {
+        buildingPerSf,
+        sitePerSf,
+        sitePercent
+    };
+}
 
 // Load projects
 async function loadProjects(sortBy = 'date-desc') {
@@ -75,11 +134,12 @@ async function loadProjects(sortBy = 'date-desc') {
                     return {
                         ...project,
                         medianCostPerSF,
+                        buildingSiteSplit: getProjectBuildingVsSiteCosts(details),
                         validation: details.validation || null,
                         estimatedPackageCount
                     };
                 } catch (error) {
-                    return { ...project, medianCostPerSF: null, validation: null, estimatedPackageCount: 0 };
+                    return { ...project, medianCostPerSF: null, buildingSiteSplit: null, validation: null, estimatedPackageCount: 0 };
                 }
             })
         );
@@ -114,22 +174,34 @@ async function loadProjects(sortBy = 'date-desc') {
                         <span>${project.estimatedPackageCount} est.</span>
                    </span>`
                 : '';
+            const splitChart = project.buildingSiteSplit
+                ? `<div class="project-split-chart" aria-label="Building vs site cost per square foot">
+                        <div class="split-pie" style="--site-percent: ${project.buildingSiteSplit.sitePercent.toFixed(2)}%;" title="Building ${formatCurrency(project.buildingSiteSplit.buildingPerSf)}/SF, Site ${formatCurrency(project.buildingSiteSplit.sitePerSf)}/SF"></div>
+                        <div class="split-legend">
+                            <div><span class="swatch building"></span><span>Bldg ${formatCurrency(project.buildingSiteSplit.buildingPerSf)}/SF</span></div>
+                            <div><span class="swatch site"></span><span>Site ${formatCurrency(project.buildingSiteSplit.sitePerSf)}/SF</span></div>
+                        </div>
+                   </div>`
+                : '';
             return `
             <div class="project-card" onclick="viewProject(${project.id})">
                 <div class="project-card-header">
                     <h3>${escapeHtml(project.name)}</h3>
                     ${validationIndicator}
                 </div>
-                <div class="meta">
-                    ${project.building_sf ? `<div>📐 ${formatNumber(project.building_sf)} SF</div>` : ''}
-                    ${project.project_date ? `<div>📅 ${formatDate(project.project_date)}</div>` : ''}
-                    ${project.county_name ? `<div>📍 ${escapeHtml(project.county_name)}${project.county_state ? ', ' + escapeHtml(project.county_state) : ''}</div>` : ''}
-                    <div>🕒 Created ${formatDate(project.created_at)}</div>
-                    ${project.medianCostPerSF ? `<div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
-                        <strong style="font-size: 1.1rem; color: #2c3e50;">${formatCurrency(project.medianCostPerSF)}/SF</strong>
-                        <span style="color: #7f8c8d; font-size: 0.875rem;">(median)</span>
-                        ${estimatedIndicator}
-                    </div>` : ''}
+                <div class="project-card-content">
+                    <div class="meta">
+                        ${project.building_sf ? `<div>📐 ${formatNumber(project.building_sf)} SF</div>` : ''}
+                        ${project.project_date ? `<div>📅 ${formatDate(project.project_date)}</div>` : ''}
+                        ${project.county_name ? `<div>📍 ${escapeHtml(project.county_name)}${project.county_state ? ', ' + escapeHtml(project.county_state) : ''}</div>` : ''}
+                        <div>🕒 Created ${formatDate(project.created_at)}</div>
+                        ${project.medianCostPerSF ? `<div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                            <strong style="font-size: 1.1rem; color: #2c3e50;">${formatCurrency(project.medianCostPerSF)}/SF</strong>
+                            <span style="color: #7f8c8d; font-size: 0.875rem;">(median)</span>
+                            ${estimatedIndicator}
+                        </div>` : ''}
+                    </div>
+                    ${splitChart}
                 </div>
                 <div class="actions" onclick="event.stopPropagation()">
                     <button class="btn btn-tiny btn-secondary" onclick="openProjectPreconNotes(${project.id})">🗒️ Pre-con Notes</button>
