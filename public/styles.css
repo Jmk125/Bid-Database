@@ -1364,6 +1364,45 @@ body {
     color: #7f5f1a;
 }
 
+.validation-change-summary {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e5e7eb;
+    color: #2c3e50;
+    font-size: 0.9rem;
+}
+
+.validation-change-summary ul {
+    margin: 0.5rem 0 0 1rem;
+}
+
+.validation-change-log {
+    margin-top: 0.85rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 6px;
+    background: #f8f9ff;
+    border: 1px solid #e1e7ff;
+}
+
+.validation-change-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #4b5cc4;
+    margin-bottom: 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.validation-change-log ul {
+    margin: 0;
+    padding-left: 1rem;
+    color: #2c3e50;
+}
+
+.validation-change-log li {
+    margin-bottom: 0.25rem;
+}
+
 .close {
     position: absolute;
     right: 1rem;

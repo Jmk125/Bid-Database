@@ -391,6 +391,7 @@ function renderValidationMetricsSummary() {
     const lowText = formatValidationCostLine(metrics.low_bid_cost_per_sf, metrics.low_bid_total);
     const medianText = formatValidationCostLine(metrics.median_bid_cost_per_sf, metrics.median_bid_total);
     const projectDateText = metrics.project_bid_date ? formatDate(metrics.project_bid_date) : 'Not set';
+    const changeSummaryHtml = getPendingValidationChangeSummaryHtml();
 
     summaryEl.innerHTML = `
         <div class="validation-metric-row"><span>Building Size</span><span>${buildingText}</span></div>
@@ -398,7 +399,108 @@ function renderValidationMetricsSummary() {
         <div class="validation-metric-row"><span>Low Bid Cost/SF</span><span>${lowText}</span></div>
         <div class="validation-metric-row"><span>Median Bid Cost/SF</span><span>${medianText}</span></div>
         <div class="validation-metric-row"><span>Project Bid Date</span><span>${projectDateText}</span></div>
+        ${changeSummaryHtml}
     `;
+}
+
+function getPendingValidationChangeSummaryHtml() {
+    const latest = currentProject?.validation?.latest;
+    if (!latest?.metrics || !latestComputedMetrics) {
+        return '';
+    }
+
+    const changes = getValidationChanges(latest.metrics, latestComputedMetrics);
+    if (!changes.length) {
+        return '<div class="validation-change-summary"><strong>No changes since last validation.</strong></div>';
+    }
+
+    return `
+        <div class="validation-change-summary">
+            <strong>Changes since previous validation (${changes.length})</strong>
+            <ul>${changes.map(change => `<li>${escapeHtml(change)}</li>`).join('')}</ul>
+        </div>
+    `;
+}
+
+function getValidationChanges(previousMetrics, currentMetrics) {
+    const fields = [
+        { key: 'building_sf', label: 'Building Size', type: 'number', unit: ' SF' },
+        { key: 'project_bid_date', label: 'Project Bid Date', type: 'date' },
+        { key: 'selected_total', label: 'Selected Total', type: 'currency' },
+        { key: 'selected_cost_per_sf', label: 'Selected Cost/SF', type: 'currency' },
+        { key: 'low_bid_total', label: 'Low Bid Total', type: 'currency' },
+        { key: 'low_bid_cost_per_sf', label: 'Low Bid Cost/SF', type: 'currency' },
+        { key: 'median_bid_total', label: 'Median Bid Total', type: 'currency' },
+        { key: 'median_bid_cost_per_sf', label: 'Median Bid Cost/SF', type: 'currency' }
+    ];
+
+    return fields.reduce((changes, field) => {
+        const previousValue = getComparableValidationValue(previousMetrics[field.key], field.type);
+        const currentValue = getComparableValidationValue(currentMetrics[field.key], field.type);
+        const hasChanged = field.type === 'date'
+            ? (previousValue || null) !== (currentValue || null)
+            : !areComparableValidationValuesEqual(previousValue, currentValue);
+
+        if (!hasChanged) {
+            return changes;
+        }
+
+        changes.push(`${field.label}: ${formatValidationFieldValue(previousValue, field)} → ${formatValidationFieldValue(currentValue, field)}`);
+        return changes;
+    }, []);
+}
+
+function getComparableValidationValue(value, type) {
+    if (type === 'date') {
+        if (!value) {
+            return null;
+        }
+        const iso = new Date(value);
+        return Number.isNaN(iso.getTime()) ? null : iso.toISOString().split('T')[0];
+    }
+
+    if (value == null || value === '') {
+        return null;
+    }
+
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return null;
+    }
+
+    return Math.round(numeric * 100) / 100;
+}
+
+function areComparableValidationValuesEqual(a, b) {
+    if (a == null && b == null) {
+        return true;
+    }
+
+    if (a == null || b == null) {
+        return false;
+    }
+
+    return Math.abs(a - b) <= 0.005;
+}
+
+function formatValidationFieldValue(value, field) {
+    if (value == null) {
+        return 'Not set';
+    }
+
+    if (field.type === 'date') {
+        return formatDate(value);
+    }
+
+    if (field.type === 'currency') {
+        return formatCurrency(value);
+    }
+
+    if (field.type === 'number') {
+        return `${formatNumber(value)}${field.unit || ''}`;
+    }
+
+    return String(value);
 }
 
 async function openValidationHistoryModal() {
@@ -567,6 +669,20 @@ function renderValidationHistory(entries) {
         const medianText = formatValidationCostLine(metrics.median_bid_cost_per_sf, metrics.median_bid_total);
         const projectDateText = metrics.project_bid_date ? formatDate(metrics.project_bid_date) : 'Not set';
         const notesHtml = entry.notes ? `<div class="history-note">${escapeHtml(entry.notes)}</div>` : '';
+        const changes = Array.isArray(entry.changes) ? entry.changes : [];
+        const changesHtml = changes.length ? `
+            <div class="validation-change-log">
+                <div class="validation-change-title">Changes for this revalidation</div>
+                <ul>
+                    ${changes.map(change => {
+                        const label = change.label || change.key || 'Field';
+                        const previousValue = formatValidationHistoryChangeValue(change.previous_value, change);
+                        const currentValue = formatValidationHistoryChangeValue(change.current_value, change);
+                        return `<li><strong>${escapeHtml(label)}:</strong> ${escapeHtml(previousValue)} → ${escapeHtml(currentValue)}</li>`;
+                    }).join('')}
+                </ul>
+            </div>
+        ` : '';
 
         return `
             <article class="validation-history-item${isCurrent ? ' is-current' : ''}">
@@ -585,12 +701,34 @@ function renderValidationHistory(entries) {
                     <span><span class="metric-label">Median Bid Cost/SF</span><span class="metric-value">${medianText}</span></span>
                     <span><span class="metric-label">Project Bid Date</span><span class="metric-value">${projectDateText}</span></span>
                 </div>
+                ${changesHtml}
                 ${notesHtml}
             </article>
         `;
     }).join('');
 
     attachValidationHistoryEvents();
+}
+
+function formatValidationHistoryChangeValue(value, change) {
+    if (value == null) {
+        return 'Not set';
+    }
+
+    if (change?.type === 'date') {
+        return formatDate(value);
+    }
+
+    if (change?.type === 'currency') {
+        return formatCurrency(value);
+    }
+
+    if (change?.type === 'number') {
+        const unit = change?.unit || '';
+        return `${formatNumber(value)}${unit}`;
+    }
+
+    return String(value);
 }
 
 function attachValidationHistoryEvents() {
