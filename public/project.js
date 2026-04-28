@@ -409,15 +409,19 @@ function getPendingValidationChangeSummaryHtml() {
         return '';
     }
 
-    const changes = getValidationChanges(latest.metrics, latestComputedMetrics);
-    if (!changes.length) {
+    const metricChanges = getValidationChanges(latest.metrics, latestComputedMetrics);
+    const packageChanges = getPackageValidationChanges(latest.packages, currentProject?.packages || []);
+    const totalChanges = metricChanges.length + packageChanges.length;
+
+    if (!totalChanges) {
         return '<div class="validation-change-summary"><strong>No changes since last validation.</strong></div>';
     }
 
     return `
         <div class="validation-change-summary">
-            <strong>Changes since previous validation (${changes.length})</strong>
-            <ul>${changes.map(change => `<li>${escapeHtml(change)}</li>`).join('')}</ul>
+            <strong>Changes since previous validation (${totalChanges})</strong>
+            ${metricChanges.length ? `<div class="validation-change-group-title">Summary Metrics</div><ul>${metricChanges.map(change => `<li>${escapeHtml(change)}</li>`).join('')}</ul>` : ''}
+            ${packageChanges.length ? `<div class="validation-change-group-title">Package Updates</div><ul>${packageChanges.map(change => `<li>${escapeHtml(change)}</li>`).join('')}</ul>` : ''}
         </div>
     `;
 }
@@ -501,6 +505,40 @@ function formatValidationFieldValue(value, field) {
     }
 
     return String(value);
+}
+
+function getPackageValidationChanges(previousPackages, currentPackages) {
+    const previousByCode = new Map((Array.isArray(previousPackages) ? previousPackages : []).map(pkg => [pkg.package_code, pkg]));
+    const currentByCode = new Map((Array.isArray(currentPackages) ? currentPackages : []).map(pkg => [pkg.package_code, pkg]));
+    const changes = [];
+
+    currentByCode.forEach((pkg, code) => {
+        if (!previousByCode.has(code)) {
+            changes.push(`Package ${code}: Added (${pkg.package_name || 'Unnamed package'})`);
+        }
+    });
+
+    previousByCode.forEach((previousPkg, code) => {
+        if (!currentByCode.has(code)) {
+            changes.push(`Package ${code}: Removed (${previousPkg.package_name || 'Unnamed package'})`);
+            return;
+        }
+
+        const currentPkg = currentByCode.get(code);
+        if ((previousPkg.selected_bidder_name || '') !== (currentPkg.bidder_name || '')) {
+            changes.push(`Package ${code}: Selected bidder changed (${previousPkg.selected_bidder_name || 'Not set'} → ${currentPkg.bidder_name || 'Not set'})`);
+        }
+
+        const previousAmount = getComparableValidationValue(previousPkg.selected_amount, 'number');
+        const currentAmount = getComparableValidationValue(currentPkg.selected_amount, 'number');
+        if (!areComparableValidationValuesEqual(previousAmount, currentAmount)) {
+            const previousText = previousAmount == null ? 'Not set' : formatCurrency(previousAmount);
+            const currentText = currentAmount == null ? 'Not set' : formatCurrency(currentAmount);
+            changes.push(`Package ${code}: Selected amount changed (${previousText} → ${currentText})`);
+        }
+    });
+
+    return changes;
 }
 
 async function openValidationHistoryModal() {
@@ -669,18 +707,31 @@ function renderValidationHistory(entries) {
         const medianText = formatValidationCostLine(metrics.median_bid_cost_per_sf, metrics.median_bid_total);
         const projectDateText = metrics.project_bid_date ? formatDate(metrics.project_bid_date) : 'Not set';
         const notesHtml = entry.notes ? `<div class="history-note">${escapeHtml(entry.notes)}</div>` : '';
-        const changes = Array.isArray(entry.changes) ? entry.changes : [];
-        const changesHtml = changes.length ? `
+        const changePayload = entry.changes && typeof entry.changes === 'object'
+            ? entry.changes
+            : { metrics: Array.isArray(entry.changes) ? entry.changes : [], packages: [] };
+        const metricChanges = Array.isArray(changePayload.metrics) ? changePayload.metrics : [];
+        const packageChanges = Array.isArray(changePayload.packages) ? changePayload.packages : [];
+        const changesHtml = (metricChanges.length || packageChanges.length) ? `
             <div class="validation-change-log">
                 <div class="validation-change-title">Changes for this revalidation</div>
+                ${metricChanges.length ? `
+                <div class="validation-change-subtitle">Summary Metrics</div>
                 <ul>
-                    ${changes.map(change => {
+                    ${metricChanges.map(change => {
                         const label = change.label || change.key || 'Field';
                         const previousValue = formatValidationHistoryChangeValue(change.previous_value, change);
                         const currentValue = formatValidationHistoryChangeValue(change.current_value, change);
                         return `<li><strong>${escapeHtml(label)}:</strong> ${escapeHtml(previousValue)} → ${escapeHtml(currentValue)}</li>`;
                     }).join('')}
                 </ul>
+                ` : ''}
+                ${packageChanges.length ? `
+                <div class="validation-change-subtitle">Package Updates</div>
+                <ul>
+                    ${packageChanges.map(change => renderPackageHistoryChange(change)).join('')}
+                </ul>
+                ` : ''}
             </div>
         ` : '';
 
@@ -708,6 +759,24 @@ function renderValidationHistory(entries) {
     }).join('');
 
     attachValidationHistoryEvents();
+}
+
+function renderPackageHistoryChange(change) {
+    const code = change.package_code || 'Unknown';
+    const packageName = change.package_name ? ` (${change.package_name})` : '';
+
+    if (change.change_type === 'added') {
+        return `<li><strong>${escapeHtml(code)}</strong>${escapeHtml(packageName)}: Added package</li>`;
+    }
+
+    if (change.change_type === 'removed') {
+        return `<li><strong>${escapeHtml(code)}</strong>${escapeHtml(packageName)}: Removed package</li>`;
+    }
+
+    const label = change.field_label || change.field_key || 'Field';
+    const previousValue = formatValidationHistoryChangeValue(change.previous_value, { type: change.value_type });
+    const currentValue = formatValidationHistoryChangeValue(change.current_value, { type: change.value_type });
+    return `<li><strong>${escapeHtml(code)}</strong>${escapeHtml(packageName)} — <strong>${escapeHtml(label)}:</strong> ${escapeHtml(previousValue)} → ${escapeHtml(currentValue)}</li>`;
 }
 
 function formatValidationHistoryChangeValue(value, change) {

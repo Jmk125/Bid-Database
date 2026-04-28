@@ -1115,6 +1115,10 @@ body {
     max-width: 720px;
 }
 
+.modal-content.modal-validation {
+    max-width: 860px;
+}
+
 .project-filter-modal {
     max-width: 860px;
 }
@@ -1401,6 +1405,17 @@ body {
 
 .validation-change-log li {
     margin-bottom: 0.25rem;
+}
+
+.validation-change-group-title,
+.validation-change-subtitle {
+    margin-top: 0.6rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.35px;
+    text-transform: uppercase;
+    color: #546e7a;
 }
 
 .close {
