@@ -3230,23 +3230,28 @@ function displayPackageComparisonChart() {
         'rgba(0, 48, 143, 0.7)',
         'rgba(32, 84, 184, 0.7)',
         'rgba(75, 119, 190, 0.7)',
-        'rgba(116, 159, 212, 0.7)'
+        'rgba(116, 159, 212, 0.7)',
+        'rgba(20, 122, 92, 0.7)'
     ];
 
     const view = window.packageComparisonView === 'package' ? 'package' : 'combined';
-    const metricDefinitions = [
+    const bidMetricDefinitions = [
         { label: 'Selected Bid', key: 'selected_amount' },
         { label: 'Median Bid', key: 'median_bid' },
         { label: 'Low Bid', key: 'low_bid' },
         { label: 'High Bid', key: 'high_bid' }
     ];
+    const combinedMetricDefinitions = [
+        { label: 'GMP', key: 'gmp_amount' },
+        ...bidMetricDefinitions
+    ];
 
     const chartData = view === 'combined'
         ? {
-            labels: metricDefinitions.map(metric => metric.label),
+            labels: combinedMetricDefinitions.map(metric => metric.label),
             datasets: [{
                 label: 'Combined Total',
-                data: metricDefinitions.map(metric => bidPackages.reduce((sum, pkg) => sum + (toFiniteNumber(pkg[metric.key]) || 0), 0)),
+                data: combinedMetricDefinitions.map(metric => bidPackages.reduce((sum, pkg) => sum + (toFiniteNumber(pkg[metric.key]) || 0), 0)),
                 backgroundColor: blueColors,
                 borderColor: blueColors.map(color => color.replace('0.7', '1')),
                 borderWidth: 1
@@ -3254,7 +3259,7 @@ function displayPackageComparisonChart() {
         }
         : {
             labels: bidPackages.map(p => p.package_code),
-            datasets: metricDefinitions.map((metric, index) => ({
+            datasets: bidMetricDefinitions.map((metric, index) => ({
                 label: metric.label,
                 data: bidPackages.map(p => toFiniteNumber(p[metric.key]) || 0),
                 backgroundColor: blueColors[index],
