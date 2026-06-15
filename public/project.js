@@ -2941,6 +2941,7 @@ function displayCharts() {
 
     window.pieChartDataSource = window.pieChartDataSource || 'median';
     window.pieChartGrouping = window.pieChartGrouping || 'division';
+    window.packageComparisonView = window.packageComparisonView || 'combined';
 
     // Category pie chart
     displayCategoryChart();
@@ -2981,6 +2982,23 @@ function displayCharts() {
                 existingChart.destroy();
             }
             displayCategoryChart();
+        });
+    }
+
+    const packageComparisonSelector = document.getElementById('packageComparisonView');
+    if (packageComparisonSelector) {
+        packageComparisonSelector.value = window.packageComparisonView;
+    }
+    if (packageComparisonSelector && !packageComparisonSelector.hasAttribute('data-listener-attached')) {
+        packageComparisonSelector.setAttribute('data-listener-attached', 'true');
+        packageComparisonSelector.addEventListener('change', (e) => {
+            window.packageComparisonView = e.target.value === 'package' ? 'package' : 'combined';
+            const canvas = document.getElementById('packageComparisonChart');
+            const existingChart = Chart.getChart(canvas);
+            if (existingChart) {
+                existingChart.destroy();
+            }
+            displayPackageComparisonChart();
         });
     }
 }
@@ -3199,65 +3217,64 @@ function displayCategoryChart() {
 
 function displayPackageComparisonChart() {
     const packages = currentProject.packages || [];
-    const bidPackages = packages.filter(p => p.status !== 'estimated');
-    
+    const bidPackages = packages
+        .filter(p => p.status !== 'estimated')
+        .sort((a, b) => (a.package_code || '').localeCompare(b.package_code || ''));
+
     if (bidPackages.length === 0) return;
-    
+
     const ctx = document.getElementById('packageComparisonChart');
     if (!ctx) return;
-    
-    const blueColors = [
-        'rgba(0, 48, 143, 0.7)',
-        'rgba(32, 84, 184, 0.7)',
-        'rgba(75, 119, 190, 0.7)',
-        'rgba(116, 159, 212, 0.7)'
+
+    const chartColors = {
+        gmp: 'rgba(20, 122, 92, 0.7)',
+        selected: 'rgba(32, 84, 184, 0.7)',
+        median: 'rgba(75, 119, 190, 0.7)',
+        low: 'rgba(116, 159, 212, 0.7)',
+        high: 'rgba(0, 48, 143, 0.7)'
+    };
+
+    const view = window.packageComparisonView === 'package' ? 'package' : 'combined';
+    const metricDefinitions = [
+        { label: 'GMP', key: 'gmp_amount', color: chartColors.gmp },
+        { label: 'Selected Bid', key: 'selected_amount', color: chartColors.selected },
+        { label: 'Median Bid', key: 'median_bid', color: chartColors.median },
+        { label: 'Low Bid', key: 'low_bid', color: chartColors.low },
+        { label: 'High Bid', key: 'high_bid', color: chartColors.high }
     ];
-    
-    // Sort packages by code
-    bidPackages.sort((a, b) => a.package_code.localeCompare(b.package_code));
-    
+
+    const chartData = view === 'combined'
+        ? {
+            labels: metricDefinitions.map(metric => metric.label),
+            datasets: [{
+                label: 'Combined Total',
+                data: metricDefinitions.map(metric => bidPackages.reduce((sum, pkg) => sum + (toFiniteNumber(pkg[metric.key]) || 0), 0)),
+                backgroundColor: metricDefinitions.map(metric => metric.color),
+                borderColor: metricDefinitions.map(metric => metric.color.replace('0.7', '1')),
+                borderWidth: 1
+            }]
+        }
+        : {
+            labels: bidPackages.map(p => p.package_code),
+            datasets: metricDefinitions.map(metric => ({
+                label: metric.label,
+                data: bidPackages.map(p => toFiniteNumber(p[metric.key]) || 0),
+                backgroundColor: metric.color,
+                borderColor: metric.color.replace('0.7', '1'),
+                borderWidth: 1
+            }))
+        };
+
     new Chart(ctx, {
         type: 'bar',
-        data: {
-            labels: bidPackages.map(p => p.package_code),
-            datasets: [
-                {
-                    label: 'Selected Bid',
-                    data: bidPackages.map(p => p.selected_amount),
-                    backgroundColor: blueColors[0],
-                    borderColor: blueColors[0].replace('0.7', '1'),
-                    borderWidth: 1
-                },
-                {
-                    label: 'Median Bid',
-                    data: bidPackages.map(p => p.median_bid || 0),
-                    backgroundColor: blueColors[1],
-                    borderColor: blueColors[1].replace('0.7', '1'),
-                    borderWidth: 1
-                },
-                {
-                    label: 'Low Bid',
-                    data: bidPackages.map(p => p.low_bid || 0),
-                    backgroundColor: blueColors[2],
-                    borderColor: blueColors[2].replace('0.7', '1'),
-                    borderWidth: 1
-                },
-                {
-                    label: 'High Bid',
-                    data: bidPackages.map(p => p.high_bid || 0),
-                    backgroundColor: blueColors[3],
-                    borderColor: blueColors[3].replace('0.7', '1'),
-                    borderWidth: 1
-                }
-            ]
-        },
+        data: chartData,
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
                 title: {
                     display: true,
-                    text: 'Package-by-Package Bid Comparison',
+                    text: view === 'combined' ? 'Combined Bid Comparison Totals' : 'Package-by-Package Bid Comparison',
                     font: { size: 16, weight: 'bold' }
                 },
                 datalabels: {
@@ -3266,7 +3283,8 @@ function displayPackageComparisonChart() {
                 tooltip: {
                     callbacks: {
                         label: (context) => {
-                            return context.dataset.label + ': ' + formatCurrency(context.raw);
+                            const label = view === 'combined' ? context.label : context.dataset.label;
+                            return label + ': ' + formatCurrency(context.raw);
                         }
                     }
                 }

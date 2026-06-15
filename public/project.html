@@ -97,6 +97,14 @@
                     <canvas id="categoryChart"></canvas>
                 </div>
 
+                <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.75rem; gap: 0.75rem; flex-wrap: wrap;">
+                    <label for="packageComparisonView" style="font-weight: 600;">Bid Comparison View:</label>
+                    <select id="packageComparisonView" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; min-width: 190px;">
+                        <option value="combined">Combined Totals</option>
+                        <option value="package">By Bid Package</option>
+                    </select>
+                </div>
+
                 <div class="chart-container" style="height: 500px; margin-bottom: 2rem;">
                     <canvas id="packageComparisonChart"></canvas>
                 </div>
