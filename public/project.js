@@ -3226,44 +3226,41 @@ function displayPackageComparisonChart() {
     const ctx = document.getElementById('packageComparisonChart');
     if (!ctx) return;
 
-    const blueColors = [
-        'rgba(0, 48, 143, 0.7)',
-        'rgba(32, 84, 184, 0.7)',
-        'rgba(75, 119, 190, 0.7)',
-        'rgba(116, 159, 212, 0.7)',
-        'rgba(20, 122, 92, 0.7)'
-    ];
+    const chartColors = {
+        gmp: 'rgba(20, 122, 92, 0.7)',
+        selected: 'rgba(32, 84, 184, 0.7)',
+        median: 'rgba(75, 119, 190, 0.7)',
+        low: 'rgba(116, 159, 212, 0.7)',
+        high: 'rgba(0, 48, 143, 0.7)'
+    };
 
     const view = window.packageComparisonView === 'package' ? 'package' : 'combined';
-    const bidMetricDefinitions = [
-        { label: 'Selected Bid', key: 'selected_amount' },
-        { label: 'Median Bid', key: 'median_bid' },
-        { label: 'Low Bid', key: 'low_bid' },
-        { label: 'High Bid', key: 'high_bid' }
-    ];
-    const combinedMetricDefinitions = [
-        { label: 'GMP', key: 'gmp_amount' },
-        ...bidMetricDefinitions
+    const metricDefinitions = [
+        { label: 'GMP', key: 'gmp_amount', color: chartColors.gmp },
+        { label: 'Selected Bid', key: 'selected_amount', color: chartColors.selected },
+        { label: 'Median Bid', key: 'median_bid', color: chartColors.median },
+        { label: 'Low Bid', key: 'low_bid', color: chartColors.low },
+        { label: 'High Bid', key: 'high_bid', color: chartColors.high }
     ];
 
     const chartData = view === 'combined'
         ? {
-            labels: combinedMetricDefinitions.map(metric => metric.label),
+            labels: metricDefinitions.map(metric => metric.label),
             datasets: [{
                 label: 'Combined Total',
-                data: combinedMetricDefinitions.map(metric => bidPackages.reduce((sum, pkg) => sum + (toFiniteNumber(pkg[metric.key]) || 0), 0)),
-                backgroundColor: blueColors,
-                borderColor: blueColors.map(color => color.replace('0.7', '1')),
+                data: metricDefinitions.map(metric => bidPackages.reduce((sum, pkg) => sum + (toFiniteNumber(pkg[metric.key]) || 0), 0)),
+                backgroundColor: metricDefinitions.map(metric => metric.color),
+                borderColor: metricDefinitions.map(metric => metric.color.replace('0.7', '1')),
                 borderWidth: 1
             }]
         }
         : {
             labels: bidPackages.map(p => p.package_code),
-            datasets: bidMetricDefinitions.map((metric, index) => ({
+            datasets: metricDefinitions.map(metric => ({
                 label: metric.label,
                 data: bidPackages.map(p => toFiniteNumber(p[metric.key]) || 0),
-                backgroundColor: blueColors[index],
-                borderColor: blueColors[index].replace('0.7', '1'),
+                backgroundColor: metric.color,
+                borderColor: metric.color.replace('0.7', '1'),
                 borderWidth: 1
             }))
         };
