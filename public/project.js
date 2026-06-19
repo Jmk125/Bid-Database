@@ -3220,6 +3220,10 @@ function displayPackageComparisonChart() {
     const bidPackages = packages
         .filter(p => p.status !== 'estimated')
         .sort((a, b) => (a.package_code || '').localeCompare(b.package_code || ''));
+    const estimatedPackageCount = packages.length - bidPackages.length;
+    const chartScopeNote = estimatedPackageCount > 0
+        ? `Bid packages only (${estimatedPackageCount} estimated excluded)`
+        : 'Bid packages only';
 
     if (bidPackages.length === 0) return;
 
@@ -3279,7 +3283,9 @@ function displayPackageComparisonChart() {
             plugins: {
                 title: {
                     display: true,
-                    text: view === 'combined' ? 'Combined Bid Comparison Totals' : 'Package-by-Package Bid Comparison',
+                    text: view === 'combined'
+                        ? ['Combined Bid Comparison Totals', chartScopeNote]
+                        : ['Package-by-Package Bid Comparison', chartScopeNote],
                     font: { size: 16, weight: 'bold' }
                 },
                 datalabels: {
@@ -3297,7 +3303,7 @@ function displayPackageComparisonChart() {
                                 return `${context.label}: ${formatCurrency(context.raw)}`;
                             }
 
-                            return buildCombinedComparisonTooltipLines(metric, combinedComparisonMetrics);
+                            return buildCombinedComparisonTooltipLines(metric, combinedComparisonMetrics, chartScopeNote);
                         }
                     }
                 }
@@ -3315,13 +3321,14 @@ function displayPackageComparisonChart() {
 }
 
 
-function buildCombinedComparisonTooltipLines(metric, allMetrics) {
+function buildCombinedComparisonTooltipLines(metric, allMetrics, scopeNote) {
     const total = toFiniteNumber(metric.total) || 0;
     const buildingSf = toFiniteNumber(currentProject?.building_sf);
     const costPerSf = buildingSf && buildingSf > 0 ? total / buildingSf : null;
     const lines = [
         `${metric.label}: ${formatCurrency(total)}`,
-        `Cost/SF: ${costPerSf != null ? `${formatCurrency(costPerSf)}/SF` : 'N/A'}`
+        `Cost/SF: ${costPerSf != null ? `${formatCurrency(costPerSf)}/SF` : 'N/A'}`,
+        `Scope: ${scopeNote}`
     ];
 
     const comparisonLines = allMetrics
