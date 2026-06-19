@@ -1505,6 +1505,19 @@ th {
     font-size: 0.9rem;
 }
 
+.table-container:has(#packagesTable),
+.table-container:has(#gmpTable) {
+    overflow-x: visible;
+}
+
+#packagesTable thead th,
+#gmpTable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    box-shadow: 0 2px 0 #bdc3c7;
+}
+
 td {
     padding: 0.6rem;
     border-bottom: 1px solid #ecf0f1;
