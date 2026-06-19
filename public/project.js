@@ -1028,7 +1028,7 @@ function getGmpSortValue(pkg, key) {
     const median = toFiniteNumber(pkg.median_bid);
     const selectedDelta = gmp != null && selected != null ? selected - gmp : null;
     const medianDelta = gmp != null && median != null ? median - gmp : null;
-    const medianLowDelta = median != null && low != null ? median - low : null;
+    const medianSelectedDelta = median != null && selected != null ? median - selected : null;
 
     switch (key) {
         case 'package_code':
@@ -1049,10 +1049,10 @@ function getGmpSortValue(pkg, key) {
             return medianDelta;
         case 'median_percent':
             return medianDelta != null && isValidPercentBase(gmp) ? (medianDelta / gmp) * 100 : null;
-        case 'median_low_delta':
-            return medianLowDelta;
-        case 'median_low_percent':
-            return medianLowDelta != null && isValidPercentBase(low) ? (medianLowDelta / low) * 100 : null;
+        case 'median_selected_delta':
+            return medianSelectedDelta;
+        case 'median_selected_percent':
+            return medianSelectedDelta != null && isValidPercentBase(selected) ? (medianSelectedDelta / selected) * 100 : null;
         default:
             return null;
     }
@@ -1290,9 +1290,9 @@ function renderGmpSummary() {
             ? (gmpMedianDelta / gmp) * 100
             : null;
 
-        const medianLowDelta = median != null && low != null ? median - low : null;
-        const medianLowPercent = medianLowDelta != null && isValidPercentBase(low)
-            ? (medianLowDelta / low) * 100
+        const medianSelectedDelta = median != null && selected != null ? median - selected : null;
+        const medianSelectedPercent = medianSelectedDelta != null && isValidPercentBase(selected)
+            ? (medianSelectedDelta / selected) * 100
             : null;
 
         const label = name && name !== '—' ? `${code} – ${name}` : code;
@@ -1307,22 +1307,22 @@ function renderGmpSummary() {
             categoryLabel: category ? category.name : 'Other',
             selectedVsGmp: gmpSelectedDelta != null ? gmpSelectedDelta : null,
             medianVsGmp: gmpMedianDelta != null ? gmpMedianDelta : null,
-            medianVsLow: medianLowDelta != null ? medianLowDelta : null,
+            medianVsSelected: medianSelectedDelta != null ? medianSelectedDelta : null,
             selectedVsGmpPercent: gmpSelectedPercent != null ? gmpSelectedPercent : null,
             medianVsGmpPercent: gmpMedianPercent != null ? gmpMedianPercent : null,
-            medianVsLowPercent: medianLowPercent != null ? medianLowPercent : null
+            medianVsSelectedPercent: medianSelectedPercent != null ? medianSelectedPercent : null
         });
 
         const gmpSelectedClass = getBudgetDeltaClass(gmpSelectedDelta);
         const gmpMedianClass = getBudgetDeltaClass(gmpMedianDelta);
-        const medianLowClass = getSpreadDeltaClass(medianLowDelta);
+        const medianSelectedClass = getSpreadDeltaClass(medianSelectedDelta);
 
         const gmpCell = formatAmountWithSf(gmp);
         const selectedCell = formatAmountWithSf(selected);
         const medianCell = formatAmountWithSf(median);
         const gmpSelectedCell = formatAmountWithSf(gmpSelectedDelta, { isDelta: true });
         const gmpMedianCell = formatAmountWithSf(gmpMedianDelta, { isDelta: true });
-        const medianLowCell = formatAmountWithSf(medianLowDelta, { isDelta: true });
+        const medianSelectedCell = formatAmountWithSf(medianSelectedDelta, { isDelta: true });
 
         return `
             <tr>
@@ -1335,8 +1335,8 @@ function renderGmpSummary() {
                 <td>${medianCell}</td>
                 <td class="${gmpMedianClass}">${gmpMedianCell}</td>
                 <td class="${gmpMedianClass}">${formatPercentageDelta(gmpMedianPercent)}</td>
-                <td class="${medianLowClass}">${medianLowCell}</td>
-                <td class="${medianLowClass}">${formatPercentageDelta(medianLowPercent)}</td>
+                <td class="${medianSelectedClass}">${medianSelectedCell}</td>
+                <td class="${medianSelectedClass}">${formatPercentageDelta(medianSelectedPercent)}</td>
             </tr>
         `;
     }).join('');
@@ -1353,21 +1353,21 @@ function renderGmpSummary() {
         ? (totalMedianDelta / totals.gmp) * 100
         : null;
 
-    const totalMedianLowDelta = totals.lowCount > 0 && totals.medianCount > 0 ? totals.median - totals.low : null;
-    const totalMedianLowPercent = totalMedianLowDelta != null && isValidPercentBase(totals.low)
-        ? (totalMedianLowDelta / totals.low) * 100
+    const totalMedianSelectedDelta = totals.selectedCount > 0 && totals.medianCount > 0 ? totals.median - totals.selected : null;
+    const totalMedianSelectedPercent = totalMedianSelectedDelta != null && isValidPercentBase(totals.selected)
+        ? (totalMedianSelectedDelta / totals.selected) * 100
         : null;
 
     const totalSelectedClass = getBudgetDeltaClass(totalSelectedDelta);
     const totalMedianClass = getBudgetDeltaClass(totalMedianDelta);
-    const totalMedianLowClass = getSpreadDeltaClass(totalMedianLowDelta);
+    const totalMedianSelectedClass = getSpreadDeltaClass(totalMedianSelectedDelta);
 
     const totalGmpCell = totals.gmpCount > 0 ? formatAmountWithSf(totals.gmp) : '—';
     const totalSelectedCell = totals.selectedCount > 0 ? formatAmountWithSf(totals.selected) : '—';
     const totalMedianCell = totals.medianCount > 0 ? formatAmountWithSf(totals.median) : '—';
     const totalSelectedDeltaCell = formatAmountWithSf(totalSelectedDelta, { isDelta: true });
     const totalMedianDeltaCell = formatAmountWithSf(totalMedianDelta, { isDelta: true });
-    const totalMedianLowDeltaCell = formatAmountWithSf(totalMedianLowDelta, { isDelta: true });
+    const totalMedianSelectedDeltaCell = formatAmountWithSf(totalMedianSelectedDelta, { isDelta: true });
 
     totalsRow.innerHTML = `
         <th scope="row">Totals</th>
@@ -1379,8 +1379,8 @@ function renderGmpSummary() {
         <td>${totalMedianCell}</td>
         <td class="${totalMedianClass}">${totalMedianDeltaCell}</td>
         <td class="${totalMedianClass}">${formatPercentageDelta(totalMedianPercent)}</td>
-        <td class="${totalMedianLowClass}">${totalMedianLowDeltaCell}</td>
-        <td class="${totalMedianLowClass}">${formatPercentageDelta(totalMedianLowPercent)}</td>
+        <td class="${totalMedianSelectedClass}">${totalMedianSelectedDeltaCell}</td>
+        <td class="${totalMedianSelectedClass}">${formatPercentageDelta(totalMedianSelectedPercent)}</td>
     `;
 
     updateProjectSortIndicators('gmp');
@@ -1451,16 +1451,16 @@ function renderGmpDeltaChart() {
                     label: definition ? definition.name : 'Other',
                     selectedVsGmp: 0,
                     medianVsGmp: 0,
-                    medianVsLow: 0,
+                    medianVsSelected: 0,
                     selectedVsGmpPercentNumerator: 0,
                     selectedVsGmpPercentDenominator: 0,
                     medianVsGmpPercentNumerator: 0,
                     medianVsGmpPercentDenominator: 0,
-                    medianVsLowPercentNumerator: 0,
-                    medianVsLowPercentDenominator: 0,
+                    medianVsSelectedPercentNumerator: 0,
+                    medianVsSelectedPercentDenominator: 0,
                     hasSelectedVsGmp: false,
                     hasMedianVsGmp: false,
-                    hasMedianVsLow: false
+                    hasMedianVsSelected: false
                 });
             }
 
@@ -1474,9 +1474,9 @@ function renderGmpDeltaChart() {
                 entry.medianVsGmp += point.medianVsGmp;
                 entry.hasMedianVsGmp = true;
             }
-            if (point.medianVsLow != null) {
-                entry.medianVsLow += point.medianVsLow;
-                entry.hasMedianVsLow = true;
+            if (point.medianVsSelected != null) {
+                entry.medianVsSelected += point.medianVsSelected;
+                entry.hasMedianVsSelected = true;
             }
 
             if (point.selectedVsGmp != null && point.selectedVsGmpPercent != null && Math.abs(point.selectedVsGmpPercent) < Infinity) {
@@ -1493,11 +1493,11 @@ function renderGmpDeltaChart() {
                     entry.medianVsGmpPercentDenominator += denominator;
                 }
             }
-            if (point.medianVsLow != null && point.medianVsLowPercent != null && Math.abs(point.medianVsLowPercent) < Infinity) {
-                const denominator = point.medianVsLow / (point.medianVsLowPercent / 100);
+            if (point.medianVsSelected != null && point.medianVsSelectedPercent != null && Math.abs(point.medianVsSelectedPercent) < Infinity) {
+                const denominator = point.medianVsSelected / (point.medianVsSelectedPercent / 100);
                 if (Number.isFinite(denominator) && Math.abs(denominator) > 0.0001) {
-                    entry.medianVsLowPercentNumerator += point.medianVsLow;
-                    entry.medianVsLowPercentDenominator += denominator;
+                    entry.medianVsSelectedPercentNumerator += point.medianVsSelected;
+                    entry.medianVsSelectedPercentDenominator += denominator;
                 }
             }
         });
@@ -1510,15 +1510,15 @@ function renderGmpDeltaChart() {
                     label: entry.label,
                     selectedVsGmp: entry.hasSelectedVsGmp ? entry.selectedVsGmp : null,
                     medianVsGmp: entry.hasMedianVsGmp ? entry.medianVsGmp : null,
-                    medianVsLow: entry.hasMedianVsLow ? entry.medianVsLow : null,
+                    medianVsSelected: entry.hasMedianVsSelected ? entry.medianVsSelected : null,
                     selectedVsGmpPercent: entry.selectedVsGmpPercentDenominator !== 0
                         ? (entry.selectedVsGmpPercentNumerator / entry.selectedVsGmpPercentDenominator) * 100
                         : null,
                     medianVsGmpPercent: entry.medianVsGmpPercentDenominator !== 0
                         ? (entry.medianVsGmpPercentNumerator / entry.medianVsGmpPercentDenominator) * 100
                         : null,
-                    medianVsLowPercent: entry.medianVsLowPercentDenominator !== 0
-                        ? (entry.medianVsLowPercentNumerator / entry.medianVsLowPercentDenominator) * 100
+                    medianVsSelectedPercent: entry.medianVsSelectedPercentDenominator !== 0
+                        ? (entry.medianVsSelectedPercentNumerator / entry.medianVsSelectedPercentDenominator) * 100
                         : null
                 };
             });
@@ -1527,16 +1527,16 @@ function renderGmpDeltaChart() {
             label: 'Combined',
             selectedVsGmp: 0,
             medianVsGmp: 0,
-            medianVsLow: 0,
+            medianVsSelected: 0,
             selectedVsGmpPercentNumerator: 0,
             selectedVsGmpPercentDenominator: 0,
             medianVsGmpPercentNumerator: 0,
             medianVsGmpPercentDenominator: 0,
-            medianVsLowPercentNumerator: 0,
-            medianVsLowPercentDenominator: 0,
+            medianVsSelectedPercentNumerator: 0,
+            medianVsSelectedPercentDenominator: 0,
             hasSelectedVsGmp: false,
             hasMedianVsGmp: false,
-            hasMedianVsLow: false
+            hasMedianVsSelected: false
         };
 
         filteredPoints.forEach(point => {
@@ -1548,9 +1548,9 @@ function renderGmpDeltaChart() {
                 combinedEntry.medianVsGmp += point.medianVsGmp;
                 combinedEntry.hasMedianVsGmp = true;
             }
-            if (point.medianVsLow != null) {
-                combinedEntry.medianVsLow += point.medianVsLow;
-                combinedEntry.hasMedianVsLow = true;
+            if (point.medianVsSelected != null) {
+                combinedEntry.medianVsSelected += point.medianVsSelected;
+                combinedEntry.hasMedianVsSelected = true;
             }
 
             if (point.selectedVsGmp != null && point.selectedVsGmpPercent != null && Math.abs(point.selectedVsGmpPercent) < Infinity) {
@@ -1567,11 +1567,11 @@ function renderGmpDeltaChart() {
                     combinedEntry.medianVsGmpPercentDenominator += denominator;
                 }
             }
-            if (point.medianVsLow != null && point.medianVsLowPercent != null && Math.abs(point.medianVsLowPercent) < Infinity) {
-                const denominator = point.medianVsLow / (point.medianVsLowPercent / 100);
+            if (point.medianVsSelected != null && point.medianVsSelectedPercent != null && Math.abs(point.medianVsSelectedPercent) < Infinity) {
+                const denominator = point.medianVsSelected / (point.medianVsSelectedPercent / 100);
                 if (Number.isFinite(denominator) && Math.abs(denominator) > 0.0001) {
-                    combinedEntry.medianVsLowPercentNumerator += point.medianVsLow;
-                    combinedEntry.medianVsLowPercentDenominator += denominator;
+                    combinedEntry.medianVsSelectedPercentNumerator += point.medianVsSelected;
+                    combinedEntry.medianVsSelectedPercentDenominator += denominator;
                 }
             }
         });
@@ -1580,15 +1580,15 @@ function renderGmpDeltaChart() {
             label: combinedEntry.label,
             selectedVsGmp: combinedEntry.hasSelectedVsGmp ? combinedEntry.selectedVsGmp : null,
             medianVsGmp: combinedEntry.hasMedianVsGmp ? combinedEntry.medianVsGmp : null,
-            medianVsLow: combinedEntry.hasMedianVsLow ? combinedEntry.medianVsLow : null,
+            medianVsSelected: combinedEntry.hasMedianVsSelected ? combinedEntry.medianVsSelected : null,
             selectedVsGmpPercent: combinedEntry.selectedVsGmpPercentDenominator !== 0
                 ? (combinedEntry.selectedVsGmpPercentNumerator / combinedEntry.selectedVsGmpPercentDenominator) * 100
                 : null,
             medianVsGmpPercent: combinedEntry.medianVsGmpPercentDenominator !== 0
                 ? (combinedEntry.medianVsGmpPercentNumerator / combinedEntry.medianVsGmpPercentDenominator) * 100
                 : null,
-            medianVsLowPercent: combinedEntry.medianVsLowPercentDenominator !== 0
-                ? (combinedEntry.medianVsLowPercentNumerator / combinedEntry.medianVsLowPercentDenominator) * 100
+            medianVsSelectedPercent: combinedEntry.medianVsSelectedPercentDenominator !== 0
+                ? (combinedEntry.medianVsSelectedPercentNumerator / combinedEntry.medianVsSelectedPercentDenominator) * 100
                 : null
         }];
     } else {
@@ -1596,20 +1596,20 @@ function renderGmpDeltaChart() {
             label: point.label,
             selectedVsGmp: point.selectedVsGmp,
             medianVsGmp: point.medianVsGmp,
-            medianVsLow: point.medianVsLow,
+            medianVsSelected: point.medianVsSelected,
             selectedVsGmpPercent: point.selectedVsGmpPercent,
             medianVsGmpPercent: point.medianVsGmpPercent,
-            medianVsLowPercent: point.medianVsLowPercent
+            medianVsSelectedPercent: point.medianVsSelectedPercent
         }));
     }
 
     const hasData = chartEntries.some(entry => [
         entry.selectedVsGmp,
         entry.medianVsGmp,
-        entry.medianVsLow,
+        entry.medianVsSelected,
         entry.selectedVsGmpPercent,
         entry.medianVsGmpPercent,
-        entry.medianVsLowPercent
+        entry.medianVsSelectedPercent
     ].some(value => value != null));
 
     if (!chartData || !hasData) {
@@ -1647,8 +1647,8 @@ function renderGmpDeltaChart() {
             order: 2
         },
         {
-            label: 'Median vs Low',
-            data: chartEntries.map(entry => isPercentMode ? entry.medianVsLowPercent : entry.medianVsLow),
+            label: 'Median vs Selected',
+            data: chartEntries.map(entry => isPercentMode ? entry.medianVsSelectedPercent : entry.medianVsSelected),
             backgroundColor: 'rgba(41, 128, 185, 0.35)',
             borderColor: '#2980b9',
             borderWidth: 1.5,
@@ -2943,10 +2943,10 @@ function hasChartSeriesData(data) {
     return points.some(point => [
         point.selectedVsGmp,
         point.medianVsGmp,
-        point.medianVsLow,
+        point.medianVsSelected,
         point.selectedVsGmpPercent,
         point.medianVsGmpPercent,
-        point.medianVsLowPercent
+        point.medianVsSelectedPercent
     ].some(value => value != null));
 }
 
