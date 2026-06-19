@@ -3220,6 +3220,10 @@ function displayPackageComparisonChart() {
     const bidPackages = packages
         .filter(p => p.status !== 'estimated')
         .sort((a, b) => (a.package_code || '').localeCompare(b.package_code || ''));
+    const estimatedPackageCount = packages.length - bidPackages.length;
+    const chartScopeNote = estimatedPackageCount > 0
+        ? `Bid packages only (${estimatedPackageCount} estimated excluded)`
+        : 'Bid packages only';
 
     if (bidPackages.length === 0) return;
 
@@ -3243,14 +3247,19 @@ function displayPackageComparisonChart() {
         { label: 'High Bid', key: 'high_bid', color: chartColors.high }
     ];
 
+    const combinedComparisonMetrics = metricDefinitions.map(metric => ({
+        ...metric,
+        total: bidPackages.reduce((sum, pkg) => sum + (toFiniteNumber(pkg[metric.key]) || 0), 0)
+    }));
+
     const chartData = view === 'combined'
         ? {
-            labels: metricDefinitions.map(metric => metric.label),
+            labels: combinedComparisonMetrics.map(metric => metric.label),
             datasets: [{
                 label: 'Combined Total',
-                data: metricDefinitions.map(metric => bidPackages.reduce((sum, pkg) => sum + (toFiniteNumber(pkg[metric.key]) || 0), 0)),
-                backgroundColor: metricDefinitions.map(metric => metric.color),
-                borderColor: metricDefinitions.map(metric => metric.color.replace('0.7', '1')),
+                data: combinedComparisonMetrics.map(metric => metric.total),
+                backgroundColor: combinedComparisonMetrics.map(metric => metric.color),
+                borderColor: combinedComparisonMetrics.map(metric => metric.color.replace('0.7', '1')),
                 borderWidth: 1
             }]
         }
@@ -3274,7 +3283,9 @@ function displayPackageComparisonChart() {
             plugins: {
                 title: {
                     display: true,
-                    text: view === 'combined' ? 'Combined Bid Comparison Totals' : 'Package-by-Package Bid Comparison',
+                    text: view === 'combined'
+                        ? ['Combined Bid Comparison Totals', chartScopeNote]
+                        : ['Package-by-Package Bid Comparison', chartScopeNote],
                     font: { size: 16, weight: 'bold' }
                 },
                 datalabels: {
@@ -3283,8 +3294,16 @@ function displayPackageComparisonChart() {
                 tooltip: {
                     callbacks: {
                         label: (context) => {
-                            const label = view === 'combined' ? context.label : context.dataset.label;
-                            return label + ': ' + formatCurrency(context.raw);
+                            if (view !== 'combined') {
+                                return context.dataset.label + ': ' + formatCurrency(context.raw);
+                            }
+
+                            const metric = combinedComparisonMetrics[context.dataIndex];
+                            if (!metric) {
+                                return `${context.label}: ${formatCurrency(context.raw)}`;
+                            }
+
+                            return buildCombinedComparisonTooltipLines(metric, combinedComparisonMetrics, chartScopeNote);
                         }
                     }
                 }
@@ -3299,6 +3318,36 @@ function displayPackageComparisonChart() {
             }
         }
     });
+}
+
+
+function buildCombinedComparisonTooltipLines(metric, allMetrics, scopeNote) {
+    const total = toFiniteNumber(metric.total) || 0;
+    const buildingSf = toFiniteNumber(currentProject?.building_sf);
+    const costPerSf = buildingSf && buildingSf > 0 ? total / buildingSf : null;
+    const lines = [
+        `${metric.label}: ${formatCurrency(total)}`,
+        `Cost/SF: ${costPerSf != null ? `${formatCurrency(costPerSf)}/SF` : 'N/A'}`,
+        `Scope: ${scopeNote}`
+    ];
+
+    const comparisonLines = allMetrics
+        .filter(otherMetric => otherMetric.label !== metric.label)
+        .map(otherMetric => {
+            const otherTotal = toFiniteNumber(otherMetric.total) || 0;
+            if (!isValidPercentBase(otherTotal)) {
+                return `vs ${otherMetric.label}: N/A`;
+            }
+
+            const deltaPercent = ((total - otherTotal) / otherTotal) * 100;
+            return `vs ${otherMetric.label}: ${formatPercentageDelta(deltaPercent)}`;
+        });
+
+    if (comparisonLines.length) {
+        lines.push(...comparisonLines);
+    }
+
+    return lines;
 }
 
 // Bidder review helpers
