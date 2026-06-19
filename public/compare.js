@@ -122,7 +122,7 @@ const METRIC_OPTIONS = {
     },
     low_to_median_total_delta: {
         label: 'Low to Median delta (total)',
-        description: 'Total median bid minus total low bid for each project.',
+        description: 'Total median bid minus total literal low bid for each project.',
         format: formatCurrency,
         getValue: (_, project) => {
             const totals = computeProjectBudgetTotals(project);
@@ -136,7 +136,7 @@ const METRIC_OPTIONS = {
     },
     low_to_median_total_delta_percentage: {
         label: 'Low to Median delta % (total)',
-        description: 'Total median bid minus total low bid shown as a percentage of the median total.',
+        description: 'Total median bid minus total literal low bid shown as a percentage of the median total.',
         format: formatPercentage,
         getValue: (_, project) => {
             const totals = computeProjectBudgetTotals(project);
@@ -144,6 +144,34 @@ const METRIC_OPTIONS = {
                 return null;
             }
             return (totals.medianTotal - totals.lowTotal) / totals.medianTotal;
+        },
+        monthAggregate: 'average',
+        scope: METRIC_SCOPES.PROJECT
+    },
+    selected_to_median_total_delta: {
+        label: 'Selected to Median delta (total)',
+        description: 'Total median bid minus total selected bid for each project.',
+        format: formatCurrency,
+        getValue: (_, project) => {
+            const totals = computeProjectBudgetTotals(project);
+            if (!totals.hasMedian || !totals.hasSelected) {
+                return null;
+            }
+            return totals.medianTotal - totals.selectedTotal;
+        },
+        monthAggregate: 'sum',
+        scope: METRIC_SCOPES.PROJECT
+    },
+    selected_to_median_total_delta_percentage: {
+        label: 'Selected to Median delta % (total)',
+        description: 'Total median bid minus total selected bid shown as a percentage of the median total.',
+        format: formatPercentage,
+        getValue: (_, project) => {
+            const totals = computeProjectBudgetTotals(project);
+            if (!totals.hasMedian || totals.medianTotal === 0 || !totals.hasSelected) {
+                return null;
+            }
+            return (totals.medianTotal - totals.selectedTotal) / totals.medianTotal;
         },
         monthAggregate: 'average',
         scope: METRIC_SCOPES.PROJECT
@@ -559,6 +587,8 @@ const METRIC_GROUPS = [
             'low_bid_cost_per_sf',
             'low_to_median_total_delta',
             'low_to_median_total_delta_percentage',
+            'selected_to_median_total_delta',
+            'selected_to_median_total_delta_percentage',
             'gmp_median_overlay',
             'gmp_selected_low_overlay',
             'gmp_median_overlay_percentage',
@@ -606,14 +636,6 @@ const METRIC_GROUPS = [
 ];
 
 function computeProjectBudgetTotals(project) {
-    const getSelectedLowBid = (pkg) => {
-        const selected = toFiniteNumber(pkg.selected_amount);
-        if (selected != null) {
-            return selected;
-        }
-        return toFiniteNumber(pkg.low_bid);
-    };
-
     const totals = {
         gmpTotal: 0,
         selectedTotal: 0,
@@ -629,7 +651,7 @@ function computeProjectBudgetTotals(project) {
         const gmp = toFiniteNumber(pkg.gmp_amount);
         const selected = toFiniteNumber(pkg.selected_amount);
         const median = toFiniteNumber(pkg.median_bid);
-        const low = getSelectedLowBid(pkg);
+        const low = toFiniteNumber(pkg.low_bid);
 
         if (gmp != null) {
             totals.gmpTotal += gmp;
@@ -1136,7 +1158,7 @@ function expandTimelineDatasets(chartData, timelineEntries, metricConfig) {
 function buildGmpOverlayChartData(projects, targetKey, targetLabel, asPercentage = false) {
     const targetAccessor = {
         median: (totals) => (totals.hasMedian ? totals.medianTotal : null),
-        low: (totals) => (totals.hasLow ? totals.lowTotal : null)
+        low: (totals) => (totals.hasSelected ? totals.selectedTotal : null)
     }[targetKey];
 
     const totalsByProject = projects.map((project) => computeProjectBudgetTotals(project));
@@ -1211,7 +1233,7 @@ function buildGmpOverlayTooltip(context, targetKey, asPercentage = false) {
 
     const targetAccessor = {
         median: (totals) => (totals.hasMedian ? totals.medianTotal : null),
-        low: (totals) => (totals.hasLow ? totals.lowTotal : null)
+        low: (totals) => (totals.hasSelected ? totals.selectedTotal : null)
     }[targetKey];
 
     const projectTotals = context.dataset?.projectTotals;
