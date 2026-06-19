@@ -41,6 +41,12 @@ const bidderReviewState = {
     loading: false
 };
 
+const projectTableSortState = {
+    packages: { key: 'package_code', direction: 'asc' },
+    gmp: { key: 'package_code', direction: 'asc' }
+};
+
+
 const PACKAGE_COLOR_PALETTE = [
     '#0b3d91',
     '#1f4f9c',
@@ -992,6 +998,136 @@ function displayCategoryBreakdown() {
     `).join('');
 }
 
+
+const projectTableCodeCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+function getPackageSortValue(pkg, key) {
+    switch (key) {
+        case 'package_code':
+            return pkg.package_code || '';
+        case 'package_name':
+            return pkg.package_name || '';
+        case 'status':
+            return pkg.status || '';
+        case 'bid_spread': {
+            const low = toFiniteNumber(pkg.low_bid);
+            const high = toFiniteNumber(pkg.high_bid);
+            return low != null && high != null ? high - low : null;
+        }
+        case 'bid_count':
+            return toFiniteNumber(pkg.bid_count);
+        default:
+            return toFiniteNumber(pkg[key]);
+    }
+}
+
+function getGmpSortValue(pkg, key) {
+    const gmp = toFiniteNumber(pkg.gmp_amount);
+    const selected = toFiniteNumber(pkg.selected_amount);
+    const low = toFiniteNumber(pkg.low_bid);
+    const median = toFiniteNumber(pkg.median_bid);
+    const selectedDelta = gmp != null && selected != null ? selected - gmp : null;
+    const medianDelta = gmp != null && median != null ? median - gmp : null;
+    const medianLowDelta = median != null && low != null ? median - low : null;
+
+    switch (key) {
+        case 'package_code':
+            return pkg.package_code || '';
+        case 'package_name':
+            return pkg.package_name || '';
+        case 'gmp_amount':
+            return gmp;
+        case 'selected_amount':
+            return selected;
+        case 'selected_delta':
+            return selectedDelta;
+        case 'selected_percent':
+            return selectedDelta != null && isValidPercentBase(gmp) ? (selectedDelta / gmp) * 100 : null;
+        case 'median_bid':
+            return median;
+        case 'median_delta':
+            return medianDelta;
+        case 'median_percent':
+            return medianDelta != null && isValidPercentBase(gmp) ? (medianDelta / gmp) * 100 : null;
+        case 'median_low_delta':
+            return medianLowDelta;
+        case 'median_low_percent':
+            return medianLowDelta != null && isValidPercentBase(low) ? (medianLowDelta / low) * 100 : null;
+        default:
+            return null;
+    }
+}
+
+function sortProjectTableRows(packages, tableKey) {
+    const sortState = projectTableSortState[tableKey];
+    const getValue = tableKey === 'gmp' ? getGmpSortValue : getPackageSortValue;
+    const directionMultiplier = sortState.direction === 'asc' ? 1 : -1;
+
+    return packages.slice().sort((a, b) => {
+        const aValue = getValue(a, sortState.key);
+        const bValue = getValue(b, sortState.key);
+        const aMissing = aValue == null || aValue === '';
+        const bMissing = bValue == null || bValue === '';
+
+        if (aMissing && bMissing) {
+            return projectTableCodeCollator.compare(a.package_code || '', b.package_code || '');
+        }
+        if (aMissing) return 1;
+        if (bMissing) return -1;
+
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+            const numericResult = aValue - bValue;
+            if (numericResult !== 0) return numericResult * directionMultiplier;
+        } else {
+            const textResult = projectTableCodeCollator.compare(String(aValue), String(bValue));
+            if (textResult !== 0) return textResult * directionMultiplier;
+        }
+
+        return projectTableCodeCollator.compare(a.package_code || '', b.package_code || '');
+    });
+}
+
+function updateProjectSortIndicators(tableKey) {
+    const sortState = projectTableSortState[tableKey];
+    document.querySelectorAll(`[data-project-sort-table="${tableKey}"]`).forEach(button => {
+        const indicator = button.querySelector('.sort-indicator');
+        const isActive = button.dataset.sortKey === sortState.key;
+        button.setAttribute('aria-sort', isActive ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+        if (indicator) {
+            indicator.textContent = isActive ? (sortState.direction === 'asc' ? '↑' : '↓') : '↕';
+        }
+    });
+}
+
+function updateAllProjectSortIndicators() {
+    updateProjectSortIndicators('packages');
+    updateProjectSortIndicators('gmp');
+}
+
+function setupProjectTableSorting() {
+    document.querySelectorAll('[data-project-sort-table]').forEach(button => {
+        button.addEventListener('click', () => {
+            const tableKey = button.dataset.projectSortTable;
+            const sortKey = button.dataset.sortKey;
+            if (!projectTableSortState[tableKey] || !sortKey) return;
+
+            if (projectTableSortState[tableKey].key === sortKey) {
+                projectTableSortState[tableKey].direction = projectTableSortState[tableKey].direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                projectTableSortState[tableKey].key = sortKey;
+                projectTableSortState[tableKey].direction = 'asc';
+            }
+
+            if (tableKey === 'packages') {
+                displayPackages();
+            } else if (tableKey === 'gmp') {
+                renderGmpSummary();
+            }
+        });
+    });
+    updateAllProjectSortIndicators();
+}
+
 async function displayPackages() {
     const tbody = document.getElementById('packagesBody');
     const packages = currentProject.packages || [];
@@ -1001,9 +1137,6 @@ async function displayPackages() {
         renderGmpSummary();
         return;
     }
-    
-    // Sort by package code
-    packages.sort((a, b) => a.package_code.localeCompare(b.package_code));
     
     // Fetch bid counts for each package
     const packageBidCounts = {};
@@ -1019,7 +1152,13 @@ async function displayPackages() {
         }
     }
     
-    tbody.innerHTML = packages.map(pkg => {
+    const packagesWithBidCounts = packages.map(pkg => ({
+        ...pkg,
+        bid_count: pkg.status !== 'estimated' ? (packageBidCounts[pkg.id] || 0) : null
+    }));
+    const sortedPackages = sortProjectTableRows(packagesWithBidCounts, 'packages');
+
+    tbody.innerHTML = sortedPackages.map(pkg => {
         const statusClass = `status-${pkg.status}`;
         const statusText = pkg.status === 'bid-override' ? 'Override' :
                           pkg.status.charAt(0).toUpperCase() + pkg.status.slice(1);
@@ -1058,6 +1197,7 @@ async function displayPackages() {
     }).join('');
 
     renderGmpSummary();
+    updateProjectSortIndicators('packages');
 }
 
 function renderGmpSummary() {
@@ -1069,9 +1209,7 @@ function renderGmpSummary() {
         return;
     }
 
-    const packages = (currentProject?.packages || [])
-        .slice()
-        .sort((a, b) => (a.package_code || '').localeCompare(b.package_code || ''));
+    const packages = sortProjectTableRows(currentProject?.packages || [], 'gmp');
 
     if (packages.length === 0) {
         tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No packages yet. Upload a bid tab or add an estimated package to begin.</td></tr>';
@@ -1244,6 +1382,8 @@ function renderGmpSummary() {
         <td class="${totalMedianLowClass}">${totalMedianLowDeltaCell}</td>
         <td class="${totalMedianLowClass}">${formatPercentageDelta(totalMedianLowPercent)}</td>
     `;
+
+    updateProjectSortIndicators('gmp');
 
     const hasAnyGmp = packages.some(pkg => toFiniteNumber(pkg.gmp_amount) != null);
     if (emptyState) {
@@ -3908,4 +4048,5 @@ if (editModalUploadBidTabBtn) {
 updateBidderReviewButtonState();
 setupGmpChartControls();
 setupViewTabs();
+setupProjectTableSorting();
 loadProject();
