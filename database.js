@@ -75,6 +75,14 @@ function ensureSchema() {
     console.log('Added county_state column to projects table');
   }
 
+  const hasAddress = projectColumns.some(column => column[1] === 'address');
+
+  if (!hasAddress) {
+    db.run('ALTER TABLE projects ADD COLUMN address TEXT');
+    schemaUpdated = true;
+    console.log('Added address column to projects table');
+  }
+
   // Ensure project validations table has change summary column
   const validationPragma = db.exec('PRAGMA table_info(project_validations)');
   const validationColumns = validationPragma[0]?.values || [];
@@ -107,6 +115,7 @@ function createTables() {
       precon_notes TEXT,
       county_name TEXT,
       county_state TEXT,
+      address TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       modified_at TEXT DEFAULT CURRENT_TIMESTAMP
     )

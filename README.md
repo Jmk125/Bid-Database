@@ -210,6 +210,7 @@ The application uses SQLite for data storage. The database file (`bid_database.s
 ### Analytics
 - `GET /api/aggregate/divisions` - Get metrics by CSI division
 - `GET /api/aggregate/bidders` - Get bidder performance
+- `GET /api/bid-observations` - Location-free bid facts (bidder, aliases, division, package, project address/date, bid amount, package median, deviation %, bid count in package, win flag) for external systems to join against their own geography. Supports `?since=<date>` and `?division=<csi>` filters.
 
 ### Bidders
 - `GET /api/bidders` - List all bidders with aliases, bid counts, wins, and packages
