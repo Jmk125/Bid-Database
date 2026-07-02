@@ -572,17 +572,17 @@ app.get('/api/projects', (req, res) => {
   const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
   const projects = db.exec(
-    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, created_at, modified_at
+    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, address, created_at, modified_at
      FROM projects
      ${whereClause}
      ORDER BY project_date DESC, created_at DESC`,
     params
   );
-  
+
   if (projects.length === 0) {
     return res.json([]);
   }
-  
+
   const result = projects[0].values.map(row => ({
     id: row[0],
     name: row[1],
@@ -591,8 +591,9 @@ app.get('/api/projects', (req, res) => {
     precon_notes: row[4],
     county_name: row[5],
     county_state: row[6],
-    created_at: row[7],
-    modified_at: row[8]
+    address: row[7],
+    created_at: row[8],
+    modified_at: row[9]
   }));
   
   res.json(result);
@@ -619,7 +620,7 @@ app.get('/api/projects/compare', (req, res) => {
   const placeholders = ids.map(() => '?').join(',');
 
   const projectQuery = db.exec(
-    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, created_at, modified_at
+    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, address, created_at, modified_at
      FROM projects
      WHERE id IN (${placeholders})
      ORDER BY project_date DESC, created_at DESC`,
@@ -687,8 +688,9 @@ app.get('/api/projects/compare', (req, res) => {
       precon_notes: row[4],
       county_name: row[5],
       county_state: row[6],
-      created_at: row[7],
-      modified_at: row[8]
+      address: row[7],
+      created_at: row[8],
+      modified_at: row[9]
     };
 
     const packages = packagesByProject.get(project.id) || [];
@@ -712,14 +714,14 @@ app.get('/api/projects/:id', (req, res) => {
   
   // Get project details
   const projectQuery = db.exec(
-    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, created_at, modified_at FROM projects WHERE id = ?`,
+    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, address, created_at, modified_at FROM projects WHERE id = ?`,
     [projectId]
   );
-  
+
   if (projectQuery.length === 0) {
     return res.status(404).json({ error: 'Project not found' });
   }
-  
+
   const projectRow = projectQuery[0].values[0];
   const project = {
     id: projectRow[0],
@@ -729,8 +731,9 @@ app.get('/api/projects/:id', (req, res) => {
     precon_notes: projectRow[4],
     county_name: projectRow[5],
     county_state: projectRow[6],
-    created_at: projectRow[7],
-    modified_at: projectRow[8]
+    address: projectRow[7],
+    created_at: projectRow[8],
+    modified_at: projectRow[9]
   };
   
   // Get all packages for this project
@@ -1020,7 +1023,7 @@ app.delete('/api/projects/:projectId/validations/:validationId', (req, res) => {
 // Create new project
 app.post('/api/projects', (req, res) => {
   const db = getDatabase();
-  const { name, building_sf, project_date, county_name, county_state } = req.body;
+  const { name, building_sf, project_date, county_name, county_state, address } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: 'Project name is required' });
@@ -1028,23 +1031,25 @@ app.post('/api/projects', (req, res) => {
 
   const normalizedCounty = normalizeCountyName(county_name);
   const normalizedState = normalizeStateCode(county_state);
+  const normalizedAddress = address ? String(address).trim() : null;
 
   db.run(
-    'INSERT INTO projects (name, building_sf, project_date, county_name, county_state) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO projects (name, building_sf, project_date, county_name, county_state, address) VALUES (?, ?, ?, ?, ?, ?)',
     [
       name,
       building_sf || null,
       project_date || null,
       normalizedCounty,
-      normalizedState
+      normalizedState,
+      normalizedAddress
     ]
   );
-  
+
   const result = db.exec('SELECT last_insert_rowid()');
   const projectId = result[0].values[0][0];
-  
+
   saveDatabase();
-  
+
   res.json({
     id: projectId,
     name,
@@ -1052,6 +1057,7 @@ app.post('/api/projects', (req, res) => {
     project_date,
     county_name: normalizedCounty,
     county_state: normalizedState,
+    address: normalizedAddress,
     precon_notes: null
   });
 });
@@ -1059,7 +1065,7 @@ app.post('/api/projects', (req, res) => {
 // Update project
 app.put('/api/projects/:id', (req, res) => {
   const db = getDatabase();
-  const { name, building_sf, project_date, precon_notes, county_name, county_state } = req.body;
+  const { name, building_sf, project_date, precon_notes, county_name, county_state, address } = req.body;
   const projectId = req.params.id;
 
   const updates = [];
@@ -1095,6 +1101,11 @@ app.put('/api/projects/:id', (req, res) => {
     values.push(county_state === null ? null : normalizeStateCode(county_state));
   }
 
+  if (address !== undefined) {
+    updates.push('address = ?');
+    values.push(address === null ? null : String(address).trim() || null);
+  }
+
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No valid fields provided for update' });
   }
@@ -1109,7 +1120,7 @@ app.put('/api/projects/:id', (req, res) => {
   saveDatabase();
 
   const updatedProject = db.exec(
-    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, created_at, modified_at FROM projects WHERE id = ?`,
+    `SELECT id, name, building_sf, project_date, precon_notes, county_name, county_state, address, created_at, modified_at FROM projects WHERE id = ?`,
     [projectId]
   );
 
@@ -1127,8 +1138,9 @@ app.put('/api/projects/:id', (req, res) => {
     precon_notes: row[4],
     county_name: row[5],
     county_state: row[6],
-    created_at: row[7],
-    modified_at: row[8]
+    address: row[7],
+    created_at: row[8],
+    modified_at: row[9]
   });
 });
 
@@ -2843,6 +2855,100 @@ app.get('/api/aggregate/bidders', (req, res) => {
   }).filter(bidder => !isBidderExcluded(bidder.bidder_name));
   
   res.json(bidders);
+});
+
+// Location-free bid observations, for external systems (e.g. Territory) to join against their own geography
+app.get('/api/bid-observations', (req, res) => {
+  const db = getDatabase();
+
+  const since = parseDateFilterValue(req.query.since);
+  const division = req.query.division ? String(req.query.division).trim() : '';
+
+  const clauses = ['bd.bid_amount IS NOT NULL'];
+  const params = [];
+
+  if (since) {
+    clauses.push('date(proj.project_date) >= date(?)');
+    params.push(since);
+  }
+
+  if (division) {
+    clauses.push('pkg.csi_division = ?');
+    params.push(division);
+  }
+
+  const query = db.exec(
+    `SELECT
+      b.canonical_name,
+      (
+        SELECT GROUP_CONCAT(alias_name, '||')
+        FROM (
+          SELECT DISTINCT alias_name
+          FROM bidder_aliases
+          WHERE bidder_id = b.id AND alias_name IS NOT NULL
+          ORDER BY alias_name
+        ) alias_list
+      ) as aliases,
+      pkg.csi_division,
+      pkg.package_code,
+      proj.name as project_name,
+      proj.address as project_address,
+      proj.project_date,
+      bd.bid_amount,
+      pkg.median_bid,
+      bd.was_selected,
+      (SELECT COUNT(*) FROM bids bd2 WHERE bd2.package_id = pkg.id) as n_bids_in_package
+    FROM bids bd
+    JOIN bidders b ON b.id = bd.bidder_id
+    JOIN packages pkg ON pkg.id = bd.package_id
+    JOIN projects proj ON proj.id = pkg.project_id
+    WHERE ${clauses.join(' AND ')}
+    ORDER BY proj.project_date DESC, pkg.package_code`,
+    params
+  );
+
+  const observations = query.length === 0
+    ? []
+    : query[0].values
+        .map(row => {
+          const bidderName = row[0];
+          const aliasesRaw = row[1];
+          const csiDivision = row[2];
+          const packageCode = row[3];
+          const projectName = row[4];
+          const projectAddress = row[5];
+          const projectDate = row[6];
+          const bidAmount = row[7];
+          const medianBid = row[8];
+          const wasSelected = row[9];
+          const nBidsInPackage = row[10] != null ? Number(row[10]) : 0;
+
+          const hasUsableMedian = nBidsInPackage >= 3 && Number.isFinite(medianBid) && medianBid > 0;
+          const devPct = hasUsableMedian
+            ? roundToTwo(((bidAmount - medianBid) / medianBid) * 100)
+            : null;
+
+          return {
+            bidder: bidderName,
+            aliases: aliasesRaw ? aliasesRaw.split('||').filter(Boolean) : [],
+            csi_division: csiDivision,
+            package_code: packageCode,
+            project: projectName,
+            project_address: projectAddress || null,
+            project_date: projectDate,
+            bid_amount: bidAmount,
+            package_median: Number.isFinite(medianBid) ? medianBid : null,
+            dev_pct: devPct,
+            n_bids_in_package: nBidsInPackage,
+            won: wasSelected === 1
+          };
+        })
+        .filter(obs => !isBidderExcluded(obs.bidder));
+
+  res.json({
+    generated: new Date().toISOString(),
+    observations
+  });
 });
 
 // Get all bidders (for management)

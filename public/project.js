@@ -3999,6 +3999,7 @@ document.getElementById('editProjectBtn').onclick = () => {
     document.getElementById('editProjectCounty').value = currentProject.county_name || '';
     document.getElementById('editProjectState').value = currentProject.county_state || DEFAULT_PROJECT_STATE;
     document.getElementById('editProjectDate').value = currentProject.project_date || '';
+    document.getElementById('editProjectAddress').value = currentProject.address || '';
     document.getElementById('editProjectModal').style.display = 'block';
 };
 
@@ -4014,6 +4015,7 @@ document.getElementById('editProjectForm').onsubmit = async (e) => {
     const project_date = document.getElementById('editProjectDate').value;
     const county_name = document.getElementById('editProjectCounty').value;
     const county_state = document.getElementById('editProjectState').value;
+    const address = document.getElementById('editProjectAddress').value;
 
     try {
         await apiFetch(`${API_BASE}/projects/${projectId}`, {
@@ -4024,7 +4026,8 @@ document.getElementById('editProjectForm').onsubmit = async (e) => {
                 building_sf: building_sf ? parseFloat(building_sf) : null,
                 project_date: project_date || null,
                 county_name: county_name ? county_name.trim() : null,
-                county_state: county_state || null
+                county_state: county_state || null,
+                address: address ? address.trim() : null
             })
         });
         
