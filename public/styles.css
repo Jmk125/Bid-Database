@@ -795,9 +795,27 @@ body {
     letter-spacing: 0.05em;
 }
 
+.bid-entry .bid-entry-values {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+    text-align: right;
+}
+
 .bid-entry .bid-amount {
     font-weight: 700;
     font-size: 1rem;
+}
+
+.bid-entry .bid-selected-comparison {
+    white-space: nowrap;
+}
+
+.bid-entry .bid-selected-comparison.is-unavailable {
+    color: #95a5a6;
+    font-size: 0.75rem;
+    font-weight: 600;
 }
 
 .bid-entry.is-selected {
