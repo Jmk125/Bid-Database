@@ -1935,9 +1935,14 @@ function renderProjectBidsList(hasError = false) {
         }
 
         const sortedBids = [...pkg.bids].sort((a, b) => a.bid_amount - b.bid_amount);
+        const selectedBid = sortedBids.find(bid => bid.was_selected || (pkg.selected_bidder_id && bid.bidder_id === pkg.selected_bidder_id));
+        const selectedBidAmount = selectedBid && selectedBid.bid_amount != null ? Number(selectedBid.bid_amount) : null;
 
         const entries = sortedBids.map((bid, index) => {
             const isSelected = bid.was_selected || (pkg.selected_bidder_id && bid.bidder_id === pkg.selected_bidder_id);
+            const percentFromSelected = calculatePercentFromSelectedBid(bid.bid_amount, selectedBidAmount);
+            const percentClass = percentFromSelected > 0 ? 'is-higher' : percentFromSelected < 0 ? 'is-lower' : 'is-even';
+            const percentLabel = percentFromSelected == null ? 'No selected bid comparison available' : `${formatPercentageDelta(percentFromSelected)} vs selected`;
             const badges = [];
 
             if (index === 0) {
@@ -1956,6 +1961,9 @@ function renderProjectBidsList(hasError = false) {
             const rankText = `Rank ${index + 1} of ${sortedBids.length}`;
             const amount = bid.bid_amount != null ? formatCurrency(bid.bid_amount) : '—';
             const badgeMarkup = badges.join('');
+            const comparisonMarkup = percentFromSelected == null
+                ? '<span class="bid-selected-comparison is-unavailable">— vs selected</span>'
+                : `<span class="bid-selected-comparison placement-diff ${percentClass}">${percentLabel}</span>`;
 
             return `
                 <li class="bid-entry${isSelected ? ' is-selected' : ''}">
@@ -1966,7 +1974,10 @@ function renderProjectBidsList(hasError = false) {
                             ${badgeMarkup}
                         </div>
                     </div>
-                    <span class="bid-amount">${amount}</span>
+                    <div class="bid-entry-values">
+                        <span class="bid-amount">${amount}</span>
+                        ${comparisonMarkup}
+                    </div>
                 </li>
             `;
         }).join('');
@@ -2899,6 +2910,17 @@ function formatPercentageDelta(value) {
     }
 
     return '0.0%';
+}
+
+function calculatePercentFromSelectedBid(bidAmount, selectedBidAmount) {
+    const bidValue = Number(bidAmount);
+    const selectedValue = Number(selectedBidAmount);
+
+    if (!Number.isFinite(bidValue) || !Number.isFinite(selectedValue) || selectedValue === 0) {
+        return null;
+    }
+
+    return ((bidValue - selectedValue) / selectedValue) * 100;
 }
 
 function formatBidSpread(lowBid, highBid) {
