@@ -181,6 +181,8 @@
                             <th><button type="button" class="sortable-header" data-project-sort-table="gmp" data-sort-key="package_name">Name <span class="sort-indicator" aria-hidden="true"></span></button></th>
                             <th><button type="button" class="sortable-header" data-project-sort-table="gmp" data-sort-key="gmp_amount">GMP / Estimate <span class="sort-indicator" aria-hidden="true"></span></button></th>
                             <th><button type="button" class="sortable-header" data-project-sort-table="gmp" data-sort-key="selected_amount">Selected Bid <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                            <th><button type="button" class="sortable-header" data-project-sort-table="gmp" data-sort-key="selected_low_delta">Δ Selected vs Low <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                            <th><button type="button" class="sortable-header" data-project-sort-table="gmp" data-sort-key="selected_low_percent">% <span class="sort-indicator" aria-hidden="true"></span></button></th>
                             <th><button type="button" class="sortable-header" data-project-sort-table="gmp" data-sort-key="selected_delta">Δ Selected vs GMP <span class="sort-indicator" aria-hidden="true"></span></button></th>
                             <th><button type="button" class="sortable-header" data-project-sort-table="gmp" data-sort-key="selected_percent">% <span class="sort-indicator" aria-hidden="true"></span></button></th>
                             <th><button type="button" class="sortable-header" data-project-sort-table="gmp" data-sort-key="median_bid">Median Bid <span class="sort-indicator" aria-hidden="true"></span></button></th>
@@ -191,11 +193,41 @@
                         </tr>
                     </thead>
                     <tbody id="gmpTableBody">
-                        <tr><td colspan="11" class="loading">Loading GMP data...</td></tr>
+                        <tr><td colspan="13" class="loading">Loading GMP data...</td></tr>
                     </tbody>
                     <tfoot>
                         <tr id="gmpTotalsRow">
                             <th scope="row">Totals</th>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                        </tr>
+                        <tr id="gmpBidOnlyTotalsRow">
+                            <th scope="row">Totals (Less Estimated)</th>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                        </tr>
+                        <tr id="gmpBidOnlyTotalsRow">
+                            <th scope="row">Totals (Less Estimated)</th>
                             <td>—</td>
                             <td>—</td>
                             <td>—</td>
