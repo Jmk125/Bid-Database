@@ -1218,9 +1218,9 @@ function renderGmpSummary() {
     const packages = sortProjectTableRows(currentProject?.packages || [], 'gmp');
 
     if (packages.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No packages yet. Upload a bid tab or add an estimated package to begin.</td></tr>';
-        totalsRow.innerHTML = '<th scope="row">Totals</th>' + '<td>—</td>'.repeat(12);
-        bidOnlyTotalsRow.innerHTML = '<th scope="row">Totals (Less Estimated)</th>' + '<td>—</td>'.repeat(12);
+        tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No packages yet. Upload a bid tab or add an estimated package to begin.</td></tr>';
+        totalsRow.innerHTML = '<th scope="row">Totals</th>' + '<td>—</td>'.repeat(10);
+        bidOnlyTotalsRow.innerHTML = '<th scope="row">Totals (Less Estimated)</th>' + '<td>—</td>'.repeat(10);
         if (emptyState) {
             emptyState.style.display = 'block';
             const heading = emptyState.querySelector('h3');
@@ -1263,8 +1263,6 @@ function renderGmpSummary() {
         gmpCount: 0,
         selected: 0,
         selectedCount: 0,
-        low: 0,
-        lowCount: 0,
         median: 0,
         medianCount: 0
     };
@@ -1306,20 +1304,11 @@ function renderGmpSummary() {
                 bidOnlyTotals.selected += selected;
                 bidOnlyTotals.selectedCount += 1;
             }
-            if (low != null) {
-                bidOnlyTotals.low += low;
-                bidOnlyTotals.lowCount += 1;
-            }
             if (median != null) {
                 bidOnlyTotals.median += median;
                 bidOnlyTotals.medianCount += 1;
             }
         }
-
-        const selectedLowDelta = low != null && selected != null ? selected - low : null;
-        const selectedLowPercent = selectedLowDelta != null && isValidPercentBase(low)
-            ? (selectedLowDelta / low) * 100
-            : null;
 
         const gmpSelectedDelta = gmp != null && selected != null ? selected - gmp : null;
         const gmpSelectedPercent = gmpSelectedDelta != null && isValidPercentBase(gmp)
@@ -1435,12 +1424,6 @@ function renderGmpSummary() {
         <td class="${totalMedianSelectedClass}">${formatPercentageDelta(totalMedianSelectedPercent)}</td>
     `;
 
-    const bidOnlySelectedLowDelta = bidOnlyTotals.selectedCount > 0 && bidOnlyTotals.lowCount > 0
-        ? bidOnlyTotals.selected - bidOnlyTotals.low
-        : null;
-    const bidOnlySelectedLowPercent = bidOnlySelectedLowDelta != null && isValidPercentBase(bidOnlyTotals.low)
-        ? (bidOnlySelectedLowDelta / bidOnlyTotals.low) * 100
-        : null;
     const bidOnlySelectedDelta = bidOnlyTotals.selectedCount > 0 && bidOnlyTotals.gmpCount > 0
         ? bidOnlyTotals.selected - bidOnlyTotals.gmp
         : null;
@@ -1461,7 +1444,6 @@ function renderGmpSummary() {
         : null;
 
     const bidOnlySelectedClass = getBudgetDeltaClass(bidOnlySelectedDelta);
-    const bidOnlySelectedLowClass = getBudgetDeltaClass(bidOnlySelectedLowDelta);
     const bidOnlyMedianClass = getBudgetDeltaClass(bidOnlyMedianDelta);
     const bidOnlyMedianSelectedClass = getSpreadDeltaClass(bidOnlyMedianSelectedDelta);
 
@@ -1470,8 +1452,6 @@ function renderGmpSummary() {
         <td>—</td>
         <td>${bidOnlyTotals.gmpCount > 0 ? formatAmountWithSf(bidOnlyTotals.gmp) : '—'}</td>
         <td>${bidOnlyTotals.selectedCount > 0 ? formatAmountWithSf(bidOnlyTotals.selected) : '—'}</td>
-        <td class="${bidOnlySelectedLowClass}">${formatAmountWithSf(bidOnlySelectedLowDelta, { isDelta: true })}</td>
-        <td class="${bidOnlySelectedLowClass}">${formatPercentageDelta(bidOnlySelectedLowPercent)}</td>
         <td class="${bidOnlySelectedClass}">${formatAmountWithSf(bidOnlySelectedDelta, { isDelta: true })}</td>
         <td class="${bidOnlySelectedClass}">${formatPercentageDelta(bidOnlySelectedPercent)}</td>
         <td>${bidOnlyTotals.medianCount > 0 ? formatAmountWithSf(bidOnlyTotals.median) : '—'}</td>
