@@ -1562,6 +1562,16 @@ td {
     border-bottom: none;
 }
 
+#gmpTable tbody tr.estimated-package-row,
+#gmpTable tbody tr.estimated-package-row:hover {
+    background-color: #fff3cd;
+}
+
+#gmpBidOnlyTotalsRow th,
+#gmpBidOnlyTotalsRow td {
+    border-top: 2px solid #bdc3c7;
+}
+
 .delta-positive {
     color: #27ae60;
 }

@@ -1026,6 +1026,7 @@ function getGmpSortValue(pkg, key) {
     const selected = toFiniteNumber(pkg.selected_amount);
     const low = toFiniteNumber(pkg.low_bid);
     const median = toFiniteNumber(pkg.median_bid);
+    const selectedLowDelta = low != null && selected != null ? selected - low : null;
     const selectedDelta = gmp != null && selected != null ? selected - gmp : null;
     const medianDelta = gmp != null && median != null ? median - gmp : null;
     const medianSelectedDelta = median != null && selected != null ? median - selected : null;
@@ -1039,6 +1040,10 @@ function getGmpSortValue(pkg, key) {
             return gmp;
         case 'selected_amount':
             return selected;
+        case 'selected_low_delta':
+            return selectedLowDelta;
+        case 'selected_low_percent':
+            return selectedLowDelta != null && isValidPercentBase(low) ? (selectedLowDelta / low) * 100 : null;
         case 'selected_delta':
             return selectedDelta;
         case 'selected_percent':
@@ -1203,17 +1208,19 @@ async function displayPackages() {
 function renderGmpSummary() {
     const tbody = document.getElementById('gmpTableBody');
     const totalsRow = document.getElementById('gmpTotalsRow');
+    const bidOnlyTotalsRow = document.getElementById('gmpBidOnlyTotalsRow');
     const emptyState = document.getElementById('gmpTableEmpty');
 
-    if (!tbody || !totalsRow) {
+    if (!tbody || !totalsRow || !bidOnlyTotalsRow) {
         return;
     }
 
     const packages = sortProjectTableRows(currentProject?.packages || [], 'gmp');
 
     if (packages.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No packages yet. Upload a bid tab or add an estimated package to begin.</td></tr>';
-        totalsRow.innerHTML = '<th scope="row">Totals</th>' + '<td>—</td>'.repeat(10);
+        tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No packages yet. Upload a bid tab or add an estimated package to begin.</td></tr>';
+        totalsRow.innerHTML = '<th scope="row">Totals</th>' + '<td>—</td>'.repeat(12);
+        bidOnlyTotalsRow.innerHTML = '<th scope="row">Totals (Less Estimated)</th>' + '<td>—</td>'.repeat(12);
         if (emptyState) {
             emptyState.style.display = 'block';
             const heading = emptyState.querySelector('h3');
@@ -1242,6 +1249,16 @@ function renderGmpSummary() {
     const chartPoints = [];
 
     const totals = {
+        gmp: 0,
+        gmpCount: 0,
+        selected: 0,
+        selectedCount: 0,
+        low: 0,
+        lowCount: 0,
+        median: 0,
+        medianCount: 0
+    };
+    const bidOnlyTotals = {
         gmp: 0,
         gmpCount: 0,
         selected: 0,
@@ -1280,6 +1297,30 @@ function renderGmpSummary() {
             totals.lowCount += 1;
         }
 
+        if (pkg.status !== 'estimated') {
+            if (gmp != null) {
+                bidOnlyTotals.gmp += gmp;
+                bidOnlyTotals.gmpCount += 1;
+            }
+            if (selected != null) {
+                bidOnlyTotals.selected += selected;
+                bidOnlyTotals.selectedCount += 1;
+            }
+            if (low != null) {
+                bidOnlyTotals.low += low;
+                bidOnlyTotals.lowCount += 1;
+            }
+            if (median != null) {
+                bidOnlyTotals.median += median;
+                bidOnlyTotals.medianCount += 1;
+            }
+        }
+
+        const selectedLowDelta = low != null && selected != null ? selected - low : null;
+        const selectedLowPercent = selectedLowDelta != null && isValidPercentBase(low)
+            ? (selectedLowDelta / low) * 100
+            : null;
+
         const gmpSelectedDelta = gmp != null && selected != null ? selected - gmp : null;
         const gmpSelectedPercent = gmpSelectedDelta != null && isValidPercentBase(gmp)
             ? (gmpSelectedDelta / gmp) * 100
@@ -1314,6 +1355,7 @@ function renderGmpSummary() {
         });
 
         const gmpSelectedClass = getBudgetDeltaClass(gmpSelectedDelta);
+        const selectedLowClass = getBudgetDeltaClass(selectedLowDelta);
         const gmpMedianClass = getBudgetDeltaClass(gmpMedianDelta);
         const medianSelectedClass = getSpreadDeltaClass(medianSelectedDelta);
 
@@ -1321,15 +1363,18 @@ function renderGmpSummary() {
         const selectedCell = formatAmountWithSf(selected);
         const medianCell = formatAmountWithSf(median);
         const gmpSelectedCell = formatAmountWithSf(gmpSelectedDelta, { isDelta: true });
+        const selectedLowCell = formatAmountWithSf(selectedLowDelta, { isDelta: true });
         const gmpMedianCell = formatAmountWithSf(gmpMedianDelta, { isDelta: true });
         const medianSelectedCell = formatAmountWithSf(medianSelectedDelta, { isDelta: true });
 
         return `
-            <tr>
+            <tr${pkg.status === 'estimated' ? ' class="estimated-package-row"' : ''}>
                 <td><strong>${escapeHtml(code)}</strong></td>
                 <td>${escapeHtml(name)}</td>
                 <td>${gmpCell}</td>
                 <td>${selectedCell}</td>
+                <td class="${selectedLowClass}">${selectedLowCell}</td>
+                <td class="${selectedLowClass}">${formatPercentageDelta(selectedLowPercent)}</td>
                 <td class="${gmpSelectedClass}">${gmpSelectedCell}</td>
                 <td class="${gmpSelectedClass}">${formatPercentageDelta(gmpSelectedPercent)}</td>
                 <td>${medianCell}</td>
@@ -1343,6 +1388,10 @@ function renderGmpSummary() {
 
     tbody.innerHTML = rowsHtml;
 
+    const totalSelectedLowDelta = totals.selectedCount > 0 && totals.lowCount > 0 ? totals.selected - totals.low : null;
+    const totalSelectedLowPercent = totalSelectedLowDelta != null && isValidPercentBase(totals.low)
+        ? (totalSelectedLowDelta / totals.low) * 100
+        : null;
     const totalSelectedDelta = totals.selectedCount > 0 && totals.gmpCount > 0 ? totals.selected - totals.gmp : null;
     const totalSelectedPercent = totalSelectedDelta != null && isValidPercentBase(totals.gmp)
         ? (totalSelectedDelta / totals.gmp) * 100
@@ -1359,6 +1408,7 @@ function renderGmpSummary() {
         : null;
 
     const totalSelectedClass = getBudgetDeltaClass(totalSelectedDelta);
+    const totalSelectedLowClass = getBudgetDeltaClass(totalSelectedLowDelta);
     const totalMedianClass = getBudgetDeltaClass(totalMedianDelta);
     const totalMedianSelectedClass = getSpreadDeltaClass(totalMedianSelectedDelta);
 
@@ -1374,6 +1424,8 @@ function renderGmpSummary() {
         <td>—</td>
         <td>${totalGmpCell}</td>
         <td>${totalSelectedCell}</td>
+        <td class="${totalSelectedLowClass}">${formatAmountWithSf(totalSelectedLowDelta, { isDelta: true })}</td>
+        <td class="${totalSelectedLowClass}">${formatPercentageDelta(totalSelectedLowPercent)}</td>
         <td class="${totalSelectedClass}">${totalSelectedDeltaCell}</td>
         <td class="${totalSelectedClass}">${formatPercentageDelta(totalSelectedPercent)}</td>
         <td>${totalMedianCell}</td>
@@ -1381,6 +1433,52 @@ function renderGmpSummary() {
         <td class="${totalMedianClass}">${formatPercentageDelta(totalMedianPercent)}</td>
         <td class="${totalMedianSelectedClass}">${totalMedianSelectedDeltaCell}</td>
         <td class="${totalMedianSelectedClass}">${formatPercentageDelta(totalMedianSelectedPercent)}</td>
+    `;
+
+    const bidOnlySelectedLowDelta = bidOnlyTotals.selectedCount > 0 && bidOnlyTotals.lowCount > 0
+        ? bidOnlyTotals.selected - bidOnlyTotals.low
+        : null;
+    const bidOnlySelectedLowPercent = bidOnlySelectedLowDelta != null && isValidPercentBase(bidOnlyTotals.low)
+        ? (bidOnlySelectedLowDelta / bidOnlyTotals.low) * 100
+        : null;
+    const bidOnlySelectedDelta = bidOnlyTotals.selectedCount > 0 && bidOnlyTotals.gmpCount > 0
+        ? bidOnlyTotals.selected - bidOnlyTotals.gmp
+        : null;
+    const bidOnlySelectedPercent = bidOnlySelectedDelta != null && isValidPercentBase(bidOnlyTotals.gmp)
+        ? (bidOnlySelectedDelta / bidOnlyTotals.gmp) * 100
+        : null;
+    const bidOnlyMedianDelta = bidOnlyTotals.medianCount > 0 && bidOnlyTotals.gmpCount > 0
+        ? bidOnlyTotals.median - bidOnlyTotals.gmp
+        : null;
+    const bidOnlyMedianPercent = bidOnlyMedianDelta != null && isValidPercentBase(bidOnlyTotals.gmp)
+        ? (bidOnlyMedianDelta / bidOnlyTotals.gmp) * 100
+        : null;
+    const bidOnlyMedianSelectedDelta = bidOnlyTotals.selectedCount > 0 && bidOnlyTotals.medianCount > 0
+        ? bidOnlyTotals.median - bidOnlyTotals.selected
+        : null;
+    const bidOnlyMedianSelectedPercent = bidOnlyMedianSelectedDelta != null && isValidPercentBase(bidOnlyTotals.selected)
+        ? (bidOnlyMedianSelectedDelta / bidOnlyTotals.selected) * 100
+        : null;
+
+    const bidOnlySelectedClass = getBudgetDeltaClass(bidOnlySelectedDelta);
+    const bidOnlySelectedLowClass = getBudgetDeltaClass(bidOnlySelectedLowDelta);
+    const bidOnlyMedianClass = getBudgetDeltaClass(bidOnlyMedianDelta);
+    const bidOnlyMedianSelectedClass = getSpreadDeltaClass(bidOnlyMedianSelectedDelta);
+
+    bidOnlyTotalsRow.innerHTML = `
+        <th scope="row">Totals (Less Estimated)</th>
+        <td>—</td>
+        <td>${bidOnlyTotals.gmpCount > 0 ? formatAmountWithSf(bidOnlyTotals.gmp) : '—'}</td>
+        <td>${bidOnlyTotals.selectedCount > 0 ? formatAmountWithSf(bidOnlyTotals.selected) : '—'}</td>
+        <td class="${bidOnlySelectedLowClass}">${formatAmountWithSf(bidOnlySelectedLowDelta, { isDelta: true })}</td>
+        <td class="${bidOnlySelectedLowClass}">${formatPercentageDelta(bidOnlySelectedLowPercent)}</td>
+        <td class="${bidOnlySelectedClass}">${formatAmountWithSf(bidOnlySelectedDelta, { isDelta: true })}</td>
+        <td class="${bidOnlySelectedClass}">${formatPercentageDelta(bidOnlySelectedPercent)}</td>
+        <td>${bidOnlyTotals.medianCount > 0 ? formatAmountWithSf(bidOnlyTotals.median) : '—'}</td>
+        <td class="${bidOnlyMedianClass}">${formatAmountWithSf(bidOnlyMedianDelta, { isDelta: true })}</td>
+        <td class="${bidOnlyMedianClass}">${formatPercentageDelta(bidOnlyMedianPercent)}</td>
+        <td class="${bidOnlyMedianSelectedClass}">${formatAmountWithSf(bidOnlyMedianSelectedDelta, { isDelta: true })}</td>
+        <td class="${bidOnlyMedianSelectedClass}">${formatPercentageDelta(bidOnlyMedianSelectedPercent)}</td>
     `;
 
     updateProjectSortIndicators('gmp');
