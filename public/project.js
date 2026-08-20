@@ -1203,9 +1203,10 @@ async function displayPackages() {
 function renderGmpSummary() {
     const tbody = document.getElementById('gmpTableBody');
     const totalsRow = document.getElementById('gmpTotalsRow');
+    const bidOnlyTotalsRow = document.getElementById('gmpBidOnlyTotalsRow');
     const emptyState = document.getElementById('gmpTableEmpty');
 
-    if (!tbody || !totalsRow) {
+    if (!tbody || !totalsRow || !bidOnlyTotalsRow) {
         return;
     }
 
@@ -1214,6 +1215,7 @@ function renderGmpSummary() {
     if (packages.length === 0) {
         tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No packages yet. Upload a bid tab or add an estimated package to begin.</td></tr>';
         totalsRow.innerHTML = '<th scope="row">Totals</th>' + '<td>—</td>'.repeat(10);
+        bidOnlyTotalsRow.innerHTML = '<th scope="row">Totals (Less Estimated)</th>' + '<td>—</td>'.repeat(10);
         if (emptyState) {
             emptyState.style.display = 'block';
             const heading = emptyState.querySelector('h3');
@@ -1251,6 +1253,14 @@ function renderGmpSummary() {
         median: 0,
         medianCount: 0
     };
+    const bidOnlyTotals = {
+        gmp: 0,
+        gmpCount: 0,
+        selected: 0,
+        selectedCount: 0,
+        median: 0,
+        medianCount: 0
+    };
 
     const rowsHtml = packages.map(pkg => {
         const code = pkg.package_code || '—';
@@ -1278,6 +1288,21 @@ function renderGmpSummary() {
         if (low != null) {
             totals.low += low;
             totals.lowCount += 1;
+        }
+
+        if (pkg.status !== 'estimated') {
+            if (gmp != null) {
+                bidOnlyTotals.gmp += gmp;
+                bidOnlyTotals.gmpCount += 1;
+            }
+            if (selected != null) {
+                bidOnlyTotals.selected += selected;
+                bidOnlyTotals.selectedCount += 1;
+            }
+            if (median != null) {
+                bidOnlyTotals.median += median;
+                bidOnlyTotals.medianCount += 1;
+            }
         }
 
         const gmpSelectedDelta = gmp != null && selected != null ? selected - gmp : null;
@@ -1325,7 +1350,7 @@ function renderGmpSummary() {
         const medianSelectedCell = formatAmountWithSf(medianSelectedDelta, { isDelta: true });
 
         return `
-            <tr>
+            <tr${pkg.status === 'estimated' ? ' class="estimated-package-row"' : ''}>
                 <td><strong>${escapeHtml(code)}</strong></td>
                 <td>${escapeHtml(name)}</td>
                 <td>${gmpCell}</td>
@@ -1381,6 +1406,43 @@ function renderGmpSummary() {
         <td class="${totalMedianClass}">${formatPercentageDelta(totalMedianPercent)}</td>
         <td class="${totalMedianSelectedClass}">${totalMedianSelectedDeltaCell}</td>
         <td class="${totalMedianSelectedClass}">${formatPercentageDelta(totalMedianSelectedPercent)}</td>
+    `;
+
+    const bidOnlySelectedDelta = bidOnlyTotals.selectedCount > 0 && bidOnlyTotals.gmpCount > 0
+        ? bidOnlyTotals.selected - bidOnlyTotals.gmp
+        : null;
+    const bidOnlySelectedPercent = bidOnlySelectedDelta != null && isValidPercentBase(bidOnlyTotals.gmp)
+        ? (bidOnlySelectedDelta / bidOnlyTotals.gmp) * 100
+        : null;
+    const bidOnlyMedianDelta = bidOnlyTotals.medianCount > 0 && bidOnlyTotals.gmpCount > 0
+        ? bidOnlyTotals.median - bidOnlyTotals.gmp
+        : null;
+    const bidOnlyMedianPercent = bidOnlyMedianDelta != null && isValidPercentBase(bidOnlyTotals.gmp)
+        ? (bidOnlyMedianDelta / bidOnlyTotals.gmp) * 100
+        : null;
+    const bidOnlyMedianSelectedDelta = bidOnlyTotals.selectedCount > 0 && bidOnlyTotals.medianCount > 0
+        ? bidOnlyTotals.median - bidOnlyTotals.selected
+        : null;
+    const bidOnlyMedianSelectedPercent = bidOnlyMedianSelectedDelta != null && isValidPercentBase(bidOnlyTotals.selected)
+        ? (bidOnlyMedianSelectedDelta / bidOnlyTotals.selected) * 100
+        : null;
+
+    const bidOnlySelectedClass = getBudgetDeltaClass(bidOnlySelectedDelta);
+    const bidOnlyMedianClass = getBudgetDeltaClass(bidOnlyMedianDelta);
+    const bidOnlyMedianSelectedClass = getSpreadDeltaClass(bidOnlyMedianSelectedDelta);
+
+    bidOnlyTotalsRow.innerHTML = `
+        <th scope="row">Totals (Less Estimated)</th>
+        <td>—</td>
+        <td>${bidOnlyTotals.gmpCount > 0 ? formatAmountWithSf(bidOnlyTotals.gmp) : '—'}</td>
+        <td>${bidOnlyTotals.selectedCount > 0 ? formatAmountWithSf(bidOnlyTotals.selected) : '—'}</td>
+        <td class="${bidOnlySelectedClass}">${formatAmountWithSf(bidOnlySelectedDelta, { isDelta: true })}</td>
+        <td class="${bidOnlySelectedClass}">${formatPercentageDelta(bidOnlySelectedPercent)}</td>
+        <td>${bidOnlyTotals.medianCount > 0 ? formatAmountWithSf(bidOnlyTotals.median) : '—'}</td>
+        <td class="${bidOnlyMedianClass}">${formatAmountWithSf(bidOnlyMedianDelta, { isDelta: true })}</td>
+        <td class="${bidOnlyMedianClass}">${formatPercentageDelta(bidOnlyMedianPercent)}</td>
+        <td class="${bidOnlyMedianSelectedClass}">${formatAmountWithSf(bidOnlyMedianSelectedDelta, { isDelta: true })}</td>
+        <td class="${bidOnlyMedianSelectedClass}">${formatPercentageDelta(bidOnlyMedianSelectedPercent)}</td>
     `;
 
     updateProjectSortIndicators('gmp');
