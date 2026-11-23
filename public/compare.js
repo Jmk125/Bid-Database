@@ -421,6 +421,13 @@ const METRIC_OPTIONS = {
             return Number.isFinite(count) ? count : null;
         }
     },
+    selected_total_by_package: {
+        label: 'Selected total cost by package',
+        description: 'Total dollar amount of the selected bid for each package across the selected projects.',
+        format: formatCurrency,
+        scope: METRIC_SCOPES.PACKAGE,
+        getValue: (pkg) => toFiniteNumber(pkg?.selected_amount)
+    },
     median_cost_per_sf_by_package: {
         label: 'Median $/SF by package',
         description: 'Median bid divided by the project square footage for each package.',
@@ -615,6 +622,10 @@ const METRIC_GROUPS = [
     {
         label: 'Bid volume',
         metrics: ['total_bid_count', 'bids_per_package', 'bid_count_by_package']
+    },
+    {
+        label: 'Package totals',
+        metrics: ['selected_total_by_package']
     },
     {
         label: 'Package $/SF',
